@@ -1,0 +1,427 @@
+/* ============================================================
+   Login Page — Healthcare / Elderly Care Theme
+   Thiết kế y tế chuyên nghiệp, thân thiện người cao tuổi
+   ============================================================ */
+
+/* ---- Custom font (Inter - dễ đọc) ---- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ---- Biến màu y tế ---- */
+:root {
+  --medical-primary: #2E7D9A;
+  --medical-primary-dark: #1a5f78;
+  --medical-primary-light: #4A9BB5;
+  --medical-accent: #4CAF93;
+  --medical-accent-light: #6DC8AE;
+  --bg-page: #F5F7FA;
+  --bg-white: #ffffff;
+  --text-heading: #1A2E3B;
+  --text-body: #3D5263;
+  --text-muted: #7A93A3;
+  --border-color: #D0E4EE;
+  --error-color: #E53E3E;
+  --shadow-card: 0 4px 32px rgba(46, 125, 154, 0.12);
+  --shadow-btn: 0 4px 16px rgba(46, 125, 154, 0.35);
+  --radius-input: 10px;
+  --radius-btn: 10px;
+}
+
+/* ============================================================
+   LAYOUT CHÍNH — 2 cột
+   ============================================================ */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  background: var(--bg-page);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  animation: pageFadeIn 0.5s ease forwards;
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ============================================================
+   CỘT TRÁI — Illustration panel (60%)
+   ============================================================ */
+.login-illustration-panel {
+  flex: 0 0 60%;
+  background: linear-gradient(145deg, #1a5f78 0%, #2E7D9A 45%, #3A9E87 100%);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 40px;
+}
+
+/* Blob trang trí nền */
+.illus-blob {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.illus-blob-1 {
+  width: 500px;
+  height: 500px;
+  top: -150px;
+  right: -150px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.illus-blob-2 {
+  width: 300px;
+  height: 300px;
+  bottom: -80px;
+  left: -80px;
+  background: rgba(76, 175, 147, 0.18);
+  border: 1px solid rgba(76, 175, 147, 0.12);
+}
+
+.illus-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  animation: illus-slideIn 0.6s ease 0.1s both;
+}
+
+@keyframes illus-slideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Logo hàng */
+.illus-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.illus-logo-icon {
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+}
+
+.illus-system-name {
+  font-size: 28px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+}
+
+/* Ảnh minh họa */
+.illus-image-wrap {
+  width: 100%;
+  max-width: 420px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  border: 3px solid rgba(255, 255, 255, 0.15);
+}
+
+.illus-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+/* Tiêu đề & Slogan */
+.illus-text {
+  text-align: center;
+}
+
+.illus-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 10px;
+  line-height: 1.35;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+
+.illus-slogan {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Thống kê nhỏ */
+.illus-stats {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 16px 32px;
+  backdrop-filter: blur(8px);
+  gap: 24px;
+}
+
+.illus-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.illus-stat-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.illus-stat-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  white-space: nowrap;
+}
+
+.illus-stat-divider {
+  width: 1px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================================
+   CỘT PHẢI — Form panel (40%)
+   ============================================================ */
+.login-form-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-white);
+  padding: 48px 40px;
+  overflow-y: auto;
+}
+
+.login-form-inner {
+  width: 100%;
+  max-width: 420px;
+  animation: form-fadeIn 0.5s ease 0.15s both;
+}
+
+@keyframes form-fadeIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Logo mobile (ẩn trên desktop) */
+.login-mobile-logo {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.mobile-logo-icon {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--medical-primary), var(--medical-accent));
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-system-name {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-heading);
+}
+
+/* Header form */
+.login-form-header {
+  margin-bottom: 28px;
+}
+
+.login-form-title.ant-typography {
+  font-size: 26px !important;
+  font-weight: 700 !important;
+  color: var(--text-heading) !important;
+  margin-bottom: 6px !important;
+  line-height: 1.25 !important;
+}
+
+.login-form-subtitle.ant-typography {
+  font-size: 15px !important;
+  color: var(--text-muted) !important;
+  line-height: 1.5 !important;
+}
+
+/* Alert lỗi */
+.login-error-alert {
+  margin-bottom: 20px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+
+/* ---- ANT DESIGN FORM OVERRIDES ---- */
+
+/* Label */
+.login-form .ant-form-item-label > label {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  color: var(--text-body) !important;
+  height: auto !important;
+}
+
+/* Input */
+.login-input.ant-input,
+.login-input.ant-input-affix-wrapper {
+  height: 52px !important;
+  font-size: 16px !important;
+  border-radius: var(--radius-input) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-heading) !important;
+  transition: all 0.2s ease !important;
+}
+
+.login-input.ant-input-affix-wrapper:hover,
+.login-input.ant-input-affix-wrapper:focus-within {
+  border-color: var(--medical-primary) !important;
+  box-shadow: 0 0 0 3px rgba(46, 125, 154, 0.12) !important;
+}
+
+.login-input.ant-input-affix-wrapper .ant-input {
+  font-size: 16px !important;
+}
+
+.input-prefix-icon {
+  color: var(--text-muted) !important;
+  font-size: 17px !important;
+  margin-right: 2px;
+}
+
+/* Validation message */
+.login-form .ant-form-item-explain-error {
+  font-size: 14px !important;
+}
+
+/* Options row */
+.login-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Checkbox */
+.login-remember-checkbox {
+  font-size: 15px !important;
+  color: var(--text-body) !important;
+}
+
+.login-remember-checkbox .ant-checkbox-inner {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 5px !important;
+  border-color: var(--border-color) !important;
+}
+
+.login-remember-checkbox .ant-checkbox-checked .ant-checkbox-inner {
+  background-color: var(--medical-primary) !important;
+  border-color: var(--medical-primary) !important;
+}
+
+/* Forgot password link */
+.login-forgot-link {
+  font-size: 15px;
+  color: var(--medical-primary);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.login-forgot-link:hover {
+  color: var(--medical-primary-dark);
+  text-decoration: underline;
+}
+
+/* Submit button */
+.login-submit-btn.ant-btn {
+  height: 54px !important;
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-btn) !important;
+  background: linear-gradient(135deg, var(--medical-primary), var(--medical-primary-dark)) !important;
+  border: none !important;
+  box-shadow: var(--shadow-btn) !important;
+  letter-spacing: 0.3px;
+  transition: all 0.25s ease !important;
+  margin-top: 4px;
+}
+
+.login-submit-btn.ant-btn:hover {
+  background: linear-gradient(135deg, var(--medical-primary-light), var(--medical-primary)) !important;
+  box-shadow: 0 6px 22px rgba(46, 125, 154, 0.45) !important;
+  transform: translateY(-1px);
+}
+
+.login-submit-btn.ant-btn:active {
+  transform: translateY(0);
+}
+
+/* ---- Footer ---- */
+.login-footer {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  padding-top: 4px;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   RESPONSIVE — Mobile (ẩn illustration, chỉ hiện form)
+   ============================================================ */
+@media (max-width: 900px) {
+  .login-illustration-panel {
+    display: none;
+  }
+
+  .login-form-panel {
+    padding: 32px 24px;
+    justify-content: flex-start;
+    align-items: flex-start;
+    padding-top: 56px;
+  }
+
+  .login-form-inner {
+    max-width: 100%;
+  }
+
+  .login-mobile-logo {
+    display: flex;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-form-panel {
+    padding: 28px 20px;
+  }
+
+  .login-form-title.ant-typography {
+    font-size: 22px !important;
+  }
+
+  .login-submit-btn.ant-btn {
+    height: 50px !important;
+    font-size: 16px !important;
+  }
+}

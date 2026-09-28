@@ -1,0 +1,9 @@
+﻿const express = require('express');
+const router = express.Router();
+const ctrl = require('../controllers/lichKhamBenh.controller');
+const auth = require('../middlewares/auth.middleware');
+router.use(auth);
+router.get('/',             ctrl.getAll);
+router.post('/',            ctrl.create);
+router.patch('/:id/cancel', ctrl.cancel);
+module.exports = router;

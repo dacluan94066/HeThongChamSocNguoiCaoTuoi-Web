@@ -1,0 +1,45 @@
+{
+  "tongQuan": {
+    "tongNguoiCaoTuoi": 6,
+    "soNguoiCanChamSocDacBiet": 2,
+    "soCanhBaoChuaXuLy": 4,
+    "soLichKhamSapToi": 3,
+    "soLichUongThuocHomNay": 7,
+    "soLichUongThuocDaUong": 4,
+    "soLichUongThuocBoLo": 2,
+    "soLichUongThuocChuaDenGio": 1
+  },
+  "canhBaoTheoThang": [
+    { "thang": "Tháng 4", "soLuong": 8 },
+    { "thang": "Tháng 5", "soLuong": 12 },
+    { "thang": "Tháng 6", "soLuong": 6 },
+    { "thang": "Tháng 7", "soLuong": 15 },
+    { "thang": "Tháng 8", "soLuong": 10 },
+    { "thang": "Tháng 9", "soLuong": 6 }
+  ],
+  "tyLeTuanThuUongThuoc": [
+    { "ten": "Nguyễn Văn Bình", "tyLe": 85 },
+    { "ten": "Trần Thị Mai", "tyLe": 70 },
+    { "ten": "Lê Văn Cường", "tyLe": 90 },
+    { "ten": "Phạm Thị Dung", "tyLe": 95 },
+    { "ten": "Hoàng Văn Em", "tyLe": 88 },
+    { "ten": "Vũ Thị Phương", "tyLe": 62 }
+  ],
+  "phanLoaiCanhBaoTheoMucDo": [
+    { "mucDo": "Thấp", "soLuong": 5 },
+    { "mucDo": "Trung bình", "soLuong": 12 },
+    { "mucDo": "Cao", "soLuong": 8 },
+    { "mucDo": "Khẩn cấp", "soLuong": 3 }
+  ],
+  "chiSoSucKhoeTheoNgay": {
+    "huyetAp": [
+      { "ngay": "11/09", "tren": 138, "duoi": 82 },
+      { "ngay": "12/09", "tren": 142, "duoi": 85 },
+      { "ngay": "13/09", "tren": 145, "duoi": 90 },
+      { "ngay": "14/09", "tren": 135, "duoi": 80 },
+      { "ngay": "15/09", "tren": 138, "duoi": 82 },
+      { "ngay": "16/09", "tren": 145, "duoi": 88 },
+      { "ngay": "17/09", "tren": 165, "duoi": 95 }
+    ]
+  }
+}

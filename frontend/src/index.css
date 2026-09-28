@@ -1,0 +1,704 @@
+/* ============================================================
+   index.css — Design System toàn cục
+   Hệ thống Quản lý Sức khỏe Người cao tuổi
+   Theme y tế: #2E7D9A | Font base: 16px
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ===== RESET ===== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ===== CSS VARIABLES ===== */
+:root {
+  /* Màu chính y tế */
+  --color-primary:          #2E7D9A;
+  --color-primary-dark:     #1a5f78;
+  --color-primary-light:    #4A9BB5;
+  --color-primary-bg:       #EBF5FB;
+
+  /* Màu phụ (tích cực/thành công) */
+  --color-success:          #4CAF93;
+  --color-success-dark:     #367A65;
+  --color-success-bg:       #E8F8F5;
+
+  /* Cảnh báo */
+  --color-warning:          #F5A623;
+  --color-warning-bg:       #FEF6E6;
+
+  /* Lỗi / Khẩn cấp */
+  --color-error:            #E15554;
+  --color-error-bg:         #FDEEEE;
+  --color-urgent:           #C0392B;
+  --color-urgent-bg:        #C0392B;
+
+  /* Nền */
+  --color-bg-page:          #F5F7FA;
+  --color-bg-card:          #FFFFFF;
+  --color-bg-sidebar:       #1B4965;
+  --color-bg-sidebar-hover: #24618A;
+  --color-bg-header:        #FFFFFF;
+
+  /* Text */
+  --color-text-primary:     #1A2E3B;
+  --color-text-secondary:   #3D5263;
+  --color-text-muted:       #7A93A3;
+  --color-text-disabled:    #BFBFBF;
+
+  /* Border */
+  --color-border:           #D0E4EE;
+  --color-border-light:     #E8F0F5;
+
+  /* Border radius */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+
+  /* Shadow */
+  --shadow-sm:   0 1px 4px rgba(46, 125, 154, 0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:   0 4px 16px rgba(46, 125, 154, 0.12);
+  --shadow-lg:   0 8px 32px rgba(46, 125, 154, 0.18);
+  --shadow-card: 0 2px 8px rgba(46, 125, 154, 0.08);
+
+  /* Spacing */
+  --space-xs:    4px;
+  --space-sm:    8px;
+  --space-md:   16px;
+  --space-lg:   24px;
+  --space-xl:   32px;
+
+  /* Font */
+  --font-size-base:  16px;
+  --font-size-sm:    14px;
+  --font-size-lg:    18px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.25s ease;
+}
+
+/* ===== BASE ===== */
+html, body, #root {
+  height: 100%;
+  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.main-layout {
+  min-height: 100vh;
+}
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+.app-sidebar {
+  position: fixed !important;
+  left: 0;
+  top: 0;
+  height: 100vh !important;
+  overflow: hidden;
+  z-index: 200;
+  transition: width 0.2s ease !important;
+  background: var(--color-bg-sidebar) !important;
+  box-shadow: 3px 0 16px rgba(0, 0, 0, 0.18);
+}
+
+.ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Logo khu vực */
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+  min-height: 68px;
+  cursor: pointer;
+}
+
+.sidebar-logo-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--color-primary-light), var(--color-success));
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-logo-icon svg,
+.sidebar-logo-icon .anticon {
+  color: white !important;
+  font-size: 20px;
+}
+
+.sidebar-logo-text {
+  overflow: hidden;
+  transition: opacity 0.2s ease, width 0.2s ease;
+}
+
+.sidebar-logo-title {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  letter-spacing: -0.3px;
+}
+
+.sidebar-logo-subtitle {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+/* Menu scroll area */
+.sidebar-menu {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.sidebar-menu::-webkit-scrollbar {
+  width: 3px;
+}
+
+.sidebar-menu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+
+/* Menu item active indicator */
+.ant-menu-dark .ant-menu-item-selected {
+  background: rgba(74, 155, 181, 0.2) !important;
+  border-radius: 0 !important;
+  position: relative;
+}
+
+.ant-menu-dark .ant-menu-item-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--color-success);
+  border-radius: 0 2px 2px 0;
+}
+
+/* Sidebar footer */
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  text-align: center;
+}
+
+/* Sidebar overlay (mobile) */
+.sidebar-mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 199;
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+  animation: overlayFadeIn 0.2s ease;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.app-header {
+  position: sticky !important;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-lg) !important;
+  background: var(--color-bg-header) !important;
+  box-shadow: 0 1px 8px rgba(46, 125, 154, 0.1);
+  height: 64px !important;
+  line-height: 64px !important;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-hamburger-btn {
+  display: none !important;
+}
+
+.header-collapse-btn {
+  font-size: 18px !important;
+  color: var(--color-text-muted) !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 8px !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.header-collapse-btn:hover {
+  background: var(--color-primary-bg) !important;
+  color: var(--color-primary) !important;
+}
+
+.header-user-info {
+  line-height: 1.3;
+  text-align: right;
+}
+
+.header-user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.header-user-role {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ============================================================
+   MAIN CONTENT
+   ============================================================ */
+.page-content {
+  padding: var(--space-lg);
+  min-height: calc(100vh - 64px);
+  background: var(--color-bg-page);
+}
+
+/* ============================================================
+   PAGE HEADER (dùng bởi PageHeader component)
+   ============================================================ */
+.page-header {
+  margin-bottom: var(--space-lg);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.page-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.page-title-icon {
+  font-size: 22px;
+  color: var(--color-primary);
+}
+
+.page-title-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Override antd Typography cho page-title */
+.page-title.ant-typography {
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  color: var(--color-text-primary) !important;
+  margin: 0 !important;
+  line-height: 1.2 !important;
+}
+
+.page-subtitle.ant-typography,
+.page-subtitle {
+  font-size: 14px !important;
+  color: var(--color-text-muted) !important;
+  margin: 0 !important;
+  line-height: 1.5 !important;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   TABLE TOOLBAR
+   ============================================================ */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.table-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.table-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+.toolbar-search-input {
+  font-size: 15px !important;
+}
+
+.toolbar-count {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   DATA TABLE WRAPPER
+   ============================================================ */
+.data-table-wrapper {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border-light);
+}
+
+/* Table header */
+.ant-table-thead > tr > th {
+  background: var(--color-primary-bg) !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  color: var(--color-text-primary) !important;
+  border-bottom: 2px solid var(--color-border) !important;
+  white-space: nowrap;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #F4FAFD !important;
+}
+
+/* Dòng danger (bỏ lỡ, khẩn cấp) */
+.row-danger > td {
+  background: #FFF8F8 !important;
+}
+
+.row-danger:hover > td {
+  background: #FDEEEE !important;
+}
+
+/* ============================================================
+   STAT CARDS (Dashboard)
+   ============================================================ */
+.stat-card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border-light);
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+}
+
+.stat-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--card-accent, var(--color-primary));
+}
+
+.stat-card-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: var(--space-md);
+}
+
+.stat-card-value {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.stat-card-label {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.stat-card-trend {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* ============================================================
+   CHARTS
+   ============================================================ */
+.chart-container {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border-light);
+}
+
+.chart-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-md);
+}
+
+/* ============================================================
+   ANT DESIGN COMPONENT OVERRIDES
+   ============================================================ */
+
+/* Card */
+.ant-card {
+  border-radius: var(--radius-lg) !important;
+  border-color: var(--color-border-light) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+.ant-card-head {
+  border-bottom-color: var(--color-border) !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Button primary */
+.ant-btn-primary {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 4px 12px rgba(46, 125, 154, 0.3) !important;
+  font-weight: 600 !important;
+}
+
+.ant-btn-primary:hover {
+  background: var(--color-primary-light) !important;
+  border-color: var(--color-primary-light) !important;
+}
+
+/* Modal */
+.ant-modal-content {
+  border-radius: 14px !important;
+  overflow: hidden;
+}
+
+.ant-modal-header {
+  background: #FAFCFD !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  padding: 16px 24px !important;
+}
+
+.ant-modal-title {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  color: var(--color-text-primary) !important;
+}
+
+.ant-modal-footer {
+  border-top: 1px solid var(--color-border) !important;
+  padding: 14px 24px !important;
+  background: #FAFCFD !important;
+}
+
+/* Avatar trong header */
+.header-avatar {
+  background: var(--color-primary) !important;
+}
+
+/* Progress */
+.ant-progress-bg {
+  transition: width 0.5s ease !important;
+}
+
+/* Alert */
+.ant-alert {
+  border-radius: var(--radius-md) !important;
+  font-size: 15px !important;
+}
+
+/* Form label */
+.ant-form-item-label > label {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: var(--color-text-secondary) !important;
+}
+
+/* Descriptions */
+.ant-descriptions-item-label {
+  font-weight: 600 !important;
+  color: var(--color-text-secondary) !important;
+  font-size: 14px !important;
+}
+
+.ant-descriptions-item-content {
+  font-size: 15px !important;
+}
+
+/* Select dropdown */
+.ant-select-dropdown {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Pagination */
+.ant-pagination {
+  padding: 16px !important;
+}
+
+/* ============================================================
+   STATUS TAGS (chung)
+   ============================================================ */
+@keyframes pulse-urgent {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(192, 57, 43, 0); }
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 85, 84, 0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(225, 85, 84, 0); }
+}
+
+.fade-in-up { animation: fadeInUp 0.35s ease forwards; }
+.pulse-danger { animation: pulse-red 1.5s ease infinite; }
+
+/* ============================================================
+   LOADING
+   ============================================================ */
+.page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+/* ============================================================
+   RESPONSIVE — Sidebar collapse logic
+   ============================================================ */
+
+/* Tablet: sidebar thu gọn icon-only (tự antd xử lý qua collapsedWidth=64) */
+@media (max-width: 900px) {
+  .header-hamburger-btn {
+    display: inline-flex !important;
+  }
+  .header-collapse-btn {
+    display: none !important;
+  }
+}
+
+/* Mobile: bảng scroll ngang, content padding nhỏ hơn */
+@media (max-width: 768px) {
+  .page-content {
+    padding: var(--space-md);
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .table-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .table-toolbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .stat-card-value {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 600px) {
+  .sidebar-mobile-overlay {
+    display: block;
+  }
+
+  .header-hamburger-btn {
+    display: inline-flex !important;
+  }
+}

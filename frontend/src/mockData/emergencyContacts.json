@@ -1,0 +1,67 @@
+[
+  {
+    "id": 1,
+    "nguoiCaoTuoiId": 1,
+    "nguoiCaoTuoiTen": "Nguyễn Văn Bình",
+    "hoTen": "Nguyễn Thị Lan",
+    "moiQuanHe": "Con gái",
+    "soDienThoai": "0901111222",
+    "soDienThoaiPhu": "0281234567",
+    "email": "nguyenthilan.con@gmail.com",
+    "diaChiThuongTru": "123 Đường Lê Lợi, Quận 1, TP.HCM",
+    "uuTien": 1,
+    "ghiChu": "Liên hệ đầu tiên khi có tình huống khẩn cấp"
+  },
+  {
+    "id": 2,
+    "nguoiCaoTuoiId": 1,
+    "nguoiCaoTuoiTen": "Nguyễn Văn Bình",
+    "hoTen": "Nguyễn Văn Minh",
+    "moiQuanHe": "Con trai",
+    "soDienThoai": "0902222333",
+    "soDienThoaiPhu": null,
+    "email": "nguyenvanminh.con@gmail.com",
+    "diaChiThuongTru": "456 Đường Nguyễn Trãi, Quận 5, TP.HCM",
+    "uuTien": 2,
+    "ghiChu": ""
+  },
+  {
+    "id": 3,
+    "nguoiCaoTuoiId": 2,
+    "nguoiCaoTuoiTen": "Trần Thị Mai",
+    "hoTen": "Lê Văn Hùng",
+    "moiQuanHe": "Con rể",
+    "soDienThoai": "0903333444",
+    "soDienThoaiPhu": "0283456789",
+    "email": "levanhung@gmail.com",
+    "diaChiThuongTru": "456 Đường Nguyễn Huệ, Quận 3, TP.HCM",
+    "uuTien": 1,
+    "ghiChu": "Đang làm việc ban ngày, có thể không nghe máy"
+  },
+  {
+    "id": 4,
+    "nguoiCaoTuoiId": 3,
+    "nguoiCaoTuoiTen": "Lê Văn Cường",
+    "hoTen": "Lê Thị Ngọc",
+    "moiQuanHe": "Con gái",
+    "soDienThoai": "0904444555",
+    "soDienThoaiPhu": null,
+    "email": "lethingoc@gmail.com",
+    "diaChiThuongTru": "789 Đường Trần Hưng Đạo, Quận 5, TP.HCM",
+    "uuTien": 1,
+    "ghiChu": "Sống cùng địa chỉ với bệnh nhân"
+  },
+  {
+    "id": 5,
+    "nguoiCaoTuoiId": 5,
+    "nguoiCaoTuoiTen": "Hoàng Văn Em",
+    "hoTen": "Hoàng Minh Tuấn",
+    "moiQuanHe": "Con trai",
+    "soDienThoai": "0905555666",
+    "soDienThoaiPhu": "02812345678",
+    "email": "hoangminhtuan@gmail.com",
+    "diaChiThuongTru": "654 Đường Cách Mạng Tháng 8, Quận 10, TP.HCM",
+    "uuTien": 1,
+    "ghiChu": "Gọi ngay khi SpO2 xuống dưới 90%"
+  }
+]
