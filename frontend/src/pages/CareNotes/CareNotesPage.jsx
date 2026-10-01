@@ -1,6 +1,6 @@
 // Trang nhật ký chăm sóc - Dạng timeline theo ngày
 import React, { useState, useEffect } from 'react';
-import { Timeline, Button, Select, Card, DatePicker, Form, Input, message, Empty } from 'antd';
+import { Timeline, Button, Select, Card, DatePicker, Form, Input, message, Empty, Row, Col } from 'antd';
 import {
   PlusOutlined, BookOutlined, AlertOutlined, HeartOutlined, MedicineBoxOutlined,
 } from '@ant-design/icons';
@@ -10,7 +10,8 @@ import { getCurrentUser } from '../../services/authService';
 import dayjs from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import TableToolbar from '../../components/TableToolbar';
-import ModalForm from '../../components/ModalForm';
+import ModalForm, { FormSection } from '../../components/ModalForm';
+import usePermission from '../../hooks/usePermission';
 
 const { Option } = Select;
 
@@ -22,6 +23,8 @@ const LOAI_NK_CONFIG = {
 };
 
 const CareNotesPage = () => {
+  const { hasPermission } = usePermission();
+  const canCreate = hasPermission('QLNHATKY', 'them');
   const [notes, setNotes] = useState([]);
   const [elders, setElders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -117,7 +120,9 @@ const CareNotesPage = () => {
         title="Nhật ký chăm sóc"
         subtitle="Timeline hoạt động chăm sóc theo ngày"
         icon={<BookOutlined />}
-        extra={
+        count={notes.length}
+        countLabel="nhật ký"
+        extra={canCreate && (
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -126,7 +131,7 @@ const CareNotesPage = () => {
           >
             Thêm nhật ký
           </Button>
-        }
+        )}
       />
 
       <TableToolbar
@@ -148,15 +153,13 @@ const CareNotesPage = () => {
             allowClear
           />,
         ]}
-        count={notes.length}
-        countLabel="nhật ký"
       />
 
       {notes.length === 0 ? (
-        <Empty
-          description={<span style={{ color: '#7A93A3', fontSize: 15 }}>Chưa có nhật ký nào</span>}
-          style={{ padding: '60px 0' }}
-        />
+        <div className="table-empty-state">
+          <Empty description={<span className="muted-value">Chưa có nhật ký nào</span>} />
+          {canCreate && <div className="table-empty-action"><Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>Thêm nhật ký</Button></div>}
+        </div>
       ) : (
         <div style={{
           background: '#fff',
@@ -171,32 +174,44 @@ const CareNotesPage = () => {
 
       <ModalForm
         title="Thêm nhật ký chăm sóc"
+        subtitle="Ghi lại hoạt động và tình trạng chăm sóc trong ngày"
+        icon={<BookOutlined />}
+        mode="create"
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onFinish={handleSave}
         loading={saving}
-        saveLabel="Lưu nhật ký"
         form={form}
-        width={560}
       >
-        <Form.Item name="nguoiCaoTuoiId" label="Người cao tuổi" rules={[{ required: true, message: 'Vui lòng chọn' }]}>
-          <Select placeholder="Chọn người cao tuổi">
-            {elders.map((e) => <Option key={e.id} value={e.id}>{e.hoTen}</Option>)}
-          </Select>
-        </Form.Item>
-        <Form.Item name="loaiNhatKy" label="Loại nhật ký" rules={[{ required: true, message: 'Vui lòng chọn loại' }]}>
-          <Select placeholder="Chọn loại">
-            {Object.entries(LOAI_NK_CONFIG).map(([k, v]) => (
-              <Option key={k} value={k}>{v.label}</Option>
-            ))}
-          </Select>
-        </Form.Item>
-        <Form.Item name="tieuDe" label="Tiêu đề" rules={[{ required: true, message: 'Vui lòng nhập tiêu đề' }]}>
-          <Input />
-        </Form.Item>
-        <Form.Item name="noiDung" label="Nội dung chi tiết" rules={[{ required: true, message: 'Vui lòng nhập nội dung' }]}>
-          <Input.TextArea rows={5} placeholder="Mô tả chi tiết hoạt động chăm sóc..." />
-        </Form.Item>
+        <FormSection title="Thông tin nhật ký" description="Phân loại bản ghi và đối tượng được chăm sóc">
+          <Row gutter={18}>
+            <Col xs={24} md={12}>
+              <Form.Item name="nguoiCaoTuoiId" label="Người cao tuổi" rules={[{ required: true, message: 'Vui lòng chọn người cao tuổi' }]}>
+                <Select placeholder="Chọn hồ sơ người cao tuổi" showSearch optionFilterProp="children">
+                  {elders.map((e) => <Option key={e.id} value={e.id}>{e.hoTen}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="loaiNhatKy" label="Loại nhật ký" rules={[{ required: true, message: 'Vui lòng chọn loại nhật ký' }]}>
+                <Select placeholder="Chọn loại hoạt động">
+                  {Object.entries(LOAI_NK_CONFIG).map(([k, v]) => (
+                    <Option key={k} value={k}>{v.label}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+        </FormSection>
+
+        <FormSection title="Nội dung chăm sóc" description="Tóm tắt và mô tả chi tiết hoạt động đã thực hiện">
+          <Form.Item name="tieuDe" label="Tiêu đề" rules={[{ required: true, message: 'Vui lòng nhập tiêu đề nhật ký' }]}>
+            <Input placeholder="VD: Theo dõi huyết áp buổi sáng" />
+          </Form.Item>
+          <Form.Item name="noiDung" label="Nội dung chi tiết" rules={[{ required: true, message: 'Vui lòng nhập nội dung chăm sóc' }]}>
+            <Input.TextArea autoSize={{ minRows: 3, maxRows: 8 }} placeholder="Mô tả tình trạng, hoạt động đã thực hiện và các lưu ý..." />
+          </Form.Item>
+        </FormSection>
       </ModalForm>
     </div>
   );

@@ -13,6 +13,7 @@ import { AuthProvider } from './context/AuthContext';
 // Layout
 import MainLayout from './layouts/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
+import PermissionRoute from './components/PermissionRoute';
 
 // Pages
 import LoginPage from './pages/Login/LoginPage';
@@ -28,6 +29,7 @@ import AlertsPage from './pages/Alerts/AlertsPage';
 import EmergencyContactsPage from './pages/EmergencyContacts/EmergencyContactsPage';
 import CareNotesPage from './pages/CareNotes/CareNotesPage';
 import ReportsPage from './pages/Reports/ReportsPage';
+import ForbiddenPage from './pages/Forbidden/ForbiddenPage';
 
 // Thiết lập ngôn ngữ tiếng Việt cho dayjs
 dayjs.locale('vi');
@@ -57,25 +59,26 @@ const App = () => {
 
                 {/* Tổng quan */}
                 <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="forbidden" element={<ForbiddenPage />} />
 
                 {/* Quản lý hệ thống */}
-                <Route path="nguoi-dung" element={<UsersPage />} />
-                <Route path="ho-so-nguoi-cao-tuoi" element={<ElderlyProfilesPage />} />
-                <Route path="nguoi-cham-soc" element={<CaregiversPage />} />
+                <Route path="nguoi-dung" element={<PermissionRoute maChucNang="QLNGUOIDUNG"><UsersPage /></PermissionRoute>} />
+                <Route path="ho-so-nguoi-cao-tuoi" element={<PermissionRoute maChucNang="QLHOSONCT"><ElderlyProfilesPage /></PermissionRoute>} />
+                <Route path="nguoi-cham-soc" element={<PermissionRoute maChucNang="QLNGUOICHAMSOC"><CaregiversPage /></PermissionRoute>} />
 
                 {/* Thuốc & Lịch */}
-                <Route path="danh-muc-thuoc" element={<MedicationsPage />} />
-                <Route path="lich-uong-thuoc" element={<MedicationSchedulePage />} />
-                <Route path="lich-kham-benh" element={<AppointmentsPage />} />
+                <Route path="danh-muc-thuoc" element={<PermissionRoute maChucNang="QLTHUOC"><MedicationsPage /></PermissionRoute>} />
+                <Route path="lich-uong-thuoc" element={<PermissionRoute maChucNang="QLLICHUONGTHUOC"><MedicationSchedulePage /></PermissionRoute>} />
+                <Route path="lich-kham-benh" element={<PermissionRoute maChucNang="QLLICHKHAM"><AppointmentsPage /></PermissionRoute>} />
 
                 {/* Theo dõi sức khỏe */}
-                <Route path="chi-so-suc-khoe" element={<HealthMetricsPage />} />
-                <Route path="canh-bao" element={<AlertsPage />} />
+                <Route path="chi-so-suc-khoe" element={<PermissionRoute maChucNang="QLCHISOSK"><HealthMetricsPage /></PermissionRoute>} />
+                <Route path="canh-bao" element={<PermissionRoute maChucNang="QLCANHBAO"><AlertsPage /></PermissionRoute>} />
 
                 {/* Tiện ích */}
-                <Route path="lien-he-khan-cap" element={<EmergencyContactsPage />} />
-                <Route path="nhat-ky-cham-soc" element={<CareNotesPage />} />
-                <Route path="bao-cao" element={<ReportsPage />} />
+                <Route path="lien-he-khan-cap" element={<PermissionRoute maChucNang="QLLIENHEKC"><EmergencyContactsPage /></PermissionRoute>} />
+                <Route path="nhat-ky-cham-soc" element={<PermissionRoute maChucNang="QLNHATKY"><CareNotesPage /></PermissionRoute>} />
+                <Route path="bao-cao" element={<PermissionRoute maChucNang="QLBAOCAO"><ReportsPage /></PermissionRoute>} />
               </Route>
 
               {/* Fallback - redirect về dashboard */}

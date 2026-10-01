@@ -66,11 +66,11 @@ const register = async (req, res, next) => {
 
 // ─── DANG NHAP ───────────────────────────────────────────────────────────────
 // POST /api/auth/login
-// Nhan: { tenDangNhap, matKhau }
+// Nhan: { tenDangNhap, matKhau, platform?: 'web' | 'mobile' }
 // Tra ve: { token, user }
 const login = async (req, res, next) => {
   try {
-    const { tenDangNhap, matKhau } = req.body;
+    const { tenDangNhap, matKhau, platform = 'mobile' } = req.body;
 
     if (!tenDangNhap || !matKhau) {
       return fail(res, 'Vui long nhap ten dang nhap va mat khau', 'MISSING_FIELDS', 400);
@@ -112,6 +112,16 @@ const login = async (req, res, next) => {
     const matKhauDung = await bcrypt.compare(matKhau, user.MatKhauHash);
     if (!matKhauDung) {
       return fail(res, 'Ten dang nhap hoac mat khau khong chinh xac', 'INVALID_CREDENTIALS', 401);
+    }
+
+    // Web quan tri chi danh cho QuanTriVien va BacSi.
+    if (platform === 'web' && !['QuanTriVien', 'BacSi'].includes(user.TenVaiTro)) {
+      return fail(
+        res,
+        'Tài khoản này không có quyền truy cập hệ thống Web, vui lòng sử dụng ứng dụng Mobile',
+        'WEB_ACCESS_DENIED',
+        403
+      );
     }
 
     // Tao JWT chua thong tin can thiet

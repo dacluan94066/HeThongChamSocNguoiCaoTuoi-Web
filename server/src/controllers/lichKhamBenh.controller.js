@@ -89,6 +89,43 @@ const create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// PUT /api/appointments/:id
+const update = async (req, res, next) => {
+  try {
+    const { nguoiCaoTuoiId, ngayKham, gioKham, noiKham, lyDoKham, bacSiTen, ghiChu } = req.body;
+    if (!nguoiCaoTuoiId || !ngayKham || !gioKham || !noiKham)
+      return fail(res, 'Thieu truong bat buoc', 'MISSING_FIELDS', 400);
+
+    const thoiGianKham = new Date(`${ngayKham}T${gioKham}:00`);
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('id', sql.Int, req.params.id)
+      .input('nctId', sql.Int, nguoiCaoTuoiId)
+      .input('tenBenhVien', sql.NVarChar, noiKham)
+      .input('bacSi', sql.NVarChar, bacSiTen || null)
+      .input('chuyenKhoa', sql.NVarChar, ghiChu || null)
+      .input('thoiGian', sql.DateTime2, thoiGianKham)
+      .input('lyDo', sql.NVarChar, lyDoKham || null)
+      .query(`
+        UPDATE LichKhamBenh SET
+          NguoiCaoTuoiID=@nctId,
+          TenBenhVien=@tenBenhVien,
+          BacSiPhuTrach=@bacSi,
+          ChuyenKhoa=@chuyenKhoa,
+          ThoiGianKham=@thoiGian,
+          LyDoKham=@lyDo
+        WHERE LichKhamID=@id;
+        SELECT @@ROWCOUNT AS affectedRows;
+      `);
+
+    if (!result.recordset[0]?.affectedRows) {
+      return fail(res, 'Khong tim thay lich kham', 'NOT_FOUND', 404);
+    }
+
+    return ok(res, { id: parseInt(req.params.id) }, 'Cap nhat lich kham thanh cong');
+  } catch (err) { next(err); }
+};
+
 // PATCH /api/appointments/:id/cancel
 const cancel = async (req, res, next) => {
   try {
@@ -99,4 +136,4 @@ const cancel = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAll, create, cancel };
+module.exports = { getAll, create, update, cancel };

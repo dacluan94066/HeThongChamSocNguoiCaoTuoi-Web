@@ -202,7 +202,7 @@ const LoginIllustration = () => (
 );
 
 // --- Component form đăng nhập ---
-const LoginForm = ({ onSubmit, loading, errorMsg, onOpenRegister, autoFill }) => {
+const LoginForm = ({ onSubmit, loading, errorMsg, alertType, onOpenRegister, autoFill }) => {
   const [form] = Form.useForm();
 
   // Tự động điền khi đăng ký thành công
@@ -233,9 +233,9 @@ const LoginForm = ({ onSubmit, loading, errorMsg, onOpenRegister, autoFill }) =>
         {/* Thông báo lỗi */}
         {errorMsg && (
           <Alert
-            message="Đăng nhập thất bại"
+            message={alertType === 'warning' ? 'Không thể truy cập Web' : 'Đăng nhập thất bại'}
             description={errorMsg}
-            type="error"
+            type={alertType}
             showIcon
             closable
             className="login-error-alert"
@@ -336,6 +336,7 @@ const LoginPage = () => {
   const { setUserData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [alertType, setAlertType] = useState('error');
   const [showRegister, setShowRegister] = useState(false);
   const [autoFill, setAutoFill] = useState(null);
 
@@ -354,19 +355,27 @@ const LoginPage = () => {
   const handleSubmit = async (values) => {
     setLoading(true);
     setErrorMsg('');
+    setAlertType('error');
     try {
-      const { user } = await login(values.tenDangNhap, values.matKhau);
+      const { user } = await login(values.tenDangNhap, values.matKhau, 'web');
 
       if (!canAccessWeb(user)) {
         clearStoredAuth();
-        setErrorMsg('Tài khoản người cao tuổi chỉ được sử dụng trên ứng dụng Mobile.');
+        setAlertType('warning');
+        setErrorMsg('Tài khoản này chỉ sử dụng được trên ứng dụng Mobile, vui lòng tải app để đăng nhập.');
         return;
       }
 
       // Cập nhật user vào AuthContext để toàn app biết ngay
-      if (user) setUserData(user);
+      if (user) await setUserData(user);
       navigate('/dashboard', { replace: true });
     } catch (err) {
+      if (err.response?.data?.errorCode === 'WEB_ACCESS_DENIED') {
+        clearStoredAuth();
+        setAlertType('warning');
+        setErrorMsg('Tài khoản này chỉ sử dụng được trên ứng dụng Mobile, vui lòng tải app để đăng nhập.');
+        return;
+      }
       // Lấy message từ response của backend, hoặc dùng message mặc định
       const msg =
         err.response?.data?.message ||
@@ -385,6 +394,7 @@ const LoginPage = () => {
         onSubmit={handleSubmit}
         loading={loading}
         errorMsg={errorMsg}
+        alertType={alertType}
         onOpenRegister={() => setShowRegister(true)}
         autoFill={autoFill}
       />

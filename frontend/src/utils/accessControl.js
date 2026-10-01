@@ -3,9 +3,7 @@
 export const WEB_ALLOWED_ROLES = [
   'QuanTriVien',
   'BacSi',
-  'NguoiChamSoc',
 ];
 
 export const canAccessWeb = (user) =>
   WEB_ALLOWED_ROLES.includes(user?.tenVaiTro);
-

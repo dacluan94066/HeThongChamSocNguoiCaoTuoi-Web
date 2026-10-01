@@ -1,7 +1,7 @@
 // MainLayout - Khung bố cục chính (Sidebar + Header + Content)
 // Sidebar theme: #1B4965 | Responsive: icon-only ở tablet, Drawer ở mobile
-import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Badge, Button, Tooltip, Space, Drawer } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Layout, Menu, Avatar, Dropdown, Badge, Button, Tooltip, Space } from 'antd';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
   DashboardOutlined,
@@ -21,9 +21,9 @@ import {
   AlertOutlined,
   MenuOutlined,
   HeartOutlined,
-  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
+import usePermission from '../hooks/usePermission';
 import { getAlerts } from '../services/alertService';
 
 const { Sider, Header, Content } = Layout;
@@ -43,9 +43,9 @@ const menuItems = [
     icon: <TeamOutlined />,
     label: 'Quản lý hệ thống',
     children: [
-      { key: '/nguoi-dung', icon: <UserOutlined />, label: 'Người dùng' },
-      { key: '/ho-so-nguoi-cao-tuoi', icon: <HeartOutlined />, label: 'Hồ sơ NCT' },
-      { key: '/nguoi-cham-soc', icon: <TeamOutlined />, label: 'Người chăm sóc' },
+      { key: '/nguoi-dung', icon: <UserOutlined />, label: 'Người dùng & phân quyền', permission: 'QLNGUOIDUNG' },
+      { key: '/ho-so-nguoi-cao-tuoi', icon: <HeartOutlined />, label: 'Hồ sơ NCT', permission: 'QLHOSONCT' },
+      { key: '/nguoi-cham-soc', icon: <TeamOutlined />, label: 'Người chăm sóc', permission: 'QLNGUOICHAMSOC' },
     ],
   },
   {
@@ -53,9 +53,9 @@ const menuItems = [
     icon: <MedicineBoxOutlined />,
     label: 'Thuốc & Lịch',
     children: [
-      { key: '/danh-muc-thuoc', icon: <MedicineBoxOutlined />, label: 'Danh mục thuốc' },
-      { key: '/lich-uong-thuoc', icon: <ClockCircleOutlined />, label: 'Lịch uống thuốc' },
-      { key: '/lich-kham-benh', icon: <CalendarOutlined />, label: 'Lịch khám bệnh' },
+      { key: '/danh-muc-thuoc', icon: <MedicineBoxOutlined />, label: 'Danh mục thuốc', permission: 'QLTHUOC' },
+      { key: '/lich-uong-thuoc', icon: <ClockCircleOutlined />, label: 'Lịch uống thuốc', permission: 'QLLICHUONGTHUOC' },
+      { key: '/lich-kham-benh', icon: <CalendarOutlined />, label: 'Lịch khám bệnh', permission: 'QLLICHKHAM' },
     ],
   },
   {
@@ -63,8 +63,8 @@ const menuItems = [
     icon: <HeartFilled style={{ color: '#E15554' }} />,
     label: 'Theo dõi sức khỏe',
     children: [
-      { key: '/chi-so-suc-khoe', icon: <HeartFilled />, label: 'Chỉ số sức khỏe' },
-      { key: '/canh-bao', icon: <AlertOutlined />, label: 'Cảnh báo' },
+      { key: '/chi-so-suc-khoe', icon: <HeartFilled />, label: 'Chỉ số sức khỏe', permission: 'QLCHISOSK' },
+      { key: '/canh-bao', icon: <AlertOutlined />, label: 'Cảnh báo', permission: 'QLCANHBAO' },
     ],
   },
   {
@@ -72,9 +72,9 @@ const menuItems = [
     icon: <BookOutlined />,
     label: 'Tiện ích',
     children: [
-      { key: '/lien-he-khan-cap', icon: <PhoneOutlined />, label: 'Liên hệ khẩn cấp' },
-      { key: '/nhat-ky-cham-soc', icon: <BookOutlined />, label: 'Nhật ký chăm sóc' },
-      { key: '/bao-cao', icon: <BarChartOutlined />, label: 'Báo cáo' },
+      { key: '/lien-he-khan-cap', icon: <PhoneOutlined />, label: 'Liên hệ khẩn cấp', permission: 'QLLIENHEKC' },
+      { key: '/nhat-ky-cham-soc', icon: <BookOutlined />, label: 'Nhật ký chăm sóc', permission: 'QLNHATKY' },
+      { key: '/bao-cao', icon: <BarChartOutlined />, label: 'Báo cáo', permission: 'QLBAOCAO' },
     ],
   },
 ];
@@ -95,14 +95,14 @@ const SidebarLogo = ({ collapsed, onClick }) => (
 );
 
 // ---- Menu nội dung ----
-const SidebarMenu = ({ selectedKey, defaultOpenKeys, onMenuClick }) => (
+const SidebarMenu = ({ selectedKey, defaultOpenKeys, onMenuClick, items }) => (
   <div className="sidebar-menu">
     <Menu
       theme="dark"
       mode="inline"
       selectedKeys={[selectedKey]}
       defaultOpenKeys={defaultOpenKeys}
-      items={menuItems}
+      items={items}
       onClick={onMenuClick}
       style={{
         border: 'none',
@@ -127,7 +127,16 @@ const MainLayout = () => {
   const [isTablet, setIsTablet] = useState(window.innerWidth < 900 && window.innerWidth >= 600);
 
   const { user: currentUser, logout } = useAuth();
+  const { hasPermission } = usePermission();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  const visibleMenuItems = useMemo(() => menuItems
+    .map((item) => {
+      if (!item.children) return item;
+      const children = item.children.filter((child) => hasPermission(child.permission, 'xem'));
+      return children.length > 0 ? { ...item, children } : null;
+    })
+    .filter(Boolean), [hasPermission]);
 
   // Track window resize
   useEffect(() => {
@@ -145,13 +154,14 @@ const MainLayout = () => {
   }, []);
 
   useEffect(() => {
+    if (!hasPermission('QLCANHBAO', 'xem')) return;
     getAlerts({ trangThai: 'CHUA_XU_LY' }).then((alerts) => {
       setUnreadAlerts(alerts.length);
     });
-  }, []);
+  }, [hasPermission]);
 
   const selectedKey = location.pathname;
-  const openKeys = menuItems
+  const openKeys = visibleMenuItems
     .filter((item) => item.children?.some((child) => location.pathname.startsWith(child.key)))
     .map((item) => item.key);
 
@@ -203,6 +213,7 @@ const MainLayout = () => {
             selectedKey={selectedKey}
             defaultOpenKeys={openKeys}
             onMenuClick={handleMenuClick}
+            items={visibleMenuItems}
           />
           <div className="sidebar-footer">
             {!collapsed && '© 2024 CareSenior'}
@@ -240,6 +251,7 @@ const MainLayout = () => {
               selectedKey={selectedKey}
               defaultOpenKeys={openKeys}
               onMenuClick={handleMenuClick}
+              items={visibleMenuItems}
             />
             <div className="sidebar-footer">© 2024 CareSenior</div>
           </div>
@@ -284,7 +296,7 @@ const MainLayout = () => {
 
           <div className="header-right">
             {/* Chuông cảnh báo */}
-            <Tooltip title={`${unreadAlerts} cảnh báo chưa xử lý`}>
+            {hasPermission('QLCANHBAO', 'xem') && <Tooltip title={`${unreadAlerts} cảnh báo chưa xử lý`}>
               <Badge count={unreadAlerts} size="small" offset={[-2, 2]}>
                 <Button
                   type="text"
@@ -302,7 +314,7 @@ const MainLayout = () => {
                   className={unreadAlerts > 0 ? 'pulse-danger' : ''}
                 />
               </Badge>
-            </Tooltip>
+            </Tooltip>}
 
             {/* Thông tin người dùng */}
             {currentUser && (

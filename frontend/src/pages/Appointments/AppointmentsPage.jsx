@@ -1,27 +1,30 @@
 // Trang lịch khám bệnh - Danh sách và thêm lịch mới
 import React, { useState, useEffect } from 'react';
-import { Tag, Space, Button, Tooltip, Popconfirm, Form, Select, DatePicker, TimePicker, Input, message } from 'antd';
+import { Space, Button, Popconfirm, Form, Select, DatePicker, TimePicker, Input, message, Row, Col } from 'antd';
 import {
-  PlusOutlined, EditOutlined, StopOutlined, CalendarOutlined,
+  PlusOutlined, EditOutlined, EyeOutlined, StopOutlined, CalendarOutlined,
 } from '@ant-design/icons';
-import { getAppointments, createAppointment, cancelAppointment } from '../../services/appointmentService';
+import { getAppointments, createAppointment, updateAppointment, cancelAppointment } from '../../services/appointmentService';
 import { getElders } from '../../services/elderlyService';
 import dayjs from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import TableToolbar from '../../components/TableToolbar';
 import DataTable from '../../components/DataTable';
-import ModalForm from '../../components/ModalForm';
-import StatusTag from '../../components/StatusTag';
+import ModalForm, { FormSection } from '../../components/ModalForm';
+import StatusTag, { getAppointmentStatusMap } from '../../components/StatusTag';
+import usePermission from '../../hooks/usePermission';
+import TableAvatar from '../../components/TableAvatar';
+import TableActionButton from '../../components/TableActionButton';
+import { formatEntityCode } from '../../utils/displayUtils';
+import RecordDetailModal from '../../components/RecordDetailModal';
 
 const { Option } = Select;
 
-const APPT_STATUS_MAP = {
-  CHUA_DEN: { status: 'info',    label: 'Chưa đến' },
-  DA_KHAM:  { status: 'success', label: 'Đã khám' },
-  HUY:      { status: 'inactive',label: 'Hủy' },
-};
-
 const AppointmentsPage = () => {
+  const { hasPermission } = usePermission();
+  const canCreate = hasPermission('QLLICHKHAM', 'them');
+  const canEdit = hasPermission('QLLICHKHAM', 'sua');
+  const canDelete = hasPermission('QLLICHKHAM', 'xoa');
   const [appointments, setAppointments] = useState([]);
   const [elders, setElders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -29,6 +32,8 @@ const AppointmentsPage = () => {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [detailRecord, setDetailRecord] = useState(null);
   const [form] = Form.useForm();
 
   const load = () => {
@@ -46,19 +51,42 @@ const AppointmentsPage = () => {
     load();
   };
 
+  const handleAdd = () => {
+    setEditing(null);
+    form.resetFields();
+    setModalOpen(true);
+  };
+
+  const handleEdit = (record) => {
+    const [hour = 0, minute = 0] = (record.gioKham || '').split(':').map(Number);
+    setEditing(record);
+    form.setFieldsValue({
+      ...record,
+      ngayKham: record.ngayKham ? dayjs(record.ngayKham) : null,
+      gioKham: record.gioKham ? dayjs().hour(hour).minute(minute).second(0) : null,
+    });
+    setModalOpen(true);
+  };
+
   const handleSave = async (values) => {
     setSaving(true);
     try {
       const elder = elders.find((e) => e.id === values.nguoiCaoTuoiId);
-      await createAppointment({
+      const payload = {
         ...values,
         nguoiCaoTuoiTen: elder?.hoTen || '',
         ngayKham: values.ngayKham?.format('YYYY-MM-DD'),
         gioKham: values.gioKham?.format('HH:mm'),
         trangThai: 'CHUA_DEN',
         trangThaiLabel: 'Chưa đến',
-      });
-      message.success('Thêm lịch khám thành công');
+      };
+      if (editing) {
+        await updateAppointment(editing.id, payload);
+        message.success('Cập nhật lịch khám thành công');
+      } else {
+        await createAppointment(payload);
+        message.success('Thêm lịch khám thành công');
+      }
       setModalOpen(false);
       form.resetFields();
       load();
@@ -69,10 +97,17 @@ const AppointmentsPage = () => {
 
   const columns = [
     {
+      title: 'Mã lịch',
+      key: 'maLich',
+      width: 115,
+      render: (_, record) => <span className="entity-code-badge">{formatEntityCode('LK', record.id)}</span>,
+    },
+    {
       title: 'Người cao tuổi',
       dataIndex: 'nguoiCaoTuoiTen',
       key: 'nguoiCaoTuoiTen',
-      render: (v) => <span style={{ fontWeight: 600, fontSize: 15 }}>{v}</span>,
+      sorter: (a, b) => a.nguoiCaoTuoiTen.localeCompare(b.nguoiCaoTuoiTen, 'vi'),
+      render: (v) => <div className="table-person-cell"><TableAvatar name={v} /><span className="table-person-name">{v}</span></div>,
     },
     {
       title: 'Ngày & Giờ khám',
@@ -100,28 +135,27 @@ const AppointmentsPage = () => {
       title: 'Trạng thái',
       dataIndex: 'trangThai',
       key: 'trangThai',
+      sorter: (a, b) => a.trangThai.localeCompare(b.trangThai),
       render: (v) => {
-        const cfg = APPT_STATUS_MAP[v] || { status: 'default', label: v };
-        return <StatusTag status={cfg.status} label={cfg.label} />;
+        const mapped = getAppointmentStatusMap(v);
+        return <StatusTag {...mapped} />;
       },
     },
     {
       title: 'Hành động',
       key: 'action',
       fixed: 'right',
-      width: 100,
+      width: 132,
       render: (_, r) => (
         <Space>
-          <Tooltip title="Chỉnh sửa">
-            <Button size="small" icon={<EditOutlined />} />
-          </Tooltip>
-          {r.trangThai === 'CHUA_DEN' && (
+          <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setDetailRecord(r)} />
+          {canEdit && <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(r)} />}
+          {canDelete && r.trangThai === 'CHUA_DEN' && (
             <Popconfirm title="Hủy lịch khám này?" onConfirm={() => handleCancel(r.id)} okText="Hủy lịch" cancelText="Không">
-              <Tooltip title="Hủy lịch">
-                <Button size="small" danger icon={<StopOutlined />} />
-              </Tooltip>
+              <TableActionButton type="delete" tooltip="Hủy lịch" icon={<StopOutlined />} />
             </Popconfirm>
           )}
+          {!canEdit && !(canDelete && r.trangThai === 'CHUA_DEN') && <span style={{ color: '#BFBFBF' }}>—</span>}
         </Space>
       ),
     },
@@ -133,16 +167,18 @@ const AppointmentsPage = () => {
         title="Lịch khám bệnh"
         subtitle="Quản lý lịch khám và theo dõi kết quả khám bệnh"
         icon={<CalendarOutlined />}
-        extra={
+        count={appointments.length}
+        countLabel="lịch khám"
+        extra={canCreate && (
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => { form.resetFields(); setModalOpen(true); }}
+            onClick={handleAdd}
             size="large"
           >
             Thêm lịch khám
           </Button>
-        }
+        )}
       />
 
       <TableToolbar
@@ -160,10 +196,9 @@ const AppointmentsPage = () => {
             <Option value="CHUA_DEN">Chưa đến</Option>
             <Option value="DA_KHAM">Đã khám</Option>
             <Option value="HUY">Hủy</Option>
+            <Option value="DA_DOI_LICH">Đã đổi lịch</Option>
           </Select>,
         ]}
-        count={appointments.length}
-        countLabel="lịch khám"
       />
 
       <DataTable
@@ -171,42 +206,80 @@ const AppointmentsPage = () => {
         dataSource={appointments}
         rowKey="id"
         loading={loading}
-        totalLabel="lịch khám"
+        onRow={(record) => ({ onClick: () => setDetailRecord(record) })}
+        emptyDescription="Chưa có lịch khám bệnh"
+        emptyAction={canCreate && <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>Thêm lịch khám</Button>}
+      />
+
+      <RecordDetailModal
+        open={!!detailRecord}
+        onClose={() => setDetailRecord(null)}
+        title={`Chi tiết lịch khám — ${detailRecord?.nguoiCaoTuoiTen || ''}`}
+        record={detailRecord}
+        fields={[
+          { label: 'Mã lịch', key: 'id', render: (value) => formatEntityCode('LK', value) },
+          { label: 'Người cao tuổi', key: 'nguoiCaoTuoiTen' },
+          { label: 'Ngày khám', key: 'ngayKham', render: (value) => value ? dayjs(value).format('DD/MM/YYYY') : null },
+          { label: 'Giờ khám', key: 'gioKham' },
+          { label: 'Nơi khám', key: 'noiKham' },
+          { label: 'Bác sĩ', key: 'bacSiTen' },
+          { label: 'Lý do khám', key: 'lyDoKham', span: 2 },
+          { label: 'Kết quả', key: 'ketQua', span: 2 },
+          { label: 'Trạng thái', key: 'trangThai', span: 2, render: (value) => <StatusTag {...getAppointmentStatusMap(value)} /> },
+        ]}
       />
 
       <ModalForm
-        title="Thêm lịch khám mới"
+        title={editing ? 'Chỉnh sửa lịch khám' : 'Thêm lịch khám mới'}
+        subtitle="Thiết lập thời gian, địa điểm và nội dung buổi khám"
+        icon={<CalendarOutlined />}
+        mode={editing ? 'edit' : 'create'}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onFinish={handleSave}
         loading={saving}
-        saveLabel="Thêm lịch"
         form={form}
-        width={540}
       >
-        <Form.Item name="nguoiCaoTuoiId" label="Người cao tuổi" rules={[{ required: true, message: 'Vui lòng chọn người cao tuổi' }]}>
-          <Select placeholder="Chọn người cao tuổi">
-            {elders.map((e) => <Option key={e.id} value={e.id}>{e.hoTen}</Option>)}
-          </Select>
-        </Form.Item>
-        <Form.Item name="ngayKham" label="Ngày khám" rules={[{ required: true, message: 'Vui lòng chọn ngày' }]}>
-          <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item name="gioKham" label="Giờ khám" rules={[{ required: true, message: 'Vui lòng chọn giờ' }]}>
-          <TimePicker format="HH:mm" style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item name="noiKham" label="Nơi khám" rules={[{ required: true, message: 'Vui lòng nhập nơi khám' }]}>
-          <Input />
-        </Form.Item>
-        <Form.Item name="lyDoKham" label="Lý do khám">
-          <Input.TextArea rows={2} />
-        </Form.Item>
-        <Form.Item name="bacSiTen" label="Bác sĩ phụ trách">
-          <Input />
-        </Form.Item>
-        <Form.Item name="ghiChu" label="Ghi chú">
-          <Input.TextArea rows={2} />
-        </Form.Item>
+        <FormSection title="Thông tin lịch khám" description="Người cao tuổi, ngày giờ và địa điểm khám">
+          <Row gutter={18}>
+            <Col xs={24} md={12}>
+              <Form.Item name="nguoiCaoTuoiId" label="Người cao tuổi" rules={[{ required: true, message: 'Vui lòng chọn người cao tuổi' }]}>
+                <Select placeholder="Chọn hồ sơ người cao tuổi" showSearch optionFilterProp="children">
+                  {elders.map((e) => <Option key={e.id} value={e.id}>{e.hoTen}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="noiKham" label="Nơi khám" rules={[{ required: true, message: 'Vui lòng nhập nơi khám' }]}>
+                <Input placeholder="VD: Bệnh viện Chợ Rẫy" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="ngayKham" label="Ngày khám" rules={[{ required: true, message: 'Vui lòng chọn ngày khám' }]}>
+                <DatePicker format="DD/MM/YYYY" placeholder="Chọn ngày khám" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="gioKham" label="Giờ khám" rules={[{ required: true, message: 'Vui lòng chọn giờ khám' }]}>
+                <TimePicker format="HH:mm" placeholder="Chọn giờ khám" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="bacSiTen" label="Bác sĩ phụ trách">
+                <Input placeholder="VD: BS. Nguyễn Văn An" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </FormSection>
+
+        <FormSection title="Nội dung khám" description="Mục đích khám và các lưu ý cần chuẩn bị">
+          <Form.Item name="lyDoKham" label="Lý do khám">
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="Mô tả triệu chứng hoặc lý do tái khám" />
+          </Form.Item>
+          <Form.Item name="ghiChu" label="Chuyên khoa / Ghi chú">
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="VD: Tim mạch; mang theo kết quả xét nghiệm cũ" />
+          </Form.Item>
+        </FormSection>
       </ModalForm>
     </div>
   );

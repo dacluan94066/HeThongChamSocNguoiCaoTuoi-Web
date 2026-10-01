@@ -1,41 +1,36 @@
-// src/components/DataTable.jsx
-// Wrapper Table chuẩn — wrapper trắng + border-radius + shadow + scroll ngang
 import React from 'react';
-import { Table } from 'antd';
+import { Empty, Table } from 'antd';
 
-/**
- * @param {Array}     columns     - Cột bảng antd
- * @param {Array}     dataSource  - Dữ liệu
- * @param {string}    rowKey      - Key cho mỗi dòng (mặc định: 'id')
- * @param {boolean}   loading     - Trạng thái loading
- * @param {number}    pageSize    - Số dòng mỗi trang (mặc định: 10)
- * @param {number}    total       - Tổng số dòng (cho label phân trang)
- * @param {string}    totalLabel  - Nhãn đơn vị (VD: "người dùng", "cảnh báo")
- * @param {function}  rowClassName- Custom class cho dòng
- * @param {function}  onRow       - Event handler cho dòng
- * @param {object}    pagination  - Override pagination props
- * @param {object}    style       - Style cho wrapper ngoài
- * @param {...*}      rest        - Các prop khác truyền thẳng vào antd Table
- */
 const DataTable = ({
   columns,
   dataSource = [],
   rowKey = 'id',
   loading = false,
   pageSize = 10,
-  total,
-  totalLabel = 'mục',
   rowClassName,
   onRow,
   pagination,
+  emptyDescription = 'Chưa có dữ liệu phù hợp',
+  emptyAction,
   style,
   ...rest
 }) => {
   const defaultPagination = {
     pageSize,
-    showTotal: (t) => `Tổng ${total ?? t} ${totalLabel}`,
-    showSizeChanger: false,
+    showSizeChanger: true,
+    pageSizeOptions: ['10', '20', '50'],
     hideOnSinglePage: false,
+  };
+
+  const resolvedPagination = pagination === false
+    ? false
+    : { ...defaultPagination, ...(pagination || {}) };
+
+  const resolvedRowClassName = (record, index) => {
+    const customClass = typeof rowClassName === 'function'
+      ? rowClassName(record, index)
+      : (rowClassName || '');
+    return [customClass, onRow ? 'table-row-clickable' : ''].filter(Boolean).join(' ');
   };
 
   return (
@@ -46,9 +41,17 @@ const DataTable = ({
         rowKey={rowKey}
         loading={loading}
         scroll={{ x: 'max-content' }}
-        pagination={pagination !== undefined ? pagination : defaultPagination}
-        rowClassName={rowClassName}
+        pagination={resolvedPagination}
+        rowClassName={resolvedRowClassName}
         onRow={onRow}
+        locale={{
+          emptyText: (
+            <div className="table-empty-state">
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyDescription} />
+              {emptyAction && <div className="table-empty-action">{emptyAction}</div>}
+            </div>
+          ),
+        }}
         {...rest}
       />
     </div>

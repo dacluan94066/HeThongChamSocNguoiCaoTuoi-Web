@@ -49,7 +49,7 @@ axiosClient.interceptors.response.use(
       localStorage.removeItem('user');
       // Chuyển hướng mà không dùng useNavigate (vì đây không phải component)
       window.location.href = '/login';
-    } else if (status === 403) {
+    } else if (status === 403 && data?.errorCode !== 'WEB_ACCESS_DENIED') {
       // Không đủ quyền truy cập (dùng key để tránh hiện nhiều thông báo đè nhau)
       message.error({
         content: 'Bạn không có quyền thực hiện thao tác này',

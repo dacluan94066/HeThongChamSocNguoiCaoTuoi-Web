@@ -1,21 +1,28 @@
 // Trang cảnh báo - Lọc, xử lý và đánh dấu đã xem
 import React, { useState, useEffect } from 'react';
-import { Button, Select, Tag, Form, Input, message, Tooltip, Badge, Space } from 'antd';
-import { AlertOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons';
+import { Select, Tag, Form, Input, message, Badge, Space } from 'antd';
+import { AlertOutlined, CheckCircleOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons';
 import { getAlerts, markAlertSeen, resolveAlert } from '../../services/alertService';
 import { getCurrentUser } from '../../services/authService';
 import dayjs from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import TableToolbar from '../../components/TableToolbar';
 import DataTable from '../../components/DataTable';
-import ModalForm from '../../components/ModalForm';
+import ModalForm, { FormSection } from '../../components/ModalForm';
 import StatusTag, { getAlertLevelStatus, getAlertStatusMap } from '../../components/StatusTag';
+import usePermission from '../../hooks/usePermission';
+import TableAvatar from '../../components/TableAvatar';
+import TableActionButton from '../../components/TableActionButton';
+import { formatEntityCode } from '../../utils/displayUtils';
+import RecordDetailModal from '../../components/RecordDetailModal';
 
 const { Option } = Select;
 
 const MUC_DO_ORDER = { THAP: 1, TRUNG_BINH: 2, CAO: 3, KHAN_CAP: 4 };
 
 const AlertsPage = () => {
+  const { hasPermission } = usePermission();
+  const canEdit = hasPermission('QLCANHBAO', 'sua');
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -23,6 +30,7 @@ const AlertsPage = () => {
   const [filterStatus, setFilterStatus] = useState('');
   const [resolveModal, setResolveModal] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
+  const [detailRecord, setDetailRecord] = useState(null);
   const [form] = Form.useForm();
   const currentUser = getCurrentUser();
 
@@ -60,6 +68,12 @@ const AlertsPage = () => {
 
   const columns = [
     {
+      title: 'Mã cảnh báo',
+      key: 'maCanhBao',
+      width: 125,
+      render: (_, record) => <span className="entity-code-badge">{formatEntityCode('CB', record.id)}</span>,
+    },
+    {
       title: 'Mức độ',
       dataIndex: 'mucDo',
       key: 'mucDo',
@@ -74,7 +88,8 @@ const AlertsPage = () => {
       title: 'Người cao tuổi',
       dataIndex: 'nguoiCaoTuoiTen',
       key: 'nguoiCaoTuoiTen',
-      render: (v) => <strong style={{ fontSize: 15 }}>{v}</strong>,
+      sorter: (a, b) => a.nguoiCaoTuoiTen.localeCompare(b.nguoiCaoTuoiTen, 'vi'),
+      render: (v) => <div className="table-person-cell"><TableAvatar name={v} /><span className="table-person-name">{v}</span></div>,
     },
     {
       title: 'Loại cảnh báo',
@@ -95,6 +110,7 @@ const AlertsPage = () => {
       title: 'Trạng thái',
       dataIndex: 'trangThai',
       key: 'trangThai',
+      sorter: (a, b) => a.trangThai.localeCompare(b.trangThai),
       render: (v) => {
         const { status, label } = getAlertStatusMap(v);
         return <StatusTag status={status} label={label} />;
@@ -113,20 +129,12 @@ const AlertsPage = () => {
       width: 110,
       render: (_, r) => (
         <Space>
-          {r.trangThai === 'CHUA_XU_LY' && (
-            <Tooltip title="Đánh dấu đã xem">
-              <Button size="small" icon={<EyeOutlined />} onClick={() => handleMarkSeen(r.id)} />
-            </Tooltip>
+          <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setDetailRecord(r)} />
+          {canEdit && r.trangThai === 'CHUA_XU_LY' && (
+            <TableActionButton type="edit" tooltip="Đánh dấu đã xem" icon={<CheckCircleOutlined />} onClick={() => handleMarkSeen(r.id)} />
           )}
-          {r.trangThai !== 'DA_XU_LY' && (
-            <Tooltip title="Xử lý cảnh báo">
-              <Button
-                size="small"
-                type="primary"
-                icon={<CheckOutlined />}
-                onClick={() => { setSelectedAlert(r); setResolveModal(true); }}
-              />
-            </Tooltip>
+          {canEdit && r.trangThai !== 'DA_XU_LY' && (
+            <TableActionButton type="edit" tooltip="Xử lý cảnh báo" icon={<CheckOutlined />} onClick={() => { setSelectedAlert(r); setResolveModal(true); }} />
           )}
         </Space>
       ),
@@ -139,6 +147,8 @@ const AlertsPage = () => {
         title="Cảnh báo"
         subtitle="Quản lý và xử lý các cảnh báo sức khỏe"
         icon={<AlertOutlined />}
+        count={alerts.length}
+        countLabel="cảnh báo"
         badge={
           unresolved > 0 && (
             <Badge count={unresolved} style={{ marginLeft: 4 }} />
@@ -172,8 +182,6 @@ const AlertsPage = () => {
             <Option value="DA_XU_LY">Đã xử lý</Option>
           </Select>,
         ]}
-        count={alerts.length}
-        countLabel={`cảnh báo (${unresolved} chưa xử lý)`}
       />
 
       <DataTable
@@ -181,20 +189,41 @@ const AlertsPage = () => {
         dataSource={alerts}
         rowKey="id"
         loading={loading}
-        totalLabel="cảnh báo"
+        emptyDescription="Hiện chưa có cảnh báo nào"
+        onRow={(record) => ({ onClick: () => setDetailRecord(record) })}
         rowClassName={(r) => r.mucDo === 'KHAN_CAP' || r.trangThai === 'CHUA_XU_LY' ? 'row-danger' : ''}
+      />
+
+      <RecordDetailModal
+        open={!!detailRecord}
+        onClose={() => setDetailRecord(null)}
+        title={`Chi tiết cảnh báo — ${detailRecord?.nguoiCaoTuoiTen || ''}`}
+        record={detailRecord}
+        fields={[
+          { label: 'Mã cảnh báo', key: 'id', render: (value) => formatEntityCode('CB', value) },
+          { label: 'Người cao tuổi', key: 'nguoiCaoTuoiTen' },
+          { label: 'Loại cảnh báo', key: 'loaiCanhBaoLabel' },
+          { label: 'Mức độ', key: 'mucDo', render: (value) => <StatusTag {...getAlertLevelStatus(value)} /> },
+          { label: 'Thời gian', key: 'thoiGianPhatHien', render: (value) => dayjs(value).format('DD/MM/YYYY HH:mm') },
+          { label: 'Trạng thái', key: 'trangThai', render: (value) => <StatusTag {...getAlertStatusMap(value)} /> },
+          { label: 'Mô tả', key: 'moTa', span: 2 },
+          { label: 'Người xử lý', key: 'nguoiXuLy' },
+          { label: 'Thời gian xử lý', key: 'thoiGianXuLy', render: (value) => value ? dayjs(value).format('DD/MM/YYYY HH:mm') : null },
+        ]}
       />
 
       {/* Modal xử lý */}
       <ModalForm
         title="Xử lý cảnh báo"
+        subtitle="Ghi nhận nội dung và kết quả xử lý cảnh báo sức khỏe"
+        icon={<AlertOutlined />}
+        saveIcon={<CheckOutlined />}
         open={resolveModal}
         onCancel={() => { setResolveModal(false); form.resetFields(); }}
         onFinish={handleResolve}
         loading={saving}
         saveLabel="Xác nhận xử lý"
         form={form}
-        width={520}
       >
         {selectedAlert && (
           <div style={{
@@ -208,13 +237,15 @@ const AlertsPage = () => {
             <span style={{ color: '#3D5263', marginLeft: 8 }}>{selectedAlert.moTa}</span>
           </div>
         )}
-        <Form.Item
-          name="ghiChu"
-          label="Ghi chú xử lý"
-          rules={[{ required: true, message: 'Vui lòng nhập ghi chú xử lý' }]}
-        >
-          <Input.TextArea rows={4} placeholder="Mô tả cách đã xử lý cảnh báo..." />
-        </Form.Item>
+        <FormSection title="Kết quả xử lý" description="Mô tả hành động đã thực hiện và tình trạng sau xử lý">
+          <Form.Item
+            name="ghiChu"
+            label="Ghi chú xử lý"
+            rules={[{ required: true, message: 'Vui lòng nhập ghi chú xử lý cảnh báo' }]}
+          >
+            <Input.TextArea autoSize={{ minRows: 3, maxRows: 8 }} placeholder="Mô tả cách đã xử lý cảnh báo và kết quả hiện tại..." />
+          </Form.Item>
+        </FormSection>
       </ModalForm>
     </div>
   );

@@ -15,6 +15,11 @@ export const createAppointment = async (data) => {
   return res.data?.data ?? res.data;
 };
 
+export const updateAppointment = async (id, data) => {
+  const res = await axiosClient.put(`/appointments/${id}`, data);
+  return res.data?.data ?? res.data;
+};
+
 export const cancelAppointment = async (id) => {
   const res = await axiosClient.patch(`/appointments/${id}/cancel`);
   return res.data?.data ?? res.data;

@@ -15,31 +15,41 @@ const getAll = async (req, res, next) => {
     // Xay dung query: co hoac khong co dieu kien tim kiem
     let query = `
       SELECT
-        NguoiCaoTuoiID  AS id,
-        HoTen           AS hoTen,
-        NgaySinh        AS ngaySinh,
-        GioiTinh        AS gioiTinh,
-        CCCD            AS cccd,
-        DiaChi          AS diaChi,
-        SoDienThoai     AS soDienThoai,
-        NhomMau         AS nhomMau,
-        BenhNen         AS benhNen,
-        DiUng           AS diUng,
-        TrangThai       AS trangThai,
-        NguoiTaoID      AS nguoiTaoId,
-        NgayTao         AS ngayTao
-      FROM HoSoNguoiCaoTuoi
+        nct.NguoiCaoTuoiID  AS id,
+        nct.HoTen           AS hoTen,
+        nct.NgaySinh        AS ngaySinh,
+        nct.GioiTinh        AS gioiTinh,
+        nct.CCCD            AS cccd,
+        nct.DiaChi          AS diaChi,
+        nct.SoDienThoai     AS soDienThoai,
+        nct.NhomMau         AS nhomMau,
+        nct.BenhNen         AS benhNen,
+        nct.DiUng           AS diUng,
+        nct.TrangThai       AS trangThai,
+        nct.NguoiTaoID      AS nguoiTaoId,
+        nct.NgayTao         AS ngayTao,
+        ncsMain.NguoiChamSocID AS nguoiChamSocId,
+        ncsMain.HoTen           AS nguoiChamSocTen
+      FROM HoSoNguoiCaoTuoi nct
+      OUTER APPLY (
+        SELECT TOP 1 ncs.NguoiChamSocID, ncs.HoTen
+        FROM NguoiCaoTuoi_NguoiChamSoc lienKet
+        INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
+        WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+          AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
+        ORDER BY lienKet.LaChinh DESC, lienKet.ID DESC
+      ) ncsMain
     `;
 
     const request = pool.request();
 
     // Them dieu kien tim kiem neu co keyword
     if (keyword && keyword.trim()) {
-      query += ` WHERE HoTen LIKE @keyword`;
+      query += ` WHERE nct.HoTen LIKE @keyword`;
       request.input('keyword', sql.NVarChar, `%${keyword.trim()}%`);
     }
 
-    query += ` ORDER BY NgayTao DESC`;
+    query += ` ORDER BY nct.NgayTao DESC`;
 
     const result = await request.query(query);
     return ok(res, result.recordset, `Tim thay ${result.recordset.length} ho so`);
@@ -59,21 +69,31 @@ const getById = async (req, res, next) => {
       .input('id', sql.Int, id)
       .query(`
         SELECT
-          NguoiCaoTuoiID  AS id,
-          HoTen           AS hoTen,
-          NgaySinh        AS ngaySinh,
-          GioiTinh        AS gioiTinh,
-          CCCD            AS cccd,
-          DiaChi          AS diaChi,
-          SoDienThoai     AS soDienThoai,
-          NhomMau         AS nhomMau,
-          BenhNen         AS benhNen,
-          DiUng           AS diUng,
-          TrangThai       AS trangThai,
-          NguoiTaoID      AS nguoiTaoId,
-          NgayTao         AS ngayTao
-        FROM HoSoNguoiCaoTuoi
-        WHERE NguoiCaoTuoiID = @id
+          nct.NguoiCaoTuoiID  AS id,
+          nct.HoTen           AS hoTen,
+          nct.NgaySinh        AS ngaySinh,
+          nct.GioiTinh        AS gioiTinh,
+          nct.CCCD            AS cccd,
+          nct.DiaChi          AS diaChi,
+          nct.SoDienThoai     AS soDienThoai,
+          nct.NhomMau         AS nhomMau,
+          nct.BenhNen         AS benhNen,
+          nct.DiUng           AS diUng,
+          nct.TrangThai       AS trangThai,
+          nct.NguoiTaoID      AS nguoiTaoId,
+          nct.NgayTao         AS ngayTao,
+          ncsMain.NguoiChamSocID AS nguoiChamSocId,
+          ncsMain.HoTen           AS nguoiChamSocTen
+        FROM HoSoNguoiCaoTuoi nct
+        OUTER APPLY (
+          SELECT TOP 1 ncs.NguoiChamSocID, ncs.HoTen
+          FROM NguoiCaoTuoi_NguoiChamSoc lienKet
+          INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
+          WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+            AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
+          ORDER BY lienKet.LaChinh DESC, lienKet.ID DESC
+        ) ncsMain
+        WHERE nct.NguoiCaoTuoiID = @id
       `);
 
     if (result.recordset.length === 0) {
@@ -127,7 +147,7 @@ const create = async (req, res, next) => {
         OUTPUT INSERTED.NguoiCaoTuoiID AS id
         VALUES
           (@hoTen, @ngaySinh, @gioiTinh, @cccd, @diaChi, @soDienThoai,
-           @nhomMau, @benhNen, @diUng, 'DangTheoDoc', @nguoiTaoId, SYSDATETIME())
+           @nhomMau, @benhNen, @diUng, N'DangTheoDoi', @nguoiTaoId, SYSDATETIME())
       `);
 
     const newId = result.recordset[0].id;
@@ -175,7 +195,7 @@ const update = async (req, res, next) => {
       .input('nhomMau', sql.NVarChar, nhomMau || null)
       .input('benhNen', sql.NVarChar, benhNenStr || null)
       .input('diUng', sql.NVarChar, diUngStr || null)
-      .input('trangThai', sql.NVarChar, trangThai || 'DangTheoDoc')
+      .input('trangThai', sql.NVarChar, trangThai || 'DangTheoDoi')
       .query(`
         UPDATE HoSoNguoiCaoTuoi SET
           HoTen       = @hoTen,
@@ -199,7 +219,7 @@ const update = async (req, res, next) => {
 
 // ─── XOA MEM HO SO ────────────────────────────────────────────────────────────
 // DELETE /api/elderly/:id
-// Khong xoa cung, chi cap nhat TrangThai = 'NgungTheoDoc'
+// Khong xoa cung, chi cap nhat TrangThai = 'NgungTheoDoi'
 const remove = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -214,10 +234,10 @@ const remove = async (req, res, next) => {
       return fail(res, 'Khong tim thay ho so nguoi cao tuoi', 'NOT_FOUND', 404);
     }
 
-    // Xoa mem: chi doi TrangThai thanh NgungTheoDoc
+    // Xoa mem: chi doi TrangThai thanh NgungTheoDoi
     await pool.request()
       .input('id', sql.Int, id)
-      .query(`UPDATE HoSoNguoiCaoTuoi SET TrangThai = 'NgungTheoDoc' WHERE NguoiCaoTuoiID = @id`);
+      .query(`UPDATE HoSoNguoiCaoTuoi SET TrangThai = N'NgungTheoDoi' WHERE NguoiCaoTuoiID = @id`);
 
     return ok(res, { id: parseInt(id) }, 'Da ngung theo doi ho so nguoi cao tuoi');
   } catch (err) {
@@ -225,4 +245,65 @@ const remove = async (req, res, next) => {
   }
 };
 
-module.exports = { getAll, getById, create, update, remove };
+// PUT /api/elderly/:id/caregiver
+// Gan nhanh mot nguoi cham soc chinh cho ho so nguoi cao tuoi.
+const assignCaregiver = async (req, res, next) => {
+  const transaction = new sql.Transaction(await poolPromise);
+
+  try {
+    const { id } = req.params;
+    const { nguoiChamSocId } = req.body;
+
+    if (!nguoiChamSocId) {
+      return fail(res, 'Vui long chon nguoi cham soc', 'MISSING_CAREGIVER', 400);
+    }
+
+    await transaction.begin();
+
+    const existing = await transaction.request()
+      .input('id', sql.Int, id)
+      .input('nguoiChamSocId', sql.Int, nguoiChamSocId)
+      .query(`
+        SELECT
+          (SELECT COUNT(1) FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID = @id) AS elderCount,
+          (SELECT COUNT(1) FROM NguoiChamSoc WHERE NguoiChamSocID = @nguoiChamSocId) AS caregiverCount
+      `);
+
+    const counts = existing.recordset[0];
+    if (!counts.elderCount || !counts.caregiverCount) {
+      await transaction.rollback();
+      return fail(res, 'Ho so hoac nguoi cham soc khong ton tai', 'NOT_FOUND', 404);
+    }
+
+    await transaction.request()
+      .input('id', sql.Int, id)
+      .input('nguoiChamSocId', sql.Int, nguoiChamSocId)
+      .query(`
+        UPDATE NguoiCaoTuoi_NguoiChamSoc
+        SET LaChinh = 0
+        WHERE NguoiCaoTuoiID = @id;
+
+        MERGE NguoiCaoTuoi_NguoiChamSoc WITH (HOLDLOCK) AS target
+        USING (SELECT @id AS NguoiCaoTuoiID, @nguoiChamSocId AS NguoiChamSocID) AS source
+          ON target.NguoiCaoTuoiID = source.NguoiCaoTuoiID
+         AND target.NguoiChamSocID = source.NguoiChamSocID
+        WHEN MATCHED THEN
+          UPDATE SET LaChinh = 1, NgayKetThuc = NULL
+        WHEN NOT MATCHED THEN
+          INSERT (NguoiCaoTuoiID, NguoiChamSocID, MoiQuanHe, LaChinh, NgayBatDau)
+          VALUES (source.NguoiCaoTuoiID, source.NguoiChamSocID, N'Người chăm sóc chính', 1, CAST(GETDATE() AS DATE));
+      `);
+
+    await transaction.commit();
+    return ok(res, { id: Number(id), nguoiChamSocId: Number(nguoiChamSocId) }, 'Gan nguoi cham soc thanh cong');
+  } catch (err) {
+    try {
+      await transaction.rollback();
+    } catch (_) {
+      // Transaction chua bat dau hoac da ket thuc.
+    }
+    next(err);
+  }
+};
+
+module.exports = { getAll, getById, create, update, remove, assignCaregiver };

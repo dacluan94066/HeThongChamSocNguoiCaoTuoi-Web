@@ -7,10 +7,10 @@ import { useAuth } from '../context/AuthContext';
 import { canAccessWeb } from '../utils/accessControl';
 
 const ProtectedRoute = ({ children }) => {
-  const { user, isAuthenticated, authLoading, logout } = useAuth();
+  const { user, isAuthenticated, authLoading, permissionsLoading, logout } = useAuth();
 
   // Đang khôi phục phiên đăng nhập từ token → hiện spinner, chưa chuyển trang
-  if (authLoading) {
+  if (authLoading || permissionsLoading) {
     return (
       <div
         style={{
@@ -30,7 +30,7 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // Web chi danh cho quan tri vien, bac si va nguoi cham soc.
+  // Web chi danh cho quan tri vien va bac si.
   // Kiem tra tai route goc de ngan truy cap truc tiep bang URL.
   if (!canAccessWeb(user)) {
     return (

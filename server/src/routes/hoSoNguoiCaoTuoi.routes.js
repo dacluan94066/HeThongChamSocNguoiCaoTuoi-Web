@@ -30,6 +30,13 @@ router.post(
   controller.create
 );
 
+// PUT /api/elderly/:id/caregiver - Gan nguoi cham soc chinh
+router.put(
+  '/:id/caregiver',
+  checkPermission('QLHOSONCT', 'sua'),
+  controller.assignCaregiver
+);
+
 // PUT /api/elderly/:id     - Cap nhat ho so (can quyen sua)
 router.put(
   '/:id',

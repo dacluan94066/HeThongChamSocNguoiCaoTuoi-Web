@@ -3,10 +3,10 @@
 import axiosClient from './axiosClient';
 
 // ─── Đăng nhập ───────────────────────────────────────────────────────────────
-// Gọi POST /auth/login với body { tenDangNhap, matKhau }
+// Gọi POST /auth/login với body { tenDangNhap, matKhau, platform }
 // Backend trả về: { success, data: { token, user: { userId, hoTen, vaiTroId, tenVaiTro, ... } } }
-export const login = async (tenDangNhap, matKhau) => {
-  const res = await axiosClient.post('/auth/login', { tenDangNhap, matKhau });
+export const login = async (tenDangNhap, matKhau, platform = 'web') => {
+  const res = await axiosClient.post('/auth/login', { tenDangNhap, matKhau, platform });
   const { token, user } = res.data?.data || {};
 
   if (!token) throw new Error('Đăng nhập thất bại: không nhận được token từ máy chủ');
@@ -44,4 +44,3 @@ export const register = async (userData) => {
   const res = await axiosClient.post('/auth/register', userData);
   return res.data;
 };
-

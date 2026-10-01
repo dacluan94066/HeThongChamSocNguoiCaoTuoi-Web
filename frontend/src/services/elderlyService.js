@@ -3,6 +3,7 @@
 import axiosClient from './axiosClient';
 import elderlyData from '../mockData/elderlyProfiles.json';
 import { mockDelay } from './mockHelper';
+import { calculateAge, formatEntityCode } from '../utils/displayUtils';
 
 // Xác định chế độ: mock hay API thật
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
@@ -13,13 +14,20 @@ let elders = [...elderlyData];
 // ─── Helper: Map dữ liệu từ backend về cấu trúc component đang dùng ─────────
 // Backend có thể trả PascalCase hoặc camelCase, chuẩn hoá về camelCase
 const mapElderFromApi = (item) => {
+  const id = item.id ?? item.Id;
+  const ngaySinh = item.ngaySinh ?? item.NgaySinh ?? '';
+  const trangThai = item.trangThai ?? item.TrangThai ?? '';
+  const statusLabels = {
+    DangTheoDoi: 'Đang theo dõi',
+    NgungTheoDoi: 'Ngừng theo dõi',
+  };
   // Nếu backend đã trả camelCase thì dùng trực tiếp, chỉ map khi cần
   return {
-    id: item.id ?? item.Id,
-    maHoSo: item.maHoSo ?? item.MaHoSo ?? '',
+    id,
+    maHoSo: item.maHoSo ?? item.MaHoSo ?? formatEntityCode('NCT', id),
     hoTen: item.hoTen ?? item.HoTen ?? '',
-    ngaySinh: item.ngaySinh ?? item.NgaySinh ?? '',
-    tuoi: item.tuoi ?? item.Tuoi ?? null,
+    ngaySinh,
+    tuoi: item.tuoi ?? item.Tuoi ?? calculateAge(ngaySinh),
     gioiTinh: item.gioiTinh ?? item.GioiTinh ?? '',
     // Backend có thể dùng cccd hoặc cmnd
     cmnd: item.cmnd ?? item.Cmnd ?? item.cccd ?? item.Cccd ?? '',
@@ -32,8 +40,8 @@ const mapElderFromApi = (item) => {
     diUng: parseCsvOrArray(item.diUng ?? item.DiUng),
     tieuSuBenhLy: item.tieuSuBenhLy ?? item.TieuSuBenhLy ?? '',
     ghiChu: item.ghiChu ?? item.GhiChu ?? '',
-    trangThai: item.trangThai ?? item.TrangThai ?? '',
-    trangThaiLabel: item.trangThaiLabel ?? item.TrangThaiLabel ?? item.trangThai ?? '',
+    trangThai,
+    trangThaiLabel: item.trangThaiLabel ?? item.TrangThaiLabel ?? statusLabels[trangThai] ?? 'Không xác định',
     nguoiChamSocId: item.nguoiChamSocId ?? item.NguoiChamSocId ?? null,
     nguoiChamSocTen: item.nguoiChamSocTen ?? item.NguoiChamSocTen ?? '',
     ngayNhapHoSo: item.ngayNhapHoSo ?? item.NgayNhapHoSo ?? '',
@@ -54,7 +62,7 @@ const parseCsvOrArray = (value) => {
 export const getElders = async (params = {}) => {
   if (USE_MOCK) {
     await mockDelay();
-    let result = [...elders];
+    let result = elders.map(mapElderFromApi);
     if (params.search) {
       const s = params.search.toLowerCase();
       result = result.filter(
@@ -83,7 +91,8 @@ export const getElders = async (params = {}) => {
 export const getElderById = async (id) => {
   if (USE_MOCK) {
     await mockDelay();
-    return elders.find((e) => e.id === id) || null;
+    const item = elders.find((e) => e.id === id);
+    return item ? mapElderFromApi(item) : null;
   }
 
   const res = await axiosClient.get(`/elderly/${id}`);
@@ -137,4 +146,17 @@ export const deleteElder = async (id) => {
 
   await axiosClient.delete(`/elderly/${id}`);
   return true;
+};
+
+export const assignElderCaregiver = async (id, nguoiChamSocId) => {
+  if (USE_MOCK) {
+    await mockDelay();
+    elders = elders.map((elder) => (
+      elder.id === id ? { ...elder, nguoiChamSocId } : elder
+    ));
+    return true;
+  }
+
+  const res = await axiosClient.put(`/elderly/${id}/caregiver`, { nguoiChamSocId });
+  return res.data?.data ?? res.data;
 };
