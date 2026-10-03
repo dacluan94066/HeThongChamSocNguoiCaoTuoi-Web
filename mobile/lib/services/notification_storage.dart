@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'appointment_storage.dart';
 import 'health_storage.dart';
-import 'medication_storage.dart';
 
 class NotificationStorage {
   static const String keyNotifications = 'saved_notifications';
@@ -53,42 +52,7 @@ class NotificationStorage {
     final notifications = <Map<String, dynamic>>[];
 
     // ==================================================
-    // 1. THUỐC
-    // ==================================================
-
-    final reminderStatus = await MedicationStorage.loadReminderStatus();
-
-    final reminderTimes = await MedicationStorage.loadReminderTimes();
-
-    final medicationStatus = await MedicationStorage.loadMedicationStatus();
-
-    for (final medicine in MedicationStorage.medicines) {
-      final reminderEnabled = reminderStatus[medicine] ?? false;
-
-      if (!reminderEnabled) {
-        continue;
-      }
-
-      final time = reminderTimes[medicine] ?? '--:--';
-
-      final done = medicationStatus[medicine] ?? false;
-
-      final id = _medicineNotificationId(medicine);
-
-      notifications.add({
-        'id': id,
-        'title': done ? 'Thuốc đã xác nhận' : 'Nhắc uống thuốc',
-        'message': done
-            ? 'Bạn đã xác nhận uống $medicine hôm nay.'
-            : 'Đã đặt lịch nhắc $medicine lúc $time.',
-        'time': time,
-        'type': 'medicine',
-        'read': readStatus[id] ?? false,
-      });
-    }
-
-    // ==================================================
-    // 2. SỨC KHỎE
+    // 1. SỨC KHỎE
     // ==================================================
 
     final healthData = await HealthStorage.loadHealthData();
@@ -119,7 +83,7 @@ class NotificationStorage {
     }
 
     // ==================================================
-    // 3. LỊCH KHÁM
+    // 2. LỊCH KHÁM
     // ==================================================
 
     final appointment = await AppointmentStorage.getNextAppointment();
@@ -166,25 +130,6 @@ class NotificationStorage {
     await saveNotifications(notifications);
 
     return notifications;
-  }
-
-  static String _medicineNotificationId(String medicineName) {
-    switch (medicineName) {
-      case 'Metformin 500mg':
-        return 'medicine_metformin';
-
-      case 'Lisinopril 10mg':
-        return 'medicine_lisinopril';
-
-      case 'Aspirin 81mg':
-        return 'medicine_aspirin';
-
-      case 'Vitamin D3':
-        return 'medicine_vitamin_d3';
-
-      default:
-        return 'medicine_${medicineName.hashCode}';
-    }
   }
 
   static Future<void> markAsRead(String id) async {

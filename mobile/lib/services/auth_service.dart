@@ -4,6 +4,9 @@ import 'package:dio/dio.dart';
 
 import 'api_client.dart';
 import 'elderly_service.dart';
+import 'health_metric_service.dart';
+import 'local_notification_service.dart';
+import 'medication_schedule_service.dart';
 
 class AuthService {
   AuthService._();
@@ -16,6 +19,9 @@ class AuthService {
     // Huy du lieu cua tai khoan truoc ngay khi bat dau lan dang nhap moi.
     // Response ho so dang chay cua phien cu cung bi danh dau het hieu luc.
     ElderlyService.instance.clearCache();
+    HealthMetricService.instance.clearCache();
+    MedicationScheduleService.instance.clearCache();
+    await LocalNotificationService.cancelMedicationReminders();
     await ApiClient.clearSession();
 
     try {
@@ -43,6 +49,8 @@ class AuthService {
       );
 
       ElderlyService.instance.beginSession(userMap['userId']);
+      HealthMetricService.instance.beginSession();
+      MedicationScheduleService.instance.beginSession();
       // Nap dung ho so cua tai khoan moi truoc khi LoginScreen mo HomeScreen.
       await ElderlyService.instance.getMyProfile(refresh: true);
 
@@ -94,6 +102,9 @@ class AuthService {
 
   Future<void> logout() async {
     ElderlyService.instance.clearCache();
+    HealthMetricService.instance.clearCache();
+    MedicationScheduleService.instance.clearCache();
+    await LocalNotificationService.cancelMedicationReminders();
     await ApiClient.clearSession();
   }
 
@@ -104,6 +115,8 @@ class AuthService {
   Future<Map<String, dynamic>> getMe() async {
     final user = await _get('/auth/me');
     ElderlyService.instance.beginSession(user['userId']);
+    HealthMetricService.instance.beginSession();
+    MedicationScheduleService.instance.beginSession();
     await ElderlyService.instance.getMyProfile(refresh: true);
     return user;
   }

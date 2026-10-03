@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../../services/health_storage.dart';
+import '../../services/api_client.dart';
+import '../../services/health_metric_service.dart';
 
 class HealthScreen extends StatefulWidget {
   const HealthScreen({super.key});
@@ -11,317 +11,419 @@ class HealthScreen extends StatefulWidget {
 }
 
 class _HealthScreenState extends State<HealthScreen> {
-  Map<String, String> healthData = {};
-
-  bool loading = true;
+  List<Map<String, dynamic>> _metricTypes = [];
+  List<Map<String, dynamic>> _metrics = [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    loadHealthData();
+    _loadData();
   }
 
-  Future<void> loadHealthData() async {
-    final data = await HealthStorage.loadHealthData();
-
-    if (!mounted) {
-      return;
+  Future<void> _loadData({bool refresh = false}) async {
+    if (mounted && (_metricTypes.isEmpty || _metrics.isEmpty)) {
+      setState(() => _loading = true);
     }
-
-    setState(() {
-      healthData = data;
-      loading = false;
-    });
+    try {
+      final results = await Future.wait<List<Map<String, dynamic>>>([
+        HealthMetricService.instance.getMetricTypes(refresh: refresh),
+        HealthMetricService.instance.getMyHealthMetrics(refresh: refresh),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _metricTypes = results[0];
+        _metrics = results[1];
+        _error = null;
+        _loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Không thể tải dữ liệu sức khỏe.';
+        _loading = false;
+      });
+    }
   }
 
-  Future<void> openUpdateHealthSheet() async {
-    final heartController = TextEditingController(
-      text: healthData['heartRate'] ?? '72',
-    );
+  Map<int, Map<String, dynamic>> get _latestByType {
+    final result = <int, Map<String, dynamic>>{};
+    for (final metric in _metrics) {
+      final typeId = _asInt(metric['loaiChiSoId']);
+      if (typeId != null) result.putIfAbsent(typeId, () => metric);
+    }
+    return result;
+  }
 
-    final systolicController = TextEditingController(
-      text: healthData['systolic'] ?? '125',
-    );
+  Future<void> _openUpdateSheet() async {
+    if (_metricTypes.isEmpty) return;
+    var selectedId = _asInt(_metricTypes.first['id']);
+    var saving = false;
+    var primaryText = '';
+    var secondaryText = '';
+    var noteText = '';
 
-    final diastolicController = TextEditingController(
-      text: healthData['diastolic'] ?? '80',
-    );
-
-    final temperatureController = TextEditingController(
-      text: healthData['temperature'] ?? '36.9',
-    );
-
-    final bloodSugarController = TextEditingController(
-      text: healthData['bloodSugar'] ?? '6.2',
-    );
-
-    final weightController = TextEditingController(
-      text: healthData['weight'] ?? '60',
-    );
-
-    await showModalBottomSheet(
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 18,
-            right: 18,
-            top: 18,
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.black12,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final selectedType = _metricTypes
+              .cast<Map<String, dynamic>?>()
+              .firstWhere(
+                (item) => _asInt(item?['id']) == selectedId,
+                orElse: () => null,
+              );
+          final needsSecondary =
+              selectedType?['giaTriMin2'] != null ||
+              selectedType?['giaTriMax2'] != null;
+          final unit = selectedType?['donVi']?.toString() ?? '';
 
-                const SizedBox(height: 20),
+          Future<void> save() async {
+            final primary = double.tryParse(
+              primaryText.trim().replaceAll(',', '.'),
+            );
+            final secondary = double.tryParse(
+              secondaryText.trim().replaceAll(',', '.'),
+            );
+            if (selectedId == null || primary == null) {
+              _showMessage('Vui lòng chọn loại và nhập giá trị hợp lệ.');
+              return;
+            }
+            if (needsSecondary && secondary == null) {
+              _showMessage('Vui lòng nhập cả huyết áp tâm trương.');
+              return;
+            }
 
-                const Text(
-                  'Cập nhật chỉ số sức khỏe',
-                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-                ),
+            setSheetState(() => saving = true);
+            try {
+              final result = await HealthMetricService.instance.addHealthMetric(
+                loaiChiSoId: selectedId!,
+                giaTri: primary,
+                giaTriPhu: needsSecondary ? secondary : null,
+                ghiChu: noteText,
+              );
+              if (!sheetContext.mounted) return;
+              Navigator.pop(sheetContext, result);
+            } on ApiException catch (error) {
+              if (!mounted) return;
+              _showMessage(error.message);
+              if (sheetContext.mounted) {
+                setSheetState(() => saving = false);
+              }
+            } catch (_) {
+              if (!mounted) return;
+              _showMessage('Không thể ghi nhận chỉ số. Vui lòng thử lại.');
+              if (sheetContext.mounted) {
+                setSheetState(() => saving = false);
+              }
+            }
+          }
 
-                const SizedBox(height: 6),
-
-                const Text(
-                  'Nhập các chỉ số đo được gần nhất.',
-                  style: TextStyle(color: Colors.black54),
-                ),
-
-                const SizedBox(height: 22),
-
-                buildHealthInput(
-                  label: 'Nhịp tim',
-                  controller: heartController,
-                  icon: Icons.favorite_outline,
-                  suffix: 'bpm',
-                  decimal: false,
-                ),
-
-                const SizedBox(height: 14),
-
-                buildHealthInput(
-                  label: 'Huyết áp tâm thu',
-                  controller: systolicController,
-                  icon: Icons.monitor_heart_outlined,
-                  suffix: 'mmHg',
-                  decimal: false,
-                ),
-
-                const SizedBox(height: 14),
-
-                buildHealthInput(
-                  label: 'Huyết áp tâm trương',
-                  controller: diastolicController,
-                  icon: Icons.monitor_heart_outlined,
-                  suffix: 'mmHg',
-                  decimal: false,
-                ),
-
-                const SizedBox(height: 14),
-
-                buildHealthInput(
-                  label: 'Nhiệt độ',
-                  controller: temperatureController,
-                  icon: Icons.thermostat_outlined,
-                  suffix: '°C',
-                  decimal: true,
-                ),
-
-                const SizedBox(height: 14),
-
-                buildHealthInput(
-                  label: 'Đường huyết',
-                  controller: bloodSugarController,
-                  icon: Icons.bloodtype_outlined,
-                  suffix: 'mmol/L',
-                  decimal: true,
-                ),
-
-                const SizedBox(height: 14),
-
-                buildHealthInput(
-                  label: 'Cân nặng',
-                  controller: weightController,
-                  icon: Icons.monitor_weight_outlined,
-                  suffix: 'kg',
-                  decimal: true,
-                ),
-
-                const SizedBox(height: 24),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      if (heartController.text.trim().isEmpty ||
-                          systolicController.text.trim().isEmpty ||
-                          diastolicController.text.trim().isEmpty ||
-                          temperatureController.text.trim().isEmpty ||
-                          bloodSugarController.text.trim().isEmpty ||
-                          weightController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Vui lòng nhập đầy đủ các chỉ số.'),
-                          ),
-                        );
-
-                        return;
-                      }
-
-                      await HealthStorage.saveHealthData(
-                        heartRate: heartController.text.trim(),
-                        systolic: systolicController.text.trim(),
-                        diastolic: diastolicController.text.trim(),
-                        temperature: temperatureController.text.trim(),
-                        bloodSugar: bloodSugarController.text.trim(),
-                        weight: weightController.text.trim(),
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      Navigator.pop(sheetContext);
-
-                      await loadHealthData();
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Đã lưu chỉ số sức khỏe.'),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text(
-                      'LƯU CHỈ SỐ',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xff07856d),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              18,
+              20,
+              MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 48,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.black12,
+                        borderRadius: BorderRadius.circular(20),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    heartController.dispose();
-    systolicController.dispose();
-    diastolicController.dispose();
-    temperatureController.dispose();
-    bloodSugarController.dispose();
-    weightController.dispose();
-  }
-
-  Widget buildHealthInput({
-    required String label,
-    required TextEditingController controller,
-    required IconData icon,
-    required String suffix,
-    required bool decimal,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-
-        const SizedBox(height: 7),
-
-        TextField(
-          controller: controller,
-          keyboardType: TextInputType.numberWithOptions(decimal: decimal),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(
-              decimal ? RegExp(r'[0-9.]') : RegExp(r'[0-9]'),
-            ),
-          ],
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon),
-            suffixText: suffix,
-            filled: true,
-            fillColor: const Color(0xfff6f6f6),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(
-                color: Color(0xff07856d),
-                width: 1.3,
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Cập nhật chỉ số',
+                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 18),
+                  InputDecorator(
+                    decoration: _inputDecoration('Loại chỉ số'),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: selectedId,
+                        isExpanded: true,
+                        items: _metricTypes.map((type) {
+                          final id = _asInt(type['id'])!;
+                          return DropdownMenuItem<int>(
+                            value: id,
+                            child: Text(type['tenChiSo']?.toString() ?? ''),
+                          );
+                        }).toList(),
+                        onChanged: saving
+                            ? null
+                            : (value) => setSheetState(() {
+                                selectedId = value;
+                              }),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    enabled: !saving,
+                    onChanged: (value) => primaryText = value,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: _inputDecoration(
+                      needsSecondary ? 'Huyết áp tâm thu' : 'Giá trị',
+                      suffix: unit,
+                    ),
+                  ),
+                  if (needsSecondary) ...[
+                    const SizedBox(height: 14),
+                    TextField(
+                      enabled: !saving,
+                      onChanged: (value) => secondaryText = value,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: _inputDecoration(
+                        'Huyết áp tâm trương',
+                        suffix: unit,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  TextField(
+                    enabled: !saving,
+                    onChanged: (value) => noteText = value,
+                    maxLength: 300,
+                    decoration: _inputDecoration('Ghi chú (không bắt buộc)'),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton.icon(
+                      onPressed: saving ? null : save,
+                      icon: saving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: Text(saving ? 'ĐANG LƯU...' : 'LƯU CHỈ SỐ'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xff07856d),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+          );
+        },
+      ),
+    );
+    if (!mounted || result == null) return;
+    await _loadData(refresh: true);
+    if (!mounted) return;
+    if (result['laBatThuong'] == true) {
+      await _showAbnormalWarning(result);
+    } else {
+      _showMessage('Đã ghi nhận chỉ số sức khỏe.');
+    }
+  }
+
+  Future<void> _showHistory(Map<String, dynamic> type) async {
+    final typeId = _asInt(type['id']);
+    if (typeId == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xfff3f3f1),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.78,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Lịch sử ${type['tenChiSo'] ?? ''}',
+                style: const TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: HealthMetricService.instance.getMyHealthMetrics(
+                    loaiChiSoId: typeId,
+                  ),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          snapshot.error is ApiException
+                              ? (snapshot.error! as ApiException).message
+                              : 'Không thể tải lịch sử chỉ số.',
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    }
+                    final items = snapshot.data ?? [];
+                    if (items.isEmpty) {
+                      return const Center(
+                        child: Text('Chưa có lần đo nào được ghi nhận.'),
+                      );
+                    }
+                    return ListView.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        final abnormal = item['laBatThuong'] == true;
+                        return Container(
+                          padding: const EdgeInsets.all(15),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: abnormal
+                                ? Border.all(color: const Color(0xffe45151))
+                                : null,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                abnormal
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.check_circle_outline,
+                                color: abnormal
+                                    ? const Color(0xffe45151)
+                                    : const Color(0xff07856d),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _displayValue(item),
+                                      style: const TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _formatDateTime(item['thoiGianDo']),
+                                      style: const TextStyle(
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+                                    if ((item['ghiChu']?.toString() ?? '')
+                                        .trim()
+                                        .isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(item['ghiChu'].toString()),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
+  }
+
+  Future<void> _showAbnormalWarning(Map<String, dynamic> metric) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          color: Color(0xffd94b32),
+          size: 48,
+        ),
+        title: const Text('Chỉ số vượt ngưỡng'),
+        content: Text(
+          '${metric['tenChiSo'] ?? 'Chỉ số'}: ${_displayValue(metric)}. '
+          'Chỉ số vượt ngưỡng bình thường, vui lòng chú ý và liên hệ nhân viên y tế nếu thấy không khỏe.',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xffd94b32),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('ĐÃ HIỂU'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
-      return const Scaffold(
-        backgroundColor: Color(0xfff3f3f1),
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xff07856d)),
-        ),
-      );
-    }
-
-    final heartRate = healthData['heartRate'] ?? '72';
-
-    final systolic = healthData['systolic'] ?? '125';
-
-    final diastolic = healthData['diastolic'] ?? '80';
-
-    final temperature = healthData['temperature'] ?? '36.9';
-
-    final bloodSugar = healthData['bloodSugar'] ?? '6.2';
-
-    final weight = healthData['weight'] ?? '60';
-
-    final updatedAt = healthData['updatedAt'] ?? 'Chưa cập nhật';
-
     return Scaffold(
       backgroundColor: const Color(0xfff3f3f1),
-
       appBar: AppBar(
         backgroundColor: const Color(0xfff3f3f1),
         elevation: 0,
@@ -331,292 +433,319 @@ class _HealthScreenState extends State<HealthScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xffe9fff6), Color(0xffffffe8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(28),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 66,
-                    height: 66,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.favorite_rounded,
-                      color: Color(0xffe45050),
-                      size: 34,
-                    ),
-                  ),
-
-                  const SizedBox(width: 14),
-
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Chỉ số sức khỏe gần nhất',
-                          style: TextStyle(fontSize: 13, color: Colors.black54),
-                        ),
-
-                        const SizedBox(height: 5),
-
-                        const Text(
-                          'Đã ghi nhận dữ liệu',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                        const SizedBox(height: 5),
-
-                        Text(
-                          updatedAt,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+      floatingActionButton: _loading || _error != null || _metricTypes.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _openUpdateSheet,
+              backgroundColor: const Color(0xff07856d),
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('CẬP NHẬT'),
             ),
-
-            const SizedBox(height: 24),
-
-            const Text(
-              'Chỉ số hiện tại',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: HealthMetricCard(
-                    icon: Icons.favorite_rounded,
-                    title: 'Nhịp tim',
-                    value: heartRate,
-                    unit: 'bpm',
-                    iconColor: const Color(0xffe45050),
-                    backgroundColor: const Color(0xffffeeee),
-                  ),
-                ),
-
-                const SizedBox(width: 12),
-
-                Expanded(
-                  child: HealthMetricCard(
-                    icon: Icons.thermostat,
-                    title: 'Nhiệt độ',
-                    value: temperature,
-                    unit: '°C',
-                    iconColor: const Color(0xffff8b3d),
-                    backgroundColor: const Color(0xfffff2e8),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: HealthMetricCard(
-                    icon: Icons.monitor_heart_rounded,
-                    title: 'Huyết áp',
-                    value: '$systolic/$diastolic',
-                    unit: 'mmHg',
-                    iconColor: const Color(0xff4b6edb),
-                    backgroundColor: const Color(0xffe9efff),
-                  ),
-                ),
-
-                const SizedBox(width: 12),
-
-                Expanded(
-                  child: HealthMetricCard(
-                    icon: Icons.bloodtype_rounded,
-                    title: 'Đường huyết',
-                    value: bloodSugar,
-                    unit: 'mmol/L',
-                    iconColor: const Color(0xff9c55d7),
-                    backgroundColor: const Color(0xfff3eaff),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            HealthMetricCard(
-              icon: Icons.monitor_weight_rounded,
-              title: 'Cân nặng',
-              value: weight,
-              unit: 'kg',
-              iconColor: const Color(0xff07856d),
-              backgroundColor: const Color(0xffe8f8ee),
-              fullWidth: true,
-            ),
-
-            const SizedBox(height: 24),
-
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline_rounded, color: Color(0xff07856d)),
-
-                  SizedBox(width: 10),
-
-                  Expanded(
-                    child: Text(
-                      'Các chỉ số trong ứng dụng dùng để ghi nhận và theo dõi thông tin do người dùng nhập, không thay thế chẩn đoán của nhân viên y tế.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.black54,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: openUpdateHealthSheet,
-                icon: const Icon(Icons.edit_rounded),
-                label: const Text(
-                  'CẬP NHẬT CHỈ SỐ',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: _buildBody(),
     );
   }
-}
 
-class HealthMetricCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String value;
-  final String unit;
-  final Color iconColor;
-  final Color backgroundColor;
-  final bool fullWidth;
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xff07856d)),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_rounded, size: 58, color: Colors.grey),
+              const SizedBox(height: 14),
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => _loadData(refresh: true),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-  const HealthMetricCard({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.unit,
-    required this.iconColor,
-    required this.backgroundColor,
-    this.fullWidth = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: fullWidth ? double.infinity : null,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
+    final latest = _latestByType;
+    final newest = _metrics.isEmpty ? null : _metrics.first;
+    return RefreshIndicator(
+      onRefresh: () => _loadData(refresh: true),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 100),
         children: [
           Container(
-            width: 46,
-            height: 46,
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: backgroundColor,
-              borderRadius: BorderRadius.circular(15),
+              gradient: const LinearGradient(
+                colors: [Color(0xffe9fff6), Color(0xffffffe8)],
+              ),
+              borderRadius: BorderRadius.circular(28),
             ),
-            child: Icon(icon, color: iconColor),
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  radius: 33,
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.favorite_rounded,
+                    color: Color(0xffe45050),
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Dữ liệu sức khỏe gần nhất',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        newest == null
+                            ? 'Chưa có chỉ số'
+                            : _formatDateTime(newest['thoiGianDo']),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(
+          const SizedBox(height: 24),
+          const Text(
+            'Các chỉ số theo dõi',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Chạm vào từng chỉ số để xem lịch sử đo.',
+            style: TextStyle(color: Colors.black54),
+          ),
+          const SizedBox(height: 12),
+          if (_metricTypes.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: Text('Chưa có danh mục chỉ số.')),
+            )
+          else
+            ..._metricTypes.map((type) {
+              final metric = latest[_asInt(type['id'])];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _MetricCard(
+                  icon: _iconFor(type['tenChiSo']?.toString()),
+                  title: type['tenChiSo']?.toString() ?? 'Chỉ số',
+                  value: metric == null
+                      ? 'Chưa có dữ liệu'
+                      : _displayValue(metric),
+                  time: metric == null
+                      ? _normalRange(type)
+                      : _formatDateTime(metric['thoiGianDo']),
+                  abnormal: metric?['laBatThuong'] == true,
+                  onTap: () => _showHistory(type),
+                ),
+              );
+            }),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-
-                const SizedBox(height: 4),
-
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 4,
-                  children: [
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      unit,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ],
+                Icon(Icons.info_outline_rounded, color: Color(0xff07856d)),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Các chỉ số dùng để theo dõi thông tin do người dùng nhập, không thay thế chẩn đoán của nhân viên y tế.',
+                    style: TextStyle(color: Colors.black54, height: 1.4),
+                  ),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  static InputDecoration _inputDecoration(String label, {String? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      suffixText: suffix,
+      filled: true,
+      fillColor: const Color(0xfff6f6f6),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+    );
+  }
+
+  static int? _asInt(Object? value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static String _displayValue(Map<String, dynamic> metric) {
+    final primary = _number(metric['giaTri']);
+    final secondary = metric['giaTriPhu'];
+    final value = secondary == null
+        ? primary
+        : '$primary/${_number(secondary)}';
+    final unit = metric['donVi']?.toString() ?? '';
+    return unit.isEmpty ? value : '$value $unit';
+  }
+
+  static String _number(Object? value) {
+    final number = double.tryParse(value?.toString() ?? '');
+    if (number == null) return value?.toString() ?? '—';
+    return number == number.roundToDouble()
+        ? number.toInt().toString()
+        : number.toStringAsFixed(1);
+  }
+
+  static String _formatDateTime(Object? raw) {
+    final date = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    if (date == null) return 'Không rõ thời gian';
+    return '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')} '
+        '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  static String _normalRange(Map<String, dynamic> type) {
+    final min = type['giaTriMin'];
+    final max = type['giaTriMax'];
+    final min2 = type['giaTriMin2'];
+    final max2 = type['giaTriMax2'];
+    if (min == null && max == null) return 'Chưa cấu hình ngưỡng';
+    final primary = '${_number(min)}–${_number(max)}';
+    final secondary = min2 == null && max2 == null
+        ? ''
+        : '/${_number(min2)}–${_number(max2)}';
+    return 'Ngưỡng: $primary$secondary ${type['donVi'] ?? ''}';
+  }
+
+  static IconData _iconFor(String? name) {
+    final value = name?.toLowerCase() ?? '';
+    if (value.contains('huyết áp')) return Icons.monitor_heart_rounded;
+    if (value.contains('nhịp tim')) return Icons.favorite_rounded;
+    if (value.contains('đường huyết')) return Icons.bloodtype_rounded;
+    if (value.contains('nhiệt độ')) return Icons.thermostat_rounded;
+    if (value.contains('spo2')) return Icons.air_rounded;
+    if (value.contains('cân nặng')) return Icons.monitor_weight_rounded;
+    return Icons.health_and_safety_rounded;
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.time,
+    required this.abnormal,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final String time;
+  final bool abnormal;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = abnormal ? const Color(0xffd94b32) : const Color(0xff07856d);
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: abnormal ? Border.all(color: color) : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        if (abnormal)
+                          const Text(
+                            'BẤT THƯỜNG',
+                            style: TextStyle(
+                              color: Color(0xffd94b32),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      time,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.black38),
+            ],
+          ),
+        ),
       ),
     );
   }

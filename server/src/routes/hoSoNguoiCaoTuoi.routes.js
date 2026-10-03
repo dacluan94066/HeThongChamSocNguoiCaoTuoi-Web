@@ -3,6 +3,9 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/hoSoNguoiCaoTuoi.controller');
+const healthMetricController = require('../controllers/chiSoSucKhoe.controller');
+const medicationScheduleController = require('../controllers/lichUongThuoc.controller');
+const prescriptionController = require('../controllers/donThuoc.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const { checkPermission } = require('../middlewares/permission.middleware');
 const scope = require('../middlewares/mobile-scope.middleware');
@@ -13,6 +16,22 @@ router.use(scope.loadMobileScope);
 
 router.get('/me', controller.getMe);
 router.put('/me', controller.updateMe);
+router.get('/me/health-metrics', healthMetricController.getMine);
+router.post('/me/health-metrics', healthMetricController.createMine);
+router.get('/me/medication-schedule', medicationScheduleController.getMine);
+router.get(
+  '/:id/prescriptions',
+  scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
+  checkPermission('QLLICHUONGTHUOC', 'xem'),
+  prescriptionController.getByElderly
+);
+router.post(
+  '/:id/prescriptions',
+  scope.webOnlyWrite,
+  scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
+  checkPermission('QLLICHUONGTHUOC', 'them'),
+  prescriptionController.create
+);
 
 // GET /api/elderly         - Lay danh sach (can quyen xem)
 router.get(

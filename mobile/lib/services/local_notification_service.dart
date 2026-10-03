@@ -43,8 +43,42 @@ class LocalNotificationService {
         >();
 
     await androidPlugin?.createNotificationChannel(medicationChannel);
+  }
 
-    await androidPlugin?.requestNotificationsPermission();
+  static Future<bool> areNotificationsEnabled() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+    final androidPlugin = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    return await androidPlugin?.areNotificationsEnabled() ?? false;
+  }
+
+  static Future<bool> requestNotificationPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+    final androidPlugin = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    return await androidPlugin?.requestNotificationsPermission() ?? false;
+  }
+
+  static Future<bool> requestExactAlarmPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+    final androidPlugin = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    return await androidPlugin?.requestExactAlarmsPermission() ?? false;
+  }
+
+  static Future<bool> canScheduleExactNotifications() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+    final androidPlugin = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    return await androidPlugin?.canScheduleExactNotifications() ?? false;
   }
 
   static Future<void> showTestNotification() async {
@@ -64,7 +98,7 @@ class LocalNotificationService {
       title: 'Nhắc uống thuốc',
       body: 'Đây là thông báo kiểm tra từ An Tâm Tuổi Già.',
       notificationDetails: details,
-      payload: 'medication',
+      payload: 'medication:test',
     );
   }
 
@@ -106,10 +140,20 @@ class LocalNotificationService {
       body: 'Đã đến giờ uống $medicineName.',
       scheduledDate: scheduledDate,
       notificationDetails: details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
-      payload: 'medication',
+      payload: 'medication:$id',
     );
+  }
+
+  static Future<void> cancelMedicationReminders() async {
+    final pending = await _notificationsPlugin.pendingNotificationRequests();
+    for (final request in pending) {
+      if (request.payload?.startsWith('medication:') == true &&
+          request.id != 999) {
+        await _notificationsPlugin.cancel(id: request.id);
+      }
+    }
   }
 
   static Future<void> cancelNotification(int id) async {

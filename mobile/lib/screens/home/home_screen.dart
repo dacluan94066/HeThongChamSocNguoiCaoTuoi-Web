@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../services/appointment_storage.dart';
-import '../../services/health_storage.dart';
-import '../../services/medication_storage.dart';
+import '../../services/health_metric_service.dart';
+import '../../services/medication_schedule_service.dart';
 import '../../services/notification_storage.dart';
 import '../../services/api_client.dart';
 import '../../services/elderly_service.dart';
@@ -28,8 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic> profile = {};
   String? profileError;
   Map<String, String> healthData = {};
-  Map<String, bool> medicationStatus = {};
-  Map<String, String> reminderTimes = {};
+  List<Map<String, dynamic>> medicationSchedule = [];
 
   Map<String, dynamic>? nextAppointment;
 
@@ -52,8 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await Future.wait([
       loadProfile(refresh: refreshProfile),
       loadHealthData(),
-      loadMedicationStatus(),
-      loadReminderTimes(),
+      loadMedicationSchedule(),
       loadUnreadNotificationCount(),
       loadNextAppointment(),
     ]);
@@ -92,49 +90,92 @@ class _HomeScreenState extends State<HomeScreen> {
   // =====================================================
 
   Future<void> loadHealthData() async {
-    final data = await HealthStorage.loadHealthData();
-
-    if (!mounted) {
-      return;
+    try {
+      final metrics = await HealthMetricService.instance.getMyHealthMetrics();
+      final latest = <String, Map<String, dynamic>>{};
+      for (final metric in metrics) {
+        final name = metric['tenChiSo']?.toString();
+        if (name != null) latest.putIfAbsent(name, () => metric);
+      }
+      final bloodPressure = latest['Huyết áp'];
+      final newest = metrics.isEmpty ? null : metrics.first;
+      final data = <String, String>{};
+      if (latest['Nhịp tim'] != null) {
+        data['heartRate'] = _healthNumber(latest['Nhịp tim']!['giaTri']);
+      }
+      if (latest['Nhiệt độ cơ thể'] != null) {
+        data['temperature'] = _healthNumber(
+          latest['Nhiệt độ cơ thể']!['giaTri'],
+        );
+      }
+      if (bloodPressure != null) {
+        data['systolic'] = _healthNumber(bloodPressure['giaTri']);
+      }
+      if (bloodPressure?['giaTriPhu'] != null) {
+        data['diastolic'] = _healthNumber(bloodPressure!['giaTriPhu']);
+      }
+      if (newest != null) {
+        data['updatedAt'] = _healthDateTime(newest['thoiGianDo']);
+      }
+      if (!mounted) return;
+      setState(() {
+        healthData = data;
+        loadingHealth = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        healthData = {};
+        loadingHealth = false;
+      });
     }
+  }
 
-    setState(() {
-      healthData = data;
-      loadingHealth = false;
-    });
+  static String _healthNumber(Object? value) {
+    final number = double.tryParse(value?.toString() ?? '');
+    if (number == null) return '—';
+    return number == number.roundToDouble()
+        ? number.toInt().toString()
+        : number.toStringAsFixed(1);
+  }
+
+  static String _healthDateTime(Object? raw) {
+    final date = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    if (date == null) return 'Chưa cập nhật';
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  static String _medicationTime(Object? raw) {
+    final date = DateTime.tryParse(raw?.toString() ?? '');
+    if (date == null) return '--:--';
+    return '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
   }
 
   // =====================================================
-  // MEDICATION STATUS
+  // MEDICATION SCHEDULE
   // =====================================================
 
-  Future<void> loadMedicationStatus() async {
-    final data = await MedicationStorage.loadMedicationStatus();
-
-    if (!mounted) {
-      return;
+  Future<void> loadMedicationSchedule({bool refresh = false}) async {
+    try {
+      final data = await MedicationScheduleService.instance.getTodaySchedule(
+        refresh: refresh,
+      );
+      if (!mounted) return;
+      setState(() {
+        medicationSchedule = data;
+        loadingMedication = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        medicationSchedule = [];
+        loadingMedication = false;
+      });
     }
-
-    setState(() {
-      medicationStatus = data;
-      loadingMedication = false;
-    });
-  }
-
-  // =====================================================
-  // MEDICATION REMINDER TIMES
-  // =====================================================
-
-  Future<void> loadReminderTimes() async {
-    final data = await MedicationStorage.loadReminderTimes();
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      reminderTimes = data;
-    });
   }
 
   // =====================================================
@@ -211,8 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (_) => const MedicationScreen()),
     );
 
-    await loadMedicationStatus();
-    await loadReminderTimes();
+    await loadMedicationSchedule(refresh: true);
     await loadUnreadNotificationCount();
   }
 
@@ -255,17 +295,32 @@ class _HomeScreenState extends State<HomeScreen> {
     final gender = ElderlyService.text(profile, 'gioiTinh');
     final age = ElderlyService.displayAge(profile);
 
-    final heartRate = healthData['heartRate'] ?? '72';
+    final heartRate = healthData['heartRate'] ?? '—';
 
-    final temperature = healthData['temperature'] ?? '36.9';
+    final temperature = healthData['temperature'] ?? '—';
 
-    final metforminDone = medicationStatus['Metformin 500mg'] ?? false;
+    Map<String, dynamic>? nextMedication;
+    for (final item in medicationSchedule) {
+      if (item['trangThai'] == 'ChuaDenGio') {
+        nextMedication = item;
+        break;
+      }
+    }
+    if (nextMedication == null && medicationSchedule.isNotEmpty) {
+      nextMedication = medicationSchedule.first;
+    }
+    final medicationStatus = nextMedication?['trangThai']?.toString();
+    final medicationDone = medicationStatus == 'DaUong';
+    final medicationMissed = medicationStatus == 'BoLo';
+    final medicationStatusLabel = medicationDone
+        ? 'Đã uống'
+        : medicationMissed
+        ? 'Bỏ lỡ'
+        : 'Chưa uống';
 
-    final metforminTime = reminderTimes['Metformin 500mg'] ?? '08:00';
+    final systolic = healthData['systolic'] ?? '—';
 
-    final systolic = healthData['systolic'] ?? '125';
-
-    final diastolic = healthData['diastolic'] ?? '80';
+    final diastolic = healthData['diastolic'] ?? '—';
 
     final updatedAt = healthData['updatedAt'] ?? 'Chưa cập nhật';
 
@@ -664,14 +719,27 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: Color(0xff07856d),
                               ),
                             )
+                          : nextMedication == null
+                          ? const TaskItem(
+                              icon: Icons.event_available_rounded,
+                              iconColor: Color(0xff07856d),
+                              title: 'Không có lịch uống thuốc hôm nay',
+                              subtitle: 'Lịch thuốc được đồng bộ từ hệ thống',
+                              status: 'Trống',
+                              statusColor: Colors.black45,
+                            )
                           : TaskItem(
                               icon: Icons.medication_rounded,
                               iconColor: const Color(0xffe85d75),
-                              title: 'Uống Metformin 500mg',
-                              subtitle: '$metforminTime • Sau ăn',
-                              status: metforminDone ? 'Đã uống' : 'Chưa uống',
-                              statusColor: metforminDone
+                              title:
+                                  'Uống ${nextMedication['tenThuoc'] ?? 'thuốc'}',
+                              subtitle:
+                                  '${_medicationTime(nextMedication['thoiGianDuKien'])} • ${nextMedication['lieuDung'] ?? 'Không rõ liều dùng'}',
+                              status: medicationStatusLabel,
+                              statusColor: medicationDone
                                   ? const Color(0xff43a66b)
+                                  : medicationMissed
+                                  ? const Color(0xffd65a45)
                                   : const Color(0xffff9f27),
                             ),
 
