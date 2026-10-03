@@ -1,46 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'otp_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() =>
-      _ForgotPasswordScreenState();
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final TextEditingController phoneController =
-      TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
 
   void sendOtp() {
     final phone = phoneController.text.trim();
 
     if (phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng nhập số điện thoại.'),
-        ),
+        const SnackBar(content: Text('Vui lòng nhập số điện thoại.')),
       );
       return;
     }
 
     if (phone.length != 10 || !phone.startsWith('0')) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Số điện thoại không hợp lệ.'),
-        ),
+        const SnackBar(content: Text('Số điện thoại không hợp lệ.')),
       );
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => OtpScreen(
-          phoneNumber: phone,
-        ),
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Khôi phục mật khẩu qua OTP chưa được máy chủ hỗ trợ.'),
       ),
     );
   }
@@ -60,9 +50,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         elevation: 0,
         title: const Text(
           'Quên mật khẩu',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       body: SingleChildScrollView(
@@ -82,10 +70,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
             const Text(
               'Khôi phục mật khẩu',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 10),
@@ -103,10 +88,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
             const Text(
               'Số điện thoại',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -120,9 +102,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ],
               decoration: InputDecoration(
                 hintText: 'VD: 0912345678',
-                prefixIcon: const Icon(
-                  Icons.phone_outlined,
-                ),
+                prefixIcon: const Icon(Icons.phone_outlined),
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -160,10 +140,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ),
                 child: const Text(
                   'GỬI MÃ OTP',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -173,7 +150,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             Center(
               child: TextButton(
                 onPressed: () {
-                  Navigator.pop(context);
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/login',
+                    (route) => false,
+                  );
                 },
                 child: const Text(
                   'Quay lại đăng nhập',

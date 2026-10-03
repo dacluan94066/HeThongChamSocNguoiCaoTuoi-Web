@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../services/api_client.dart';
+import '../../services/auth_service.dart';
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -11,13 +14,116 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool obscurePassword = true;
   bool obscureConfirmPassword = true;
   bool agreeTerms = false;
+  bool registering = false;
+  String selectedGender = 'Nam';
 
   final TextEditingController nameController = TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController birthController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController =
       TextEditingController();
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    usernameController.dispose();
+    phoneController.dispose();
+    birthController.dispose();
+    passwordController.dispose();
+    confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> register() async {
+    final name = nameController.text.trim();
+    final username = usernameController.text.trim();
+    final phone = phoneController.text.trim();
+    final password = passwordController.text;
+    final confirmPassword = confirmPasswordController.text;
+
+    if (name.isEmpty ||
+        username.isEmpty ||
+        phone.isEmpty ||
+        birthController.text.isEmpty ||
+        password.isEmpty ||
+        confirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng nhập đầy đủ thông tin.')),
+      );
+      return;
+    }
+
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mật khẩu phải có ít nhất 6 ký tự.')),
+      );
+      return;
+    }
+
+    if (password != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mật khẩu xác nhận không khớp.')),
+      );
+      return;
+    }
+
+    if (!agreeTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng đồng ý với điều khoản sử dụng.'),
+        ),
+      );
+      return;
+    }
+
+    final dateParts = birthController.text.split('/');
+    if (dateParts.length != 3) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ngày sinh không hợp lệ.')));
+      return;
+    }
+    final birthDate = '${dateParts[2]}-${dateParts[1]}-${dateParts[0]}';
+
+    setState(() {
+      registering = true;
+    });
+
+    try {
+      await AuthService.instance.register(
+        tenDangNhap: username,
+        matKhau: password,
+        hoTen: name,
+        ngaySinh: birthDate,
+        gioiTinh: selectedGender,
+        soDienThoai: phone,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đăng ký thành công. Hãy đăng nhập.')),
+      );
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể đăng ký. Vui lòng thử lại.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          registering = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +172,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
               decoration: InputDecoration(
                 hintText: 'Nguyễn Văn An',
                 prefixIcon: const Icon(Icons.person_outline),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 18),
+
+            const Text(
+              'Tên đăng nhập',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
+
+            const SizedBox(height: 8),
+
+            TextField(
+              controller: usernameController,
+              autocorrect: false,
+              decoration: InputDecoration(
+                hintText: 'Nhập tên đăng nhập',
+                prefixIcon: const Icon(Icons.account_circle_outlined),
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -139,6 +269,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       '${pickedDate.year}';
                 }
               },
+            ),
+
+            const SizedBox(height: 18),
+
+            const Text(
+              'Giới tính',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
+
+            const SizedBox(height: 8),
+
+            DropdownButtonFormField<String>(
+              initialValue: selectedGender,
+              items: const [
+                DropdownMenuItem(value: 'Nam', child: Text('Nam')),
+                DropdownMenuItem(value: 'Nữ', child: Text('Nữ')),
+                DropdownMenuItem(value: 'Khác', child: Text('Khác')),
+              ],
+              onChanged: registering
+                  ? null
+                  : (value) {
+                      if (value != null) {
+                        setState(() {
+                          selectedGender = value;
+                        });
+                      }
+                    },
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.wc_outlined),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide.none,
+                ),
+              ),
             ),
 
             const SizedBox(height: 18),
@@ -245,47 +411,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: () {
-                  if (nameController.text.isEmpty ||
-                      phoneController.text.isEmpty ||
-                      birthController.text.isEmpty ||
-                      passwordController.text.isEmpty ||
-                      confirmPasswordController.text.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Vui lòng nhập đầy đủ thông tin.'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  if (passwordController.text !=
-                      confirmPasswordController.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Mật khẩu xác nhận không khớp.'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  if (!agreeTerms) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Vui lòng đồng ý với điều khoản sử dụng.',
-                        ),
-                      ),
-                    );
-                    return;
-                  }
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Thông tin hợp lệ. Chuẩn bị gửi mã OTP.'),
-                    ),
-                  );
-                },
+                onPressed: registering ? null : register,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xff07856d),
                   foregroundColor: Colors.white,
@@ -294,10 +420,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: const Text(
-                  'ĐĂNG KÝ',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                child: registering
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'ĐĂNG KÝ',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
 
@@ -312,7 +450,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    Navigator.pop(context);
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/login',
+                      (route) => false,
+                    );
                   },
                   child: const Text(
                     'Đăng nhập',

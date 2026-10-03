@@ -12,6 +12,7 @@ router.use(authMiddleware);
 router.use(scope.loadMobileScope);
 
 router.get('/me', controller.getMe);
+router.put('/me', controller.updateMe);
 
 // GET /api/elderly         - Lay danh sach (can quyen xem)
 router.get(

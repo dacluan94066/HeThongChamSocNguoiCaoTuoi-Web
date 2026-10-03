@@ -1,47 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'reset_password_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
 
-  const OtpScreen({
-    super.key,
-    required this.phoneNumber,
-  });
+  const OtpScreen({super.key, required this.phoneNumber});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  final List<TextEditingController> controllers =
-      List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> controllers = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
 
-  final List<FocusNode> focusNodes =
-      List.generate(6, (_) => FocusNode());
+  final List<FocusNode> focusNodes = List.generate(6, (_) => FocusNode());
 
   void verifyOtp() {
     final otp = controllers.map((e) => e.text).join();
 
     if (otp.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Vui lòng nhập đủ 6 số OTP.',
-          ),
-        ),
+        const SnackBar(content: Text('Vui lòng nhập đủ 6 số OTP.')),
       );
       return;
     }
 
-    // Hiện tại đang demo giao diện:
-    // chỉ cần nhập đủ 6 số thì cho sang màn đặt mật khẩu mới.
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ResetPasswordScreen(),
-      ),
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Xác thực OTP chưa được máy chủ hỗ trợ.')),
     );
   }
 
@@ -62,11 +50,7 @@ class _OtpScreenState extends State<OtpScreen> {
     focusNodes[0].requestFocus();
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Đã gửi lại mã OTP đến ${maskPhone(widget.phoneNumber)}.',
-        ),
-      ),
+      const SnackBar(content: Text('Gửi lại OTP chưa được máy chủ hỗ trợ.')),
     );
   }
 
@@ -92,10 +76,7 @@ class _OtpScreenState extends State<OtpScreen> {
         focusNode: focusNodes[index],
         keyboardType: TextInputType.number,
         textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
-        ),
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         inputFormatters: [
           FilteringTextInputFormatter.digitsOnly,
           LengthLimitingTextInputFormatter(1),
@@ -113,10 +94,7 @@ class _OtpScreenState extends State<OtpScreen> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(
-              color: Color(0xff07856d),
-              width: 1.5,
-            ),
+            borderSide: const BorderSide(color: Color(0xff07856d), width: 1.5),
           ),
         ),
         onChanged: (value) {
@@ -142,9 +120,7 @@ class _OtpScreenState extends State<OtpScreen> {
         elevation: 0,
         title: const Text(
           'Xác minh OTP',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
 
@@ -176,10 +152,7 @@ class _OtpScreenState extends State<OtpScreen> {
             const Center(
               child: Text(
                 'Nhập mã xác thực',
-                style: TextStyle(
-                  fontSize: 27,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 27, fontWeight: FontWeight.bold),
               ),
             ),
 
@@ -201,10 +174,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(
-                6,
-                (index) => otpBox(index),
-              ),
+              children: List.generate(6, (index) => otpBox(index)),
             ),
 
             const SizedBox(height: 30),
@@ -224,10 +194,7 @@ class _OtpScreenState extends State<OtpScreen> {
                 ),
                 child: const Text(
                   'XÁC NHẬN',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -239,9 +206,7 @@ class _OtpScreenState extends State<OtpScreen> {
                 children: [
                   const Text(
                     'Không nhận được mã?',
-                    style: TextStyle(
-                      color: Colors.black54,
-                    ),
+                    style: TextStyle(color: Colors.black54),
                   ),
 
                   TextButton(

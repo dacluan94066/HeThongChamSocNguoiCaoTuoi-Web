@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../services/profile_storage.dart';
+import '../../services/api_client.dart';
+import '../../services/elderly_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -21,14 +22,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   final TextEditingController bloodTypeController = TextEditingController();
 
-  final TextEditingController heightController = TextEditingController();
-
-  final TextEditingController weightController = TextEditingController();
+  final TextEditingController benhNenController = TextEditingController();
+  final TextEditingController diUngController = TextEditingController();
 
   String gender = 'Nam';
 
   bool loading = true;
   bool saving = false;
+  String? loadError;
 
   @override
   void initState() {
@@ -37,25 +38,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> loadProfile() async {
-    final data = await ProfileStorage.loadProfile();
-
-    nameController.text = data['name'] ?? '';
-    birthController.text = data['birthDate'] ?? '';
-    phoneController.text = data['phone'] ?? '';
-    addressController.text = data['address'] ?? '';
-    bloodTypeController.text = data['bloodType'] ?? '';
-    heightController.text = data['height'] ?? '';
-    weightController.text = data['weight'] ?? '';
-
-    gender = data['gender'] ?? 'Nam';
-
-    if (!mounted) {
-      return;
-    }
-
     setState(() {
-      loading = false;
+      loading = true;
+      loadError = null;
     });
+    try {
+      final data = await ElderlyService.instance.getMyProfile();
+      if (!mounted) return;
+      nameController.text = data['hoTen']?.toString() ?? '';
+      birthController.text = ElderlyService.displayBirthDate(data);
+      phoneController.text = data['soDienThoai']?.toString() ?? '';
+      addressController.text = data['diaChi']?.toString() ?? '';
+      bloodTypeController.text = data['nhomMau']?.toString() ?? '';
+      benhNenController.text = data['benhNen']?.toString() ?? '';
+      diUngController.text = data['diUng']?.toString() ?? '';
+      setState(() {
+        gender = data['gioiTinh']?.toString() ?? 'Nam';
+        loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        loadError = error.message;
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        loadError = 'Không thể tải hồ sơ. Vui lòng thử lại.';
+        loading = false;
+      });
+    }
   }
 
   @override
@@ -65,8 +78,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     phoneController.dispose();
     addressController.dispose();
     bloodTypeController.dispose();
-    heightController.dispose();
-    weightController.dispose();
+    benhNenController.dispose();
+    diUngController.dispose();
 
     super.dispose();
   }
@@ -74,7 +87,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> selectBirthDate() async {
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: DateTime(1948, 6, 10),
+      initialDate:
+          ElderlyService.birthDate({
+            'ngaySinh': birthController.text.split('/').reversed.join('-'),
+          }) ??
+          DateTime(1950),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
     );
@@ -96,10 +113,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final phone = phoneController.text.trim();
     final address = addressController.text.trim();
     final bloodType = bloodTypeController.text.trim();
-    final height = heightController.text.trim();
-    final weight = weightController.text.trim();
+    final benhNen = benhNenController.text.trim();
+    final diUng = diUngController.text.trim();
 
-    if (name.isEmpty || birthDate.isEmpty || phone.isEmpty || address.isEmpty) {
+    if (name.isEmpty || birthDate.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Vui lòng nhập đầy đủ thông tin cá nhân.'),
@@ -108,7 +125,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
-    if (phone.length != 10 || !phone.startsWith('0')) {
+    if (phone.isNotEmpty && (phone.length != 10 || !phone.startsWith('0'))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Số điện thoại phải gồm 10 số và bắt đầu bằng 0.'),
@@ -121,30 +138,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       saving = true;
     });
 
-    await ProfileStorage.saveProfile(
-      name: name,
-      birthDate: birthDate,
-      gender: gender,
-      phone: phone,
-      address: address,
-      bloodType: bloodType.isEmpty ? 'Chưa cập nhật' : bloodType,
-      height: height.isEmpty ? '0' : height,
-      weight: weight.isEmpty ? '0' : weight,
-    );
-
-    if (!mounted) {
+    final parts = birthDate.split('/');
+    if (parts.length != 3) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ngày sinh không hợp lệ.')));
+      setState(() => saving = false);
       return;
     }
-
-    setState(() {
-      saving = false;
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Đã lưu thông tin hồ sơ.')));
-
-    Navigator.pop(context, true);
+    try {
+      await ElderlyService.instance.updateMyProfile({
+        'hoTen': name,
+        'ngaySinh': '${parts[2]}-${parts[1]}-${parts[0]}',
+        'gioiTinh': gender,
+        'soDienThoai': phone,
+        'diaChi': address,
+        'nhomMau': bloodType,
+        'benhNen': benhNen,
+        'diUng': diUng,
+      });
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể lưu hồ sơ. Vui lòng thử lại.')),
+      );
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
   }
 
   Widget buildTextField({
@@ -218,6 +245,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xff07856d)),
             )
+          : loadError != null
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(loadError!, textAlign: TextAlign.center),
+                  ElevatedButton(
+                    onPressed: loadProfile,
+                    child: const Text('Thử lại'),
+                  ),
+                ],
+              ),
+            )
           : SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
               child: Column(
@@ -289,7 +329,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 8),
 
                   DropdownButtonFormField<String>(
-                    value: gender,
+                    initialValue: gender,
                     items: const [
                       DropdownMenuItem(value: 'Nam', child: Text('Nam')),
                       DropdownMenuItem(value: 'Nữ', child: Text('Nữ')),
@@ -355,31 +395,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 16),
 
                   buildTextField(
-                    label: 'Chiều cao',
-                    controller: heightController,
-                    icon: Icons.height_rounded,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
-                    suffixText: 'cm',
+                    label: 'Bệnh nền',
+                    controller: benhNenController,
+                    icon: Icons.medical_information_outlined,
                   ),
 
                   const SizedBox(height: 16),
 
                   buildTextField(
-                    label: 'Cân nặng',
-                    controller: weightController,
-                    icon: Icons.monitor_weight_outlined,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
-                    suffixText: 'kg',
+                    label: 'Dị ứng',
+                    controller: diUngController,
+                    icon: Icons.healing_outlined,
                   ),
 
                   const SizedBox(height: 28),

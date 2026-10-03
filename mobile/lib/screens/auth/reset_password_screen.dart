@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../services/auth_storage.dart';
-
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
 
@@ -16,7 +14,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   bool showNewPassword = false;
   bool showConfirmPassword = false;
-  bool saving = false;
 
   @override
   void dispose() {
@@ -55,99 +52,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       return;
     }
 
-    setState(() {
-      saving = true;
-    });
-
-    await AuthStorage.changePassword(newPassword);
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      saving = false;
-    });
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 68,
-                height: 68,
-                decoration: const BoxDecoration(
-                  color: Color(0xffe8f8ee),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(0xff07856d),
-                  size: 40,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              const Text(
-                'Đặt lại mật khẩu thành công',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-              ),
-
-              const SizedBox(height: 8),
-
-              const Text(
-                'Bạn có thể đăng nhập bằng mật khẩu mới.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.black54,
-                  height: 1.4,
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xff07856d),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text(
-                    'VỀ ĐĂNG NHẬP',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đặt lại mật khẩu qua OTP chưa được máy chủ hỗ trợ.'),
+      ),
     );
-
-    if (!mounted) {
-      return;
-    }
-
-    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   Widget buildPasswordField({
@@ -297,7 +206,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               width: double.infinity,
               height: 54,
               child: ElevatedButton(
-                onPressed: saving ? null : resetPassword,
+                onPressed: resetPassword,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xff07856d),
                   foregroundColor: Colors.white,
@@ -307,19 +216,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: saving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'LƯU MẬT KHẨU MỚI',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                child: const Text(
+                  'LƯU MẬT KHẨU MỚI',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],

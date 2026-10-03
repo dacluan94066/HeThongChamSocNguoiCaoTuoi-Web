@@ -4,4 +4,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Chi cho phep HTTP khi chay debug de Emulator goi backend local. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

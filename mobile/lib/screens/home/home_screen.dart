@@ -4,7 +4,8 @@ import '../../services/appointment_storage.dart';
 import '../../services/health_storage.dart';
 import '../../services/medication_storage.dart';
 import '../../services/notification_storage.dart';
-import '../../services/profile_storage.dart';
+import '../../services/api_client.dart';
+import '../../services/elderly_service.dart';
 
 import '../appointments/appointment_screen.dart';
 import '../caregiver/caregiver_screen.dart';
@@ -24,7 +25,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int selectedIndex = 0;
   int unreadNotificationCount = 0;
 
-  Map<String, String> profile = {};
+  Map<String, dynamic> profile = {};
+  String? profileError;
   Map<String, String> healthData = {};
   Map<String, bool> medicationStatus = {};
   Map<String, String> reminderTimes = {};
@@ -46,9 +48,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // LOAD ALL
   // =====================================================
 
-  Future<void> loadAllData() async {
+  Future<void> loadAllData({bool refreshProfile = false}) async {
     await Future.wait([
-      loadProfile(),
+      loadProfile(refresh: refreshProfile),
       loadHealthData(),
       loadMedicationStatus(),
       loadReminderTimes(),
@@ -61,17 +63,28 @@ class _HomeScreenState extends State<HomeScreen> {
   // PROFILE
   // =====================================================
 
-  Future<void> loadProfile() async {
-    final data = await ProfileStorage.loadProfile();
-
-    if (!mounted) {
-      return;
+  Future<void> loadProfile({bool refresh = false}) async {
+    try {
+      final data = await ElderlyService.instance.getMyProfile(refresh: refresh);
+      if (!mounted) return;
+      setState(() {
+        profile = data;
+        profileError = null;
+        loadingProfile = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        profileError = error.message;
+        loadingProfile = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        profileError = 'Không thể tải hồ sơ.';
+        loadingProfile = false;
+      });
     }
-
-    setState(() {
-      profile = data;
-      loadingProfile = false;
-    });
   }
 
   // =====================================================
@@ -161,35 +174,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // CALCULATE AGE
   // =====================================================
 
-  int calculateAge(String birthDate) {
-    try {
-      final parts = birthDate.split('/');
-
-      if (parts.length != 3) {
-        return 0;
-      }
-
-      final day = int.parse(parts[0]);
-      final month = int.parse(parts[1]);
-      final year = int.parse(parts[2]);
-
-      final birth = DateTime(year, month, day);
-
-      final now = DateTime.now();
-
-      int age = now.year - birth.year;
-
-      if (now.month < birth.month ||
-          (now.month == birth.month && now.day < birth.day)) {
-        age--;
-      }
-
-      return age;
-    } catch (_) {
-      return 0;
-    }
-  }
-
   // =====================================================
   // OPEN PROFILE
   // =====================================================
@@ -265,13 +249,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final name = profile['name'] ?? 'Nguyễn Văn An';
-
-    final birthDate = profile['birthDate'] ?? '10/06/1948';
-
-    final gender = profile['gender'] ?? 'Nam';
-
-    final age = calculateAge(birthDate);
+    final name = profileError == null
+        ? ElderlyService.text(profile, 'hoTen')
+        : profileError!;
+    final gender = ElderlyService.text(profile, 'gioiTinh');
+    final age = ElderlyService.displayAge(profile);
 
     final heartRate = healthData['heartRate'] ?? '72';
 
@@ -310,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: loadAllData,
+          onRefresh: () => loadAllData(refreshProfile: true),
           color: const Color(0xff07856d),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -496,7 +478,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               const SizedBox(height: 4),
 
                               Text(
-                                '$age tuổi • $gender',
+                                '$age • $gender',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   color: Colors.black54,

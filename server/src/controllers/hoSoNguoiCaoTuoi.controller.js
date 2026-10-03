@@ -36,6 +36,62 @@ const getMe = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// PUT /api/elderly/me - chi cap nhat ho so gan voi JWT cua NguoiCaoTuoi.
+const updateMe = async (req, res, next) => {
+  try {
+    if (req.user.tenVaiTro !== 'NguoiCaoTuoi') {
+      return fail(res, 'Chi nguoi cao tuoi duoc sua ho so cua minh', 'FORBIDDEN', 403);
+    }
+
+    const allowed = ['hoTen', 'ngaySinh', 'gioiTinh', 'soDienThoai', 'diaChi', 'nhomMau', 'benhNen', 'diUng'];
+    const fields = Object.keys(req.body || {});
+    if (!fields.length || fields.some((field) => !allowed.includes(field))) {
+      return fail(res, 'Du lieu cap nhat khong hop le; khong duoc sua CCCD', 'INVALID_FIELDS', 400);
+    }
+
+    const { hoTen, ngaySinh, gioiTinh } = req.body;
+    if (hoTen !== undefined && (typeof hoTen !== 'string' || !hoTen.trim())) {
+      return fail(res, 'Ho ten khong duoc de trong', 'INVALID_NAME', 400);
+    }
+    if (ngaySinh !== undefined) {
+      const date = typeof ngaySinh === 'string' ? new Date(`${ngaySinh}T00:00:00Z`) : new Date(NaN);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ngaySinh)
+        || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== ngaySinh
+        || date > new Date()) {
+        return fail(res, 'Ngay sinh phai theo YYYY-MM-DD va khong duoc o tuong lai', 'INVALID_BIRTH_DATE', 400);
+      }
+    }
+    if (gioiTinh !== undefined && !['Nam', 'Nữ', 'Khác'].includes(gioiTinh)) {
+      return fail(res, 'Gioi tinh khong hop le', 'INVALID_GENDER', 400);
+    }
+    for (const field of ['soDienThoai', 'diaChi', 'nhomMau', 'benhNen', 'diUng']) {
+      if (req.body[field] !== undefined && req.body[field] !== null
+        && typeof req.body[field] !== 'string') {
+        return fail(res, `${field} phai la chuoi`, 'INVALID_FIELD_TYPE', 400);
+      }
+    }
+
+    const columns = {
+      hoTen: 'HoTen', ngaySinh: 'NgaySinh', gioiTinh: 'GioiTinh',
+      soDienThoai: 'SoDienThoai', diaChi: 'DiaChi', nhomMau: 'NhomMau',
+      benhNen: 'BenhNen', diUng: 'DiUng',
+    };
+    const pool = await poolPromise;
+    const request = pool.request().input('userId', sql.Int, req.user.userId);
+    for (const field of fields) {
+      const value = req.body[field];
+      request.input(field, field === 'ngaySinh' ? sql.Date : sql.NVarChar,
+        typeof value === 'string' ? value.trim() || null : value);
+    }
+    const setters = fields.map((field) => `${columns[field]} = @${field}`).join(', ');
+    const result = await request.query(`UPDATE HoSoNguoiCaoTuoi SET ${setters} WHERE UserID = @userId`);
+    if (!result.rowsAffected[0]) {
+      return fail(res, 'Tai khoan chua co ho so nguoi cao tuoi lien ket', 'ELDERLY_PROFILE_NOT_FOUND', 404);
+    }
+    return getMe(req, res, next);
+  } catch (error) { next(error); }
+};
+
 // ─── LAY DANH SACH ────────────────────────────────────────────────────────────
 // GET /api/elderly?keyword=<tu_khoa>
 // Ho tro tim kiem theo HoTen, sap xep NgayTao giam dan
@@ -340,4 +396,4 @@ const assignCaregiver = async (req, res, next) => {
   }
 };
 
-module.exports = { getMe, getAll, getById, create, update, remove, assignCaregiver };
+module.exports = { getMe, updateMe, getAll, getById, create, update, remove, assignCaregiver };

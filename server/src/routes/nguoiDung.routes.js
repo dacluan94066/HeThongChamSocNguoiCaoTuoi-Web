@@ -7,6 +7,7 @@ const { isMobileRole } = require('../middlewares/mobile-scope.middleware');
 const { fail } = require('../utils/response');
 
 router.use(auth); // Tat ca route nay can dang nhap
+router.put('/me/password', ctrl.changeMyPassword);
 router.use((req, res, next) => isMobileRole(req)
   ? fail(res, 'Khong co quyen quan ly nguoi dung', 'FORBIDDEN', 403)
   : next());

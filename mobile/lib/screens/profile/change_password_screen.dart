@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../services/auth_storage.dart';
+import '../../services/api_client.dart';
+import '../../services/elderly_service.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -32,11 +33,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 
   Future<void> changePassword() async {
-    final currentPassword = currentPasswordController.text.trim();
+    final currentPassword = currentPasswordController.text;
 
-    final newPassword = newPasswordController.text.trim();
+    final newPassword = newPasswordController.text;
 
-    final confirmPassword = confirmPasswordController.text.trim();
+    final confirmPassword = confirmPasswordController.text;
 
     if (currentPassword.isEmpty ||
         newPassword.isEmpty ||
@@ -78,32 +79,34 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       saving = true;
     });
 
-    final validCurrentPassword = await AuthStorage.checkPassword(
-      currentPassword,
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    if (!validCurrentPassword) {
+    try {
+      await ElderlyService.instance.changePassword(
+        currentPassword,
+        newPassword,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
       setState(() {
         saving = false;
       });
-
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        saving = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mật khẩu hiện tại không đúng.')),
+        const SnackBar(
+          content: Text('Không thể đổi mật khẩu. Vui lòng thử lại.'),
+        ),
       );
-
       return;
     }
 
-    await AuthStorage.changePassword(newPassword);
-
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
     setState(() {
       saving = false;
     });
@@ -382,12 +385,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   size: 18,
                   color: Colors.black45,
                 ),
-
                 SizedBox(width: 8),
-
                 Expanded(
                   child: Text(
-                    'Mật khẩu mặc định của bản demo lần đầu là 123456.',
+                    'Mật khẩu được cập nhật trực tiếp trên tài khoản của bạn.',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.black54,

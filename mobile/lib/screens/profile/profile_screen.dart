@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../services/profile_storage.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_client.dart';
+import '../../services/elderly_service.dart';
 import '../alerts/alert_history_screen.dart';
 import '../caregiver/caregiver_screen.dart';
 import 'change_password_screen.dart';
@@ -14,9 +16,10 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  Map<String, String> profile = {};
+  Map<String, dynamic> profile = {};
 
   bool loading = true;
+  String? loadError;
 
   @override
   void initState() {
@@ -25,44 +28,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> loadProfile() async {
-    final data = await ProfileStorage.loadProfile();
-
-    if (!mounted) {
-      return;
-    }
-
     setState(() {
-      profile = data;
-      loading = false;
+      loading = true;
+      loadError = null;
     });
-  }
-
-  int calculateAge(String birthDate) {
     try {
-      final parts = birthDate.split('/');
-
-      if (parts.length != 3) {
-        return 0;
-      }
-
-      final day = int.parse(parts[0]);
-      final month = int.parse(parts[1]);
-      final year = int.parse(parts[2]);
-
-      final birth = DateTime(year, month, day);
-
-      final now = DateTime.now();
-
-      int age = now.year - birth.year;
-
-      if (now.month < birth.month ||
-          (now.month == birth.month && now.day < birth.day)) {
-        age--;
-      }
-
-      return age;
+      final data = await ElderlyService.instance.getMyProfile();
+      if (!mounted) return;
+      setState(() {
+        profile = data;
+        loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        loadError = error.message;
+        loading = false;
+      });
     } catch (_) {
-      return 0;
+      if (!mounted) return;
+      setState(() {
+        loadError = 'Không thể tải hồ sơ. Vui lòng thử lại.';
+        loading = false;
+      });
     }
   }
 
@@ -74,6 +62,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (changed == true) {
       await loadProfile();
+      if (mounted && loadError == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã cập nhật hồ sơ thành công.')),
+        );
+      }
     }
   }
 
@@ -88,23 +81,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    final name = profile['name'] ?? 'Nguyễn Văn An';
+    if (loadError != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Hồ sơ cá nhân')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(loadError!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: loadProfile,
+                child: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-    final birthDate = profile['birthDate'] ?? '10/06/1948';
-
-    final gender = profile['gender'] ?? 'Nam';
-
-    final phone = profile['phone'] ?? '0912345678';
-
-    final address = profile['address'] ?? 'TP. Hồ Chí Minh';
-
-    final bloodType = profile['bloodType'] ?? 'O+';
-
-    final height = profile['height'] ?? '165';
-
-    final weight = profile['weight'] ?? '60';
-
-    final age = calculateAge(birthDate);
+    final name = ElderlyService.text(profile, 'hoTen');
+    final birthDate = ElderlyService.displayBirthDate(profile);
+    final gender = ElderlyService.text(profile, 'gioiTinh');
+    final phone = ElderlyService.text(profile, 'soDienThoai');
+    final address = ElderlyService.text(profile, 'diaChi');
+    final bloodType = ElderlyService.text(profile, 'nhomMau');
+    final benhNen = ElderlyService.text(profile, 'benhNen');
+    final diUng = ElderlyService.text(profile, 'diUng');
+    final caregiver = ElderlyService.text(profile, 'nguoiChamSocTen');
+    final age = ElderlyService.displayAge(profile);
 
     return Scaffold(
       backgroundColor: const Color(0xfff3f3f1),
@@ -157,7 +162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 5),
 
                   Text(
-                    '$age tuổi • $gender',
+                    '$age • $gender',
                     style: const TextStyle(fontSize: 14, color: Colors.black54),
                   ),
                 ],
@@ -254,17 +259,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const Divider(height: 24),
 
                   ProfileItem(
-                    icon: Icons.height_rounded,
-                    title: 'Chiều cao',
-                    value: '$height cm',
+                    icon: Icons.medical_information_outlined,
+                    title: 'Bệnh nền',
+                    value: benhNen,
                   ),
 
                   const Divider(height: 24),
 
                   ProfileItem(
-                    icon: Icons.monitor_weight_outlined,
-                    title: 'Cân nặng',
-                    value: '$weight kg',
+                    icon: Icons.healing_outlined,
+                    title: 'Dị ứng',
+                    value: diUng,
                   ),
                 ],
               ),
@@ -296,9 +301,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    CircleAvatar(
+                    const CircleAvatar(
                       radius: 28,
                       backgroundColor: Color(0xffe9efff),
                       child: Icon(
@@ -308,40 +313,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
 
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
 
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Nguyễn Văn Bình',
-                            style: TextStyle(
+                            caregiver,
+                            style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Con trai',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.black54,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            '0909876543',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.black54,
                             ),
                           ),
                         ],
                       ),
                     ),
 
-                    Icon(Icons.chevron_right_rounded, color: Colors.black38),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.black38,
+                    ),
                   ],
                 ),
               ),
@@ -461,12 +453,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: const Text('Hủy'),
                           ),
                           ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
+                            onPressed: () async {
+                              await AuthService.instance.logout();
 
-                              Navigator.of(
-                                context,
-                              ).popUntil((route) => route.isFirst);
+                              if (!context.mounted) return;
+
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                '/login',
+                                (route) => false,
+                              );
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xffd84444),

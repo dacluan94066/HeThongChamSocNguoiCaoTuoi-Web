@@ -5,6 +5,34 @@ const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const bcrypt = require('bcryptjs');
 
+// PUT /api/users/me/password - doi mat khau cua tai khoan trong JWT.
+const changeMyPassword = async (req, res, next) => {
+  try {
+    const { matKhauCu, matKhauMoi } = req.body || {};
+    if (typeof matKhauCu !== 'string' || !matKhauCu
+      || typeof matKhauMoi !== 'string' || matKhauMoi.length < 6) {
+      return fail(res, 'Can mat khau cu va mat khau moi it nhat 6 ky tu', 'INVALID_PASSWORD', 400);
+    }
+    if (matKhauCu === matKhauMoi) {
+      return fail(res, 'Mat khau moi phai khac mat khau cu', 'SAME_PASSWORD', 400);
+    }
+    const pool = await poolPromise;
+    const result = await pool.request().input('userId', sql.Int, req.user.userId)
+      .query('SELECT MatKhauHash FROM NguoiDung WHERE UserID = @userId');
+    if (!result.recordset.length) {
+      return fail(res, 'Khong tim thay tai khoan', 'USER_NOT_FOUND', 404);
+    }
+    if (!await bcrypt.compare(matKhauCu, result.recordset[0].MatKhauHash)) {
+      return fail(res, 'Mat khau cu khong chinh xac', 'INVALID_CURRENT_PASSWORD', 400);
+    }
+    const hash = await bcrypt.hash(matKhauMoi, 10);
+    await pool.request().input('userId', sql.Int, req.user.userId)
+      .input('matKhauHash', sql.NVarChar, hash)
+      .query('UPDATE NguoiDung SET MatKhauHash = @matKhauHash WHERE UserID = @userId');
+    return ok(res, null, 'Doi mat khau thanh cong');
+  } catch (error) { next(error); }
+};
+
 const VAI_TRO_MAP = {
   1: { ma: 'QUAN_TRI',      label: 'Quản trị viên' },
   2: { ma: 'BAC_SI',        label: 'Bác sĩ' },
@@ -135,4 +163,4 @@ const toggleStatus = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAll, getById, create, update, toggleStatus };
+module.exports = { changeMyPassword, getAll, getById, create, update, toggleStatus };

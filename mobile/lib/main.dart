@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'services/local_notification_service.dart';
 import 'services/auth_storage.dart';
+import 'services/api_client.dart';
+import 'services/auth_service.dart';
 import 'screens/home/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await AuthStorage.clearLegacyPlainTextPassword();
   await LocalNotificationService.initialize();
 
   runApp(const ElderlyCareApp());
@@ -21,6 +23,7 @@ class ElderlyCareApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: ApiClient.navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Chăm sóc người cao tuổi',
       theme: ThemeData(
@@ -28,7 +31,118 @@ class ElderlyCareApp extends StatelessWidget {
         fontFamily: 'Arial',
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff07856d)),
       ),
-      home: const WelcomeScreen(),
+      routes: {
+        '/welcome': (_) => const WelcomeScreen(),
+        '/login': (_) => const LoginScreen(),
+        '/home': (_) => const HomeScreen(),
+      },
+      home: const SplashScreen(),
+    );
+  }
+}
+
+// ======================================================
+// MÀN HÌNH KHỞI ĐỘNG - KHÔI PHỤC PHIÊN ĐĂNG NHẬP
+// ======================================================
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  String? _connectionError;
+  bool _checkingSession = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    if (_checkingSession) return;
+    setState(() {
+      _checkingSession = true;
+      _connectionError = null;
+    });
+
+    final authService = AuthService.instance;
+    final token = await authService.getToken();
+
+    if (!mounted) return;
+    if (token == null || token.isEmpty) {
+      Navigator.pushReplacementNamed(context, '/welcome');
+      return;
+    }
+
+    try {
+      await authService.getMe();
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/home');
+    } on ApiException catch (error) {
+      if (error.statusCode == 401) {
+        await authService.logout();
+        if (!mounted) return;
+        ApiClient.redirectToLogin();
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _checkingSession = false;
+        _connectionError = error.isConnectionFailure
+            ? 'Không thể kết nối máy chủ, kiểm tra lại mạng'
+            : error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _checkingSession = false;
+        _connectionError = 'Không thể kết nối máy chủ, kiểm tra lại mạng';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xff07856d),
+      body: Center(
+        child: _connectionError == null
+            ? const CircularProgressIndicator(color: Colors.white)
+            : Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.cloud_off_rounded,
+                      color: Colors.white,
+                      size: 64,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      _connectionError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _checkingSession ? null : _restoreSession,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Thử lại'),
+                    ),
+                  ],
+                ),
+              ),
+      ),
     );
   }
 }
@@ -242,7 +356,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
 
   final TextEditingController passwordController = TextEditingController();
 
@@ -252,35 +366,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    phoneController.dispose();
+    usernameController.dispose();
     passwordController.dispose();
 
     super.dispose();
   }
 
   Future<void> login() async {
-    final phone = phoneController.text.trim();
-    final password = passwordController.text.trim();
+    final username = usernameController.text.trim();
+    final password = passwordController.text;
 
     // ==================================================
     // KIỂM TRA BỎ TRỐNG
     // ==================================================
-    if (phone.isEmpty || password.isEmpty) {
+    if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập số điện thoại và mật khẩu.'),
+          content: Text('Vui lòng nhập tên đăng nhập và mật khẩu.'),
         ),
-      );
-
-      return;
-    }
-
-    // ==================================================
-    // KIỂM TRA SỐ ĐIỆN THOẠI
-    // ==================================================
-    if (phone.length != 10 || !phone.startsWith('0')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Số điện thoại không hợp lệ.')),
       );
 
       return;
@@ -301,38 +404,28 @@ class _LoginScreenState extends State<LoginScreen> {
       loggingIn = true;
     });
 
-    // ==================================================
-    // KIỂM TRA MẬT KHẨU ĐÃ LƯU
-    // ==================================================
-    final passwordCorrect = await AuthStorage.checkPassword(password);
+    try {
+      await AuthService.instance.login(username, password);
+      if (!mounted) return;
 
-    if (!mounted) {
-      return;
-    }
-
-    if (!passwordCorrect) {
-      setState(() {
-        loggingIn = false;
-      });
-
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mật khẩu không chính xác.')),
+        const SnackBar(content: Text('Không thể đăng nhập. Vui lòng thử lại.')),
       );
-
-      return;
+    } finally {
+      if (mounted) {
+        setState(() {
+          loggingIn = false;
+        });
+      }
     }
-
-    setState(() {
-      loggingIn = false;
-    });
-
-    // ==================================================
-    // ĐĂNG NHẬP THÀNH CÔNG
-    // ==================================================
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-    );
   }
 
   @override
@@ -376,25 +469,23 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 35),
 
             // ==================================================
-            // SỐ ĐIỆN THOẠI
+            // TÊN ĐĂNG NHẬP
             // ==================================================
             const Text(
-              'Số điện thoại',
+              'Tên đăng nhập',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
 
             TextField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(10),
-              ],
+              controller: usernameController,
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.next,
+              autocorrect: false,
               decoration: InputDecoration(
-                hintText: 'VD: 0912345678',
-                prefixIcon: const Icon(Icons.phone_outlined),
+                hintText: 'Nhập tên đăng nhập',
+                prefixIcon: const Icon(Icons.person_outline),
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
