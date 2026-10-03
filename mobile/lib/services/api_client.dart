@@ -54,14 +54,21 @@ class ApiClient {
 
   late final Dio dio;
   static bool _redirectScheduled = false;
+  static int _sessionVersion = 0;
+
+  static int get sessionVersion => _sessionVersion;
 
   static bool _isPublicAuthPath(String path) {
     return path.endsWith('/auth/login') || path.endsWith('/auth/register');
   }
 
   static Future<void> clearSession() async {
-    await storage.delete(key: tokenKey);
-    await storage.delete(key: userKey);
+    // Tang version ngay lap tuc de moi request/cache cua phien cu het hieu luc.
+    _sessionVersion++;
+    await Future.wait([
+      storage.delete(key: tokenKey),
+      storage.delete(key: userKey),
+    ]);
   }
 
   static void redirectToLogin() {

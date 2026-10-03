@@ -9,28 +9,81 @@ class ElderlyService {
 
   Map<String, dynamic>? _cachedProfile;
   Future<Map<String, dynamic>>? _inFlight;
+  String? _ownerUserId;
+  int _generation = 0;
+  int _cacheSessionVersion = -1;
+  int _inFlightSessionVersion = -1;
+  int _inFlightGeneration = -1;
 
-  Map<String, dynamic>? get cachedProfile => _cachedProfile == null
-      ? null
-      : Map<String, dynamic>.from(_cachedProfile!);
-
-  int? get myElderlyId => _cachedProfile?['id'] is int
-      ? _cachedProfile!['id'] as int
-      : int.tryParse(_cachedProfile?['id']?.toString() ?? '');
-
-  Future<Map<String, dynamic>> getMyProfile({bool refresh = false}) {
-    if (!refresh && _cachedProfile != null) {
-      return Future.value(Map<String, dynamic>.from(_cachedProfile!));
+  Map<String, dynamic>? get cachedProfile {
+    if (_cachedProfile == null ||
+        _cacheSessionVersion != ApiClient.sessionVersion) {
+      return null;
     }
-    return _inFlight ??= _getProfile().whenComplete(() => _inFlight = null);
+    return Map<String, dynamic>.from(_cachedProfile!);
   }
 
-  Future<Map<String, dynamic>> _getProfile() async {
+  int? get myElderlyId {
+    final profile = cachedProfile;
+    return profile?['id'] is int
+        ? profile!['id'] as int
+        : int.tryParse(profile?['id']?.toString() ?? '');
+  }
+
+  void beginSession(Object? userId) {
+    clearCache();
+    _ownerUserId = userId?.toString();
+  }
+
+  Future<Map<String, dynamic>> getMyProfile({bool refresh = false}) {
+    final sessionVersion = ApiClient.sessionVersion;
+    final generation = _generation;
+
+    if (!refresh &&
+        _cachedProfile != null &&
+        _cacheSessionVersion == sessionVersion) {
+      return Future.value(Map<String, dynamic>.from(_cachedProfile!));
+    }
+    if (_inFlight != null &&
+        _inFlightSessionVersion == sessionVersion &&
+        _inFlightGeneration == generation) {
+      return _inFlight!;
+    }
+
+    late final Future<Map<String, dynamic>> request;
+    request =
+        _getProfile(
+          generation: generation,
+          sessionVersion: sessionVersion,
+          ownerUserId: _ownerUserId,
+        ).whenComplete(() {
+          if (identical(_inFlight, request)) {
+            _inFlight = null;
+            _inFlightSessionVersion = -1;
+            _inFlightGeneration = -1;
+          }
+        });
+    _inFlight = request;
+    _inFlightSessionVersion = sessionVersion;
+    _inFlightGeneration = generation;
+    return request;
+  }
+
+  Future<Map<String, dynamic>> _getProfile({
+    required int generation,
+    required int sessionVersion,
+    required String? ownerUserId,
+  }) async {
     try {
       final response = await ApiClient.instance.dio.get<Map<String, dynamic>>(
         '/elderly/me',
       );
-      return _remember(response);
+      return _remember(
+        response,
+        generation: generation,
+        sessionVersion: sessionVersion,
+        ownerUserId: ownerUserId,
+      );
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
     }
@@ -39,12 +92,20 @@ class ElderlyService {
   Future<Map<String, dynamic>> updateMyProfile(
     Map<String, dynamic> data,
   ) async {
+    final generation = _generation;
+    final sessionVersion = ApiClient.sessionVersion;
+    final ownerUserId = _ownerUserId;
     try {
       final response = await ApiClient.instance.dio.put<Map<String, dynamic>>(
         '/elderly/me',
         data: data,
       );
-      return _remember(response);
+      return _remember(
+        response,
+        generation: generation,
+        sessionVersion: sessionVersion,
+        ownerUserId: ownerUserId,
+      );
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
     }
@@ -61,7 +122,12 @@ class ElderlyService {
     }
   }
 
-  Map<String, dynamic> _remember(Response<Map<String, dynamic>> response) {
+  Map<String, dynamic> _remember(
+    Response<Map<String, dynamic>> response, {
+    required int generation,
+    required int sessionVersion,
+    required String? ownerUserId,
+  }) {
     final data = response.data?['data'];
     if (data is! Map) {
       throw ApiException(
@@ -69,13 +135,24 @@ class ElderlyService {
         statusCode: response.statusCode,
       );
     }
-    _cachedProfile = Map<String, dynamic>.from(data);
-    return Map<String, dynamic>.from(_cachedProfile!);
+    final profile = Map<String, dynamic>.from(data);
+    if (_generation == generation &&
+        ApiClient.sessionVersion == sessionVersion &&
+        _ownerUserId == ownerUserId) {
+      _cachedProfile = profile;
+      _cacheSessionVersion = sessionVersion;
+    }
+    return Map<String, dynamic>.from(profile);
   }
 
   void clearCache() {
+    _generation++;
     _cachedProfile = null;
     _inFlight = null;
+    _ownerUserId = null;
+    _cacheSessionVersion = -1;
+    _inFlightSessionVersion = -1;
+    _inFlightGeneration = -1;
   }
 
   static String text(Map<String, dynamic> profile, String key) {

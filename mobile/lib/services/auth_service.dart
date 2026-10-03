@@ -13,6 +13,11 @@ class AuthService {
   Dio get _dio => ApiClient.instance.dio;
 
   Future<Map<String, dynamic>> login(String tenDangNhap, String matKhau) async {
+    // Huy du lieu cua tai khoan truoc ngay khi bat dau lan dang nhap moi.
+    // Response ho so dang chay cua phien cu cung bi danh dau het hieu luc.
+    ElderlyService.instance.clearCache();
+    await ApiClient.clearSession();
+
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/auth/login',
@@ -31,12 +36,15 @@ class AuthService {
       }
 
       final userMap = Map<String, dynamic>.from(user);
-      ElderlyService.instance.clearCache();
       await ApiClient.storage.write(key: ApiClient.tokenKey, value: token);
       await ApiClient.storage.write(
         key: ApiClient.userKey,
         value: jsonEncode(userMap),
       );
+
+      ElderlyService.instance.beginSession(userMap['userId']);
+      // Nap dung ho so cua tai khoan moi truoc khi LoginScreen mo HomeScreen.
+      await ElderlyService.instance.getMyProfile(refresh: true);
 
       return userMap;
     } on DioException catch (error) {
@@ -94,7 +102,10 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> getMe() async {
-    return _get('/auth/me');
+    final user = await _get('/auth/me');
+    ElderlyService.instance.beginSession(user['userId']);
+    await ElderlyService.instance.getMyProfile(refresh: true);
+    return user;
   }
 
   Future<Map<String, dynamic>> getMyElderlyProfile() async {
