@@ -3,6 +3,7 @@
 //   NgayGhi (DATETIME2), HoatDong, MoTaChiTiet, HinhAnh
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
 
 const mapNote = (row) => ({
   id:               row.id,
@@ -41,6 +42,7 @@ const getAll = async (req, res, next) => {
     const req2 = pool.request();
     if (nguoiCaoTuoiId) { query += ` AND n.NguoiCaoTuoiID=@nctId`; req2.input('nctId', sql.Int, parseInt(nguoiCaoTuoiId)); }
     if (ngay) { query += ` AND CAST(n.NgayGhi AS DATE)=@ngay`; req2.input('ngay', sql.Date, ngay); }
+    query += scopedWhere(req, 'n.NguoiCaoTuoiID');
     query += ` ORDER BY n.NgayGhi DESC`;
 
     const result = await req2.query(query);
@@ -52,7 +54,9 @@ const getAll = async (req, res, next) => {
 // Frontend gui: nguoiCaoTuoiId, tieuDe (->HoatDong), noiDung (->MoTaChiTiet)
 const create = async (req, res, next) => {
   try {
-    const { nguoiCaoTuoiId, tieuDe, noiDung } = req.body;
+    const { tieuDe, noiDung } = req.body;
+    const nguoiCaoTuoiId = targetElderlyId(req, req.body.nguoiCaoTuoiId);
+    if (isMobileRole(req) && nguoiCaoTuoiId == null) return fail(res, 'Khong co quyen ghi nhat ky cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
     if (!nguoiCaoTuoiId || !tieuDe || !noiDung)
       return fail(res, 'nguoiCaoTuoiId, tieuDe, noiDung la bat buoc', 'MISSING_FIELDS', 400);
 

@@ -2,7 +2,9 @@
 const router = express.Router();
 const ctrl = require('../controllers/chiSoSucKhoe.controller');
 const auth = require('../middlewares/auth.middleware');
+const { loadMobileScope } = require('../middlewares/mobile-scope.middleware');
 router.use(auth);
+router.use(loadMobileScope);
 router.get('/',  ctrl.getAll);
 router.post('/', ctrl.create);
 module.exports = router;

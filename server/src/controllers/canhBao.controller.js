@@ -3,6 +3,7 @@
 //   TrangThai (ChuaXuLy|DaXem|DaXuLy|BoQua), NgayTao, NgayXuLy, NguoiXuLyID
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
 
 const MUC_DO = {
   Thap:      { ma: 'THAP',       label: 'Thấp' },
@@ -144,6 +145,7 @@ const getAll = async (req, res, next) => {
       const dbVal = Object.keys(TRANG_THAI).find((k) => TRANG_THAI[k].ma === trangThai) || trangThai;
       query += ` AND c.TrangThai = @trangThai`; req2.input('trangThai', sql.NVarChar, dbVal);
     }
+    query += scopedWhere(req, 'c.NguoiCaoTuoiID');
     query += ` ORDER BY c.NgayTao DESC`;
     const result = await req2.query(query);
     return ok(res, result.recordset.map(mapAlert));

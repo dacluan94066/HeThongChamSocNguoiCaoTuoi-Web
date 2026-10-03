@@ -2,9 +2,11 @@
 const router = express.Router();
 const ctrl = require('../controllers/lichKhamBenh.controller');
 const auth = require('../middlewares/auth.middleware');
+const { loadMobileScope, guardResource, caregiverOnlyWrite } = require('../middlewares/mobile-scope.middleware');
 router.use(auth);
+router.use(loadMobileScope);
 router.get('/',             ctrl.getAll);
-router.post('/',            ctrl.create);
-router.put('/:id',          ctrl.update);
-router.patch('/:id/cancel', ctrl.cancel);
+router.post('/',            caregiverOnlyWrite, ctrl.create);
+router.put('/:id',          caregiverOnlyWrite, guardResource('LichKhamBenh', 'LichKhamID'), ctrl.update);
+router.patch('/:id/cancel', caregiverOnlyWrite, guardResource('LichKhamBenh', 'LichKhamID'), ctrl.cancel);
 module.exports = router;

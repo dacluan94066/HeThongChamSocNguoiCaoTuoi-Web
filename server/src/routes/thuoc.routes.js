@@ -2,10 +2,11 @@
 const router = express.Router();
 const ctrl = require('../controllers/thuoc.controller');
 const auth = require('../middlewares/auth.middleware');
+const { webOnlyWrite } = require('../middlewares/mobile-scope.middleware');
 router.use(auth);
 router.get('/',    ctrl.getAll);
 router.get('/:id', ctrl.getById);
-router.post('/',   ctrl.create);
-router.put('/:id', ctrl.update);
-router.delete('/:id', ctrl.remove);
+router.post('/',   webOnlyWrite, ctrl.create);
+router.put('/:id', webOnlyWrite, ctrl.update);
+router.delete('/:id', webOnlyWrite, ctrl.remove);
 module.exports = router;

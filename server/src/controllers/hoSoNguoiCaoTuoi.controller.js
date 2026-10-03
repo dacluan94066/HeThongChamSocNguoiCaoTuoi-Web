@@ -3,6 +3,38 @@
 //       DiaChi, SoDienThoai, NhomMau, BenhNen, DiUng, TrangThai, NguoiTaoID, NgayTao)
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+
+// GET /api/elderly/me - chi tai khoan NguoiCaoTuoi co ho so lien ket.
+const getMe = async (req, res, next) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().input('userId', sql.Int, req.user.userId).query(`
+      SELECT nct.NguoiCaoTuoiID AS id, nct.UserID AS userId,
+        nct.HoTen AS hoTen, nct.NgaySinh AS ngaySinh, nct.GioiTinh AS gioiTinh,
+        nct.CCCD AS cccd, nct.DiaChi AS diaChi, nct.SoDienThoai AS soDienThoai,
+        nct.NhomMau AS nhomMau, nct.BenhNen AS benhNen, nct.DiUng AS diUng,
+        nct.TrangThai AS trangThai, nct.NgayTao AS ngayTao,
+        ncsMain.NguoiChamSocID AS nguoiChamSocId,
+        ncsMain.HoTen AS nguoiChamSocTen
+      FROM HoSoNguoiCaoTuoi nct
+      OUTER APPLY (
+        SELECT TOP 1 ncs.NguoiChamSocID, ncs.HoTen
+        FROM NguoiCaoTuoi_NguoiChamSoc lk
+        JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lk.NguoiChamSocID
+        WHERE lk.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+          AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
+          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
+        ORDER BY lk.LaChinh DESC, lk.ID DESC
+      ) ncsMain
+      WHERE nct.UserID = @userId
+    `);
+    if (!result.recordset.length) {
+      return fail(res, 'Tai khoan chua co ho so nguoi cao tuoi lien ket', 'ELDERLY_PROFILE_NOT_FOUND', 404);
+    }
+    return ok(res, result.recordset[0], 'Lay ho so ca nhan thanh cong');
+  } catch (error) { next(error); }
+};
 
 // ─── LAY DANH SACH ────────────────────────────────────────────────────────────
 // GET /api/elderly?keyword=<tu_khoa>
@@ -39,16 +71,18 @@ const getAll = async (req, res, next) => {
           AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
         ORDER BY lienKet.LaChinh DESC, lienKet.ID DESC
       ) ncsMain
+      WHERE 1=1
     `;
 
     const request = pool.request();
 
     // Them dieu kien tim kiem neu co keyword
     if (keyword && keyword.trim()) {
-      query += ` WHERE nct.HoTen LIKE @keyword`;
+      query += ` AND nct.HoTen LIKE @keyword`;
       request.input('keyword', sql.NVarChar, `%${keyword.trim()}%`);
     }
 
+    query += scopedWhere(req, 'nct.NguoiCaoTuoiID');
     query += ` ORDER BY nct.NgayTao DESC`;
 
     const result = await request.query(query);
@@ -306,4 +340,4 @@ const assignCaregiver = async (req, res, next) => {
   }
 };
 
-module.exports = { getAll, getById, create, update, remove, assignCaregiver };
+module.exports = { getMe, getAll, getById, create, update, remove, assignCaregiver };

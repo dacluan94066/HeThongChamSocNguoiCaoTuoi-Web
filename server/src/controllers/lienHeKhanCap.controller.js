@@ -3,6 +3,7 @@
 //   SoDienThoai, DiaChi, ThuTuUuTien
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { scopedWhere, targetElderlyId, ownsElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
 
 const mapContact = (row) => ({
   id:              row.id,
@@ -32,6 +33,7 @@ const getAll = async (req, res, next) => {
     `;
     const req2 = pool.request();
     if (nguoiCaoTuoiId) { query += ` AND l.NguoiCaoTuoiID=@nctId`; req2.input('nctId', sql.Int, parseInt(nguoiCaoTuoiId)); }
+    query += scopedWhere(req, 'l.NguoiCaoTuoiID');
     query += ` ORDER BY l.NguoiCaoTuoiID, l.ThuTuUuTien`;
     const result = await req2.query(query);
     return ok(res, result.recordset.map(mapContact));
@@ -41,7 +43,9 @@ const getAll = async (req, res, next) => {
 // POST /api/emergency-contacts
 const create = async (req, res, next) => {
   try {
-    const { nguoiCaoTuoiId, hoTen, moiQuanHe, soDienThoai, uuTien, ghiChu } = req.body;
+    const { hoTen, moiQuanHe, soDienThoai, uuTien, ghiChu } = req.body;
+    const nguoiCaoTuoiId = targetElderlyId(req, req.body.nguoiCaoTuoiId);
+    if (isMobileRole(req) && nguoiCaoTuoiId == null) return fail(res, 'Khong co quyen them lien he cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
     if (!nguoiCaoTuoiId || !hoTen || !soDienThoai)
       return fail(res, 'nguoiCaoTuoiId, hoTen, soDienThoai la bat buoc', 'MISSING_FIELDS', 400);
     const pool = await poolPromise;
@@ -60,6 +64,8 @@ const create = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { nguoiCaoTuoiId, hoTen, moiQuanHe, soDienThoai, uuTien, ghiChu } = req.body;
+    if (isMobileRole(req) && !ownsElderlyId(req, nguoiCaoTuoiId))
+      return fail(res, 'Khong co quyen chuyen lien he sang ho so nay', 'FORBIDDEN_ELDERLY', 403);
     const pool = await poolPromise;
     await pool.request()
       .input('id', sql.Int, req.params.id).input('nctId', sql.Int, nguoiCaoTuoiId)

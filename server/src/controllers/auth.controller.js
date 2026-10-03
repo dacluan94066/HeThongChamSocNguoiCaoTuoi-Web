@@ -25,24 +25,37 @@ const writeLoginLog = async (pool, req, userId, ketQua, platform) => {
 
 // ─── DANG KY ────────────────────────────────────────────────────────────────
 // POST /api/auth/register
-// Nhan: { tenDangNhap, matKhau, hoTen, email, soDienThoai }
+// Nhan: { tenDangNhap, matKhau, hoTen, ngaySinh, gioiTinh, email?, soDienThoai?, ... }
 const register = async (req, res, next) => {
+  let transaction;
   try {
-    const { tenDangNhap, matKhau, hoTen, email, soDienThoai } = req.body;
+    const {
+      tenDangNhap, matKhau, hoTen, ngaySinh, gioiTinh,
+      email, soDienThoai, cccd, diaChi, nhomMau, benhNen, diUng,
+    } = req.body;
 
-    // Validate cac truong bat buoc
-    if (!tenDangNhap || !matKhau || !hoTen) {
-      return fail(res, 'tenDangNhap, matKhau, hoTen la bat buoc', 'MISSING_FIELDS', 400);
+    // Hai truong nay NOT NULL trong HoSoNguoiCaoTuoi; khong tao ngay sinh/gioi tinh gia.
+    if (typeof tenDangNhap !== 'string' || !tenDangNhap.trim()
+      || typeof matKhau !== 'string' || !matKhau
+      || typeof hoTen !== 'string' || !hoTen.trim() || !ngaySinh || !gioiTinh) {
+      return fail(res, 'tenDangNhap, matKhau, hoTen, ngaySinh, gioiTinh la bat buoc', 'MISSING_FIELDS', 400);
     }
     if (matKhau.length < 6) {
       return fail(res, 'Mat khau phai co it nhat 6 ky tu', 'WEAK_PASSWORD', 400);
     }
+    const date = new Date(`${ngaySinh}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ngaySinh) || Number.isNaN(date.getTime())
+      || date.toISOString().slice(0, 10) !== ngaySinh || date > new Date()
+      || !['Nam', 'Nữ', 'Khác'].includes(gioiTinh)) {
+      return fail(res, 'ngaySinh phai theo YYYY-MM-DD va gioiTinh la Nam, Nữ hoac Khác', 'INVALID_PROFILE', 400);
+    }
 
+    const normalizedUsername = tenDangNhap.trim();
     const pool = await poolPromise;
 
     // Kiem tra trung ten dang nhap
     const checkExist = await pool.request()
-      .input('tenDangNhap', sql.NVarChar, tenDangNhap)
+      .input('tenDangNhap', sql.NVarChar, normalizedUsername)
       .query(`SELECT UserID FROM NguoiDung WHERE TenDangNhap = @tenDangNhap`);
 
     if (checkExist.recordset.length > 0) {
@@ -62,23 +75,53 @@ const register = async (req, res, next) => {
     // Hash mat khau (10 rounds)
     const matKhauHash = await bcrypt.hash(matKhau, 10);
 
-    // Them nguoi dung moi vao bang NguoiDung
-    await pool.request()
-      .input('tenDangNhap', sql.NVarChar, tenDangNhap)
+    // Ca hai INSERT cung transaction de khong de lai tai khoan khong co ho so.
+    transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    const userResult = await new sql.Request(transaction)
+      .input('tenDangNhap', sql.NVarChar, normalizedUsername)
       .input('matKhauHash', sql.NVarChar, matKhauHash)
-      .input('hoTen', sql.NVarChar, hoTen)
+      .input('hoTen', sql.NVarChar, hoTen.trim())
       .input('email', sql.NVarChar, email || null)
       .input('soDienThoai', sql.NVarChar, soDienThoai || null)
       .input('vaiTroId', sql.Int, vaiTroId)
       .query(`
         INSERT INTO NguoiDung
           (TenDangNhap, MatKhauHash, HoTen, Email, SoDienThoai, VaiTroID, TrangThai, NgayTao)
+        OUTPUT INSERTED.UserID AS userId
         VALUES
           (@tenDangNhap, @matKhauHash, @hoTen, @email, @soDienThoai, @vaiTroId, 'HoatDong', SYSDATETIME())
       `);
 
-    return ok(res, null, 'Dang ky tai khoan thanh cong', 201);
+    const userId = userResult.recordset[0].userId;
+    const profileResult = await new sql.Request(transaction)
+      .input('userId', sql.Int, userId)
+      .input('hoTen', sql.NVarChar, hoTen.trim())
+      .input('ngaySinh', sql.Date, ngaySinh)
+      .input('gioiTinh', sql.NVarChar, gioiTinh)
+      .input('cccd', sql.VarChar, cccd || null)
+      .input('diaChi', sql.NVarChar, diaChi || null)
+      .input('soDienThoai', sql.VarChar, soDienThoai || null)
+      .input('nhomMau', sql.VarChar, nhomMau || null)
+      .input('benhNen', sql.NVarChar, Array.isArray(benhNen) ? benhNen.join(', ') : benhNen || null)
+      .input('diUng', sql.NVarChar, Array.isArray(diUng) ? diUng.join(', ') : diUng || null)
+      .query(`
+        INSERT INTO HoSoNguoiCaoTuoi
+          (UserID, HoTen, NgaySinh, GioiTinh, CCCD, DiaChi, SoDienThoai,
+           NhomMau, BenhNen, DiUng, NguoiTaoID)
+        OUTPUT INSERTED.NguoiCaoTuoiID AS nguoiCaoTuoiId
+        VALUES
+          (@userId, @hoTen, @ngaySinh, @gioiTinh, @cccd, @diaChi,
+           @soDienThoai, @nhomMau, @benhNen, @diUng, @userId)
+      `);
+
+    await transaction.commit();
+    transaction = null;
+    return ok(res, { userId, nguoiCaoTuoiId: profileResult.recordset[0].nguoiCaoTuoiId }, 'Dang ky tai khoan thanh cong', 201);
   } catch (err) {
+    if (transaction) {
+      try { await transaction.rollback(); } catch (_) { /* SQL da ket thuc transaction */ }
+    }
     next(err);
   }
 };

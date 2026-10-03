@@ -3,6 +3,7 @@
 //   ChuyenKhoa, ThoiGianKham (DATETIME2), LyDoKham, TrangThai, KetQuaKham, NguoiTaoID
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
 
 const STATUS = {
   ChuaDen:  { ma: 'CHUA_DEN', label: 'Chưa đến' },
@@ -56,6 +57,7 @@ const getAll = async (req, res, next) => {
       query += ` AND (nct.HoTen LIKE @kw OR l.TenBenhVien LIKE @kw)`;
       req2.input('kw', sql.NVarChar, `%${keyword.trim()}%`);
     }
+    query += scopedWhere(req, 'l.NguoiCaoTuoiID');
     query += ` ORDER BY l.ThoiGianKham DESC`;
     const result = await req2.query(query);
     return ok(res, result.recordset.map(mapAppt));
@@ -66,7 +68,9 @@ const getAll = async (req, res, next) => {
 // Frontend gui: nguoiCaoTuoiId, ngayKham (YYYY-MM-DD), gioKham (HH:mm), noiKham, lyDoKham, bacSiTen
 const create = async (req, res, next) => {
   try {
-    const { nguoiCaoTuoiId, ngayKham, gioKham, noiKham, lyDoKham, bacSiTen, ghiChu } = req.body;
+    const { ngayKham, gioKham, noiKham, lyDoKham, bacSiTen, ghiChu } = req.body;
+    const nguoiCaoTuoiId = targetElderlyId(req, req.body.nguoiCaoTuoiId);
+    if (isMobileRole(req) && nguoiCaoTuoiId == null) return fail(res, 'Khong co quyen tao lich kham cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
     if (!nguoiCaoTuoiId || !ngayKham || !gioKham || !noiKham)
       return fail(res, 'Thieu truong bat buoc', 'MISSING_FIELDS', 400);
 
@@ -93,6 +97,8 @@ const create = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { nguoiCaoTuoiId, ngayKham, gioKham, noiKham, lyDoKham, bacSiTen, ghiChu } = req.body;
+    if (isMobileRole(req) && targetElderlyId(req, nguoiCaoTuoiId) == null)
+      return fail(res, 'Khong co quyen chuyen lich kham sang ho so nay', 'FORBIDDEN_ELDERLY', 403);
     if (!nguoiCaoTuoiId || !ngayKham || !gioKham || !noiKham)
       return fail(res, 'Thieu truong bat buoc', 'MISSING_FIELDS', 400);
 

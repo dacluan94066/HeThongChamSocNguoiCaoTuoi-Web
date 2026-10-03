@@ -4,6 +4,7 @@
 // Bang LoaiChiSoSucKhoe: LoaiChiSoID, TenChiSo, DonVi, GiaTriMin, GiaTriMax
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
 
 // Map TenChiSo trong DB -> loaiChiSo frontend
 const MAP_LOAI = {
@@ -87,6 +88,7 @@ const getAll = async (req, res, next) => {
       const tenChiSo = Object.entries(MAP_LOAI).find(([, v]) => v.ma === loaiChiSo)?.[0];
       if (tenChiSo) { query += ` AND l.TenChiSo=@tenChiSo`; req2.input('tenChiSo', sql.NVarChar, tenChiSo); }
     }
+    query += scopedWhere(req, 'c.NguoiCaoTuoiID');
     query += ` ORDER BY c.ThoiGianDo DESC`;
     const result = await req2.query(query);
     return ok(res, result.recordset.map(mapMetric));
@@ -96,7 +98,9 @@ const getAll = async (req, res, next) => {
 // POST /api/health-metrics
 const create = async (req, res, next) => {
   try {
-    const { nguoiCaoTuoiId, loaiChiSo, giaTri, ngayDo, gioDo, binhThuong, ghiChu } = req.body;
+    const { loaiChiSo, giaTri, ngayDo, gioDo, binhThuong, ghiChu } = req.body;
+    const nguoiCaoTuoiId = targetElderlyId(req, req.body.nguoiCaoTuoiId);
+    if (isMobileRole(req) && nguoiCaoTuoiId == null) return fail(res, 'Khong co quyen ghi chi so cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
     if (!nguoiCaoTuoiId || !loaiChiSo || !giaTri)
       return fail(res, 'nguoiCaoTuoiId, loaiChiSo, giaTri la bat buoc', 'MISSING_FIELDS', 400);
 

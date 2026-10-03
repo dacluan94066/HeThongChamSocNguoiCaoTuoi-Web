@@ -2,7 +2,9 @@
 const router = express.Router();
 const ctrl = require('../controllers/nhatKyChamSoc.controller');
 const auth = require('../middlewares/auth.middleware');
+const { loadMobileScope, caregiverOnlyWrite } = require('../middlewares/mobile-scope.middleware');
 router.use(auth);
+router.use(loadMobileScope);
 router.get('/',  ctrl.getAll);
-router.post('/', ctrl.create);
+router.post('/', caregiverOnlyWrite, ctrl.create);
 module.exports = router;

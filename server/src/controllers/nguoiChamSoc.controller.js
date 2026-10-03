@@ -4,6 +4,20 @@
 // Bang NguoiCaoTuoi_NguoiChamSoc: lien ket NCT <-> NCS
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { isMobileRole } = require('../middlewares/mobile-scope.middleware');
+
+const caregiverScope = (req, alias) => {
+  if (!isMobileRole(req)) return '';
+  const ids = req.mobileElderlyIds || [];
+  if (!ids.length) return ' AND 1=0';
+  return ` AND EXISTS (
+    SELECT 1 FROM NguoiCaoTuoi_NguoiChamSoc accessLink
+    WHERE accessLink.NguoiChamSocID = ${alias}.NguoiChamSocID
+      AND accessLink.NguoiCaoTuoiID IN (${ids.join(',')})
+      AND accessLink.NgayBatDau <= CAST(GETDATE() AS DATE)
+      AND (accessLink.NgayKetThuc IS NULL OR accessLink.NgayKetThuc >= CAST(GETDATE() AS DATE))
+  )`;
+};
 
 const mapCaregiver = (row) => ({
   id:             row.id,
@@ -36,6 +50,7 @@ const getAll = async (req, res, next) => {
       FROM NguoiChamSoc ncs
       LEFT JOIN NguoiCaoTuoi_NguoiChamSoc lk ON ncs.NguoiChamSocID = lk.NguoiChamSocID
         AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
+        ${isMobileRole(req) ? `AND lk.NguoiCaoTuoiID IN (${(req.mobileElderlyIds || []).length ? req.mobileElderlyIds.join(',') : 'NULL'})` : ''}
       LEFT JOIN HoSoNguoiCaoTuoi nct ON lk.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
       WHERE 1=1
     `;
@@ -44,6 +59,7 @@ const getAll = async (req, res, next) => {
       query += ` AND (ncs.HoTen LIKE @kw OR ncs.SoDienThoai LIKE @kw)`;
       req2.input('kw', sql.NVarChar, `%${keyword.trim()}%`);
     }
+    query += caregiverScope(req, 'ncs');
     query += ` GROUP BY ncs.NguoiChamSocID, ncs.HoTen, ncs.SoDienThoai, ncs.Email, ncs.NgheNghiep`;
     query += ` ORDER BY ncs.HoTen`;
 
@@ -59,7 +75,7 @@ const getById = async (req, res, next) => {
     const result = await pool.request().input('id', sql.Int, req.params.id).query(`
       SELECT NguoiChamSocID AS id, HoTen AS hoTen, SoDienThoai AS soDienThoai,
         Email AS email, NgheNghiep AS ngheNghiep
-      FROM NguoiChamSoc WHERE NguoiChamSocID=@id`);
+      FROM NguoiChamSoc ncs WHERE NguoiChamSocID=@id ${caregiverScope(req, 'ncs')}`);
     if (!result.recordset.length) return fail(res, 'Khong tim thay', 'NOT_FOUND', 404);
     return ok(res, mapCaregiver({ ...result.recordset[0], soNguoiPhuTrach: 0, nguoiCaoTuoiTen: '' }));
   } catch (err) { next(err); }

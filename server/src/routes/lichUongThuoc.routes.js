@@ -2,7 +2,9 @@
 const router = express.Router();
 const ctrl = require('../controllers/lichUongThuoc.controller');
 const auth = require('../middlewares/auth.middleware');
+const { loadMobileScope, guardResource } = require('../middlewares/mobile-scope.middleware');
 router.use(auth);
+router.use(loadMobileScope);
 router.get('/',                   ctrl.getAll);
-router.patch('/:id/status',       ctrl.updateStatus);
+router.patch('/:id/status',       guardResource('LichUongThuoc', 'LichUongThuocID'), ctrl.updateStatus);
 module.exports = router;

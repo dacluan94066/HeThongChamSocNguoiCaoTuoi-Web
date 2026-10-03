@@ -2,8 +2,10 @@
 const router = express.Router();
 const ctrl = require('../controllers/canhBao.controller');
 const auth = require('../middlewares/auth.middleware');
+const { loadMobileScope, guardResource, caregiverOnlyWrite } = require('../middlewares/mobile-scope.middleware');
 router.use(auth);
+router.use(loadMobileScope);
 router.get('/',                ctrl.getAll);
-router.patch('/:id/seen',      ctrl.markSeen);
-router.patch('/:id/resolve',   ctrl.resolve);
+router.patch('/:id/seen',      caregiverOnlyWrite, guardResource('CanhBao', 'CanhBaoID'), ctrl.markSeen);
+router.patch('/:id/resolve',   caregiverOnlyWrite, guardResource('CanhBao', 'CanhBaoID'), ctrl.resolve);
 module.exports = router;

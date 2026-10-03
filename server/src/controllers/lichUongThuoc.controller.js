@@ -4,6 +4,7 @@
 //   ThoiGianDuKien (DATETIME2), ThoiGianThucTe, TrangThai, NguoiXacNhanID, GhiChu
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
 
 const STATUS_MAP = {
   ChuaDenGio: { ma: 'CHUA_DEN_GIO', label: 'Chưa đến giờ' },
@@ -58,6 +59,7 @@ const getAll = async (req, res, next) => {
       query += ` AND l.TrangThai=@tt`;
       req2.input('tt', sql.NVarChar, dbVal);
     }
+    query += scopedWhere(req, 'l.NguoiCaoTuoiID');
     query += ` ORDER BY l.ThoiGianDuKien DESC`;
 
     const result = await req2.query(query);
