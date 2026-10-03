@@ -63,6 +63,7 @@ export const AuthProvider = ({ children }) => {
       const permissionData = await getMyPermissions();
       setPermissions(permissionData);
       setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
     } finally {
       setPermissionsLoading(false);
     }

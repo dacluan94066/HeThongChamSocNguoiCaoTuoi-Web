@@ -4,6 +4,25 @@ const jwt = require('jsonwebtoken');
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 
+// Ghi nhat ky dang nhap nhung khong lam hong luong xac thuc neu audit gap loi.
+const writeLoginLog = async (pool, req, userId, ketQua, platform) => {
+  if (!userId) return;
+
+  try {
+    await pool.request()
+      .input('userId', sql.Int, userId)
+      .input('diaChiIP', sql.VarChar, String(req.ip || req.socket?.remoteAddress || '').slice(0, 50) || null)
+      .input('thietBi', sql.NVarChar, platform === 'web' ? 'Web' : 'Mobile')
+      .input('ketQua', sql.NVarChar, ketQua)
+      .query(`
+        INSERT INTO NhatKyDangNhap (UserID, DiaChiIP, ThietBi, KetQua)
+        VALUES (@userId, @diaChiIP, @thietBi, @ketQua)
+      `);
+  } catch (auditError) {
+    console.error('[AUTH] Khong ghi duoc nhat ky dang nhap:', auditError.message);
+  }
+};
+
 // ─── DANG KY ────────────────────────────────────────────────────────────────
 // POST /api/auth/register
 // Nhan: { tenDangNhap, matKhau, hoTen, email, soDienThoai }
@@ -105,17 +124,20 @@ const login = async (req, res, next) => {
 
     // Kiem tra tai khoan co bi khoa khong
     if (user.TrangThai === 'KhoaTaiKhoan') {
+      await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
       return fail(res, 'Tai khoan da bi khoa, lien he quan tri vien', 'ACCOUNT_LOCKED', 403);
     }
 
     // So sanh mat khau voi hash luu trong DB
     const matKhauDung = await bcrypt.compare(matKhau, user.MatKhauHash);
     if (!matKhauDung) {
+      await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
       return fail(res, 'Ten dang nhap hoac mat khau khong chinh xac', 'INVALID_CREDENTIALS', 401);
     }
 
     // Web quan tri chi danh cho QuanTriVien va BacSi.
     if (platform === 'web' && !['QuanTriVien', 'BacSi'].includes(user.TenVaiTro)) {
+      await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
       return fail(
         res,
         'Tài khoản này không có quyền truy cập hệ thống Web, vui lòng sử dụng ứng dụng Mobile',
@@ -139,6 +161,8 @@ const login = async (req, res, next) => {
     await pool.request()
       .input('nguoiDungId', sql.Int, user.UserID)
       .query(`UPDATE NguoiDung SET LanDangNhapCuoi = SYSDATETIME() WHERE UserID = @nguoiDungId`);
+
+    await writeLoginLog(pool, req, user.UserID, 'ThanhCong', platform);
 
     // Tra ve token va thong tin user (khong tra MatKhauHash)
     return ok(res, {
@@ -193,4 +217,110 @@ const me = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, me };
+// PUT /api/auth/me - Cap nhat thong tin tai khoan dang dang nhap
+const updateMe = async (req, res, next) => {
+  try {
+    const { hoTen, email, soDienThoai } = req.body;
+
+    if (!hoTen?.trim()) {
+      return fail(res, 'Ho ten la bat buoc', 'MISSING_FULL_NAME', 400);
+    }
+
+    const pool = await poolPromise;
+    const duplicateEmail = await pool.request()
+      .input('userId', sql.Int, req.user.userId)
+      .input('email', sql.VarChar, email?.trim() || null)
+      .query(`
+        SELECT UserID
+        FROM NguoiDung
+        WHERE Email = @email AND UserID <> @userId
+      `);
+
+    if (duplicateEmail.recordset.length > 0) {
+      return fail(res, 'Email da duoc tai khoan khac su dung', 'EMAIL_TAKEN', 409);
+    }
+
+    const result = await pool.request()
+      .input('userId', sql.Int, req.user.userId)
+      .input('hoTen', sql.NVarChar, hoTen.trim())
+      .input('email', sql.VarChar, email?.trim() || null)
+      .input('soDienThoai', sql.VarChar, soDienThoai?.trim() || null)
+      .query(`
+        UPDATE NguoiDung
+        SET HoTen = @hoTen, Email = @email, SoDienThoai = @soDienThoai
+        WHERE UserID = @userId;
+
+        SELECT nd.UserID AS userId, nd.TenDangNhap AS tenDangNhap,
+          nd.HoTen AS hoTen, nd.Email AS email, nd.SoDienThoai AS soDienThoai,
+          nd.TrangThai AS trangThai, nd.NgayTao AS ngayTao,
+          nd.VaiTroID AS vaiTroId, vt.TenVaiTro AS tenVaiTro
+        FROM NguoiDung nd
+        INNER JOIN VaiTro vt ON nd.VaiTroID = vt.VaiTroID
+        WHERE nd.UserID = @userId
+      `);
+
+    return ok(res, result.recordset[0], 'Cap nhat tai khoan thanh cong');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/change-password
+const changePassword = async (req, res, next) => {
+  try {
+    const { matKhauHienTai, matKhauMoi } = req.body;
+
+    if (!matKhauHienTai || !matKhauMoi) {
+      return fail(res, 'Vui long nhap day du mat khau', 'MISSING_FIELDS', 400);
+    }
+    if (matKhauMoi.length < 6) {
+      return fail(res, 'Mat khau moi phai co it nhat 6 ky tu', 'WEAK_PASSWORD', 400);
+    }
+
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('userId', sql.Int, req.user.userId)
+      .query(`SELECT MatKhauHash FROM NguoiDung WHERE UserID = @userId`);
+
+    if (!result.recordset.length) {
+      return fail(res, 'Khong tim thay tai khoan', 'USER_NOT_FOUND', 404);
+    }
+
+    const passwordMatches = await bcrypt.compare(matKhauHienTai, result.recordset[0].MatKhauHash);
+    if (!passwordMatches) {
+      return fail(res, 'Mat khau hien tai khong chinh xac', 'INVALID_CURRENT_PASSWORD', 400);
+    }
+
+    const newHash = await bcrypt.hash(matKhauMoi, 10);
+    await pool.request()
+      .input('userId', sql.Int, req.user.userId)
+      .input('matKhauHash', sql.VarChar, newHash)
+      .query(`UPDATE NguoiDung SET MatKhauHash = @matKhauHash WHERE UserID = @userId`);
+
+    return ok(res, null, 'Doi mat khau thanh cong');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/auth/login-history
+const getLoginHistory = async (req, res, next) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('userId', sql.Int, req.user.userId)
+      .query(`
+        SELECT TOP 50 LogID AS id, ThoiGianDangNhap AS thoiGianDangNhap,
+          DiaChiIP AS diaChiIP, ThietBi AS thietBi, KetQua AS ketQua
+        FROM NhatKyDangNhap
+        WHERE UserID = @userId
+        ORDER BY ThoiGianDangNhap DESC, LogID DESC
+      `);
+
+    return ok(res, result.recordset, 'Lay lich su dang nhap thanh cong');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { register, login, me, updateMe, changePassword, getLoginHistory };

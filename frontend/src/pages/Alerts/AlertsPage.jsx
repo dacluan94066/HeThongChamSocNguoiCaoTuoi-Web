@@ -207,8 +207,13 @@ const AlertsPage = () => {
           { label: 'Thời gian', key: 'thoiGianPhatHien', render: (value) => dayjs(value).format('DD/MM/YYYY HH:mm') },
           { label: 'Trạng thái', key: 'trangThai', render: (value) => <StatusTag {...getAlertStatusMap(value)} /> },
           { label: 'Mô tả', key: 'moTa', span: 2 },
+          { label: 'Điểm ưu tiên', key: 'diemUuTien', render: (value, record) => `${value ?? 0}/100 — ${record.uuTienLabel || ''}` },
+          { label: 'Vượt thời gian phản hồi', key: 'quaSla', render: (value) => value ? 'Có' : 'Không' },
+          { label: 'Lý do ưu tiên', key: 'lyDoUuTien', span: 2, render: (value) => Array.isArray(value) ? value.join(' • ') : value },
+          { label: 'Hành động đề xuất', key: 'khuyenNghi', span: 2 },
           { label: 'Người xử lý', key: 'nguoiXuLy' },
           { label: 'Thời gian xử lý', key: 'thoiGianXuLy', render: (value) => value ? dayjs(value).format('DD/MM/YYYY HH:mm') : null },
+          { label: 'Ghi chú xử lý', key: 'ghiChuXuLy', span: 2 },
         ]}
       />
 

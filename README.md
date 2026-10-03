@@ -9,7 +9,7 @@ Project gồm Web quản trị React/Vite, backend Node.js/Express và cơ sở 
 Mở SQL Server Management Studio và chạy file:
 
 ```text
-dulieuqlnguoicaotuoi.sql
+QLSucKhoeNguoiCaoTuoi_FINAL.sql
 ```
 
 Lưu ý: script hiện tại sẽ xóa database `QLSucKhoeNguoiCaoTuoi` nếu database đã tồn tại rồi tạo lại từ đầu. Không chạy trên cơ sở dữ liệu có dữ liệu cần giữ.
@@ -41,8 +41,11 @@ Giữ backend hoạt động và mở terminal khác tại thư mục `server`:
 
 ```bash
 node seed_users.js
-node seed_phanquyen.js
 ```
+
+File SQL đã tạo sẵn 4 vai trò, 11 chức năng và 44 dòng phân quyền. Chỉ chạy
+`seed_phanquyen.js` khi cần khởi tạo lại ma trận quyền; không bắt buộc sau khi
+chạy file SQL trên.
 
 Các tài khoản được tạo bởi `seed_users.js`:
 
@@ -65,4 +68,3 @@ npm run dev
 ```
 
 Frontend mặc định chạy tại `http://localhost:5173` và gọi backend theo `VITE_API_URL`.
-

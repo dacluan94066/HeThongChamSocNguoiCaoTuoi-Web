@@ -15,6 +15,9 @@ import {
   BookOutlined,
   BarChartOutlined,
   LogoutOutlined,
+  LockOutlined,
+  HistoryOutlined,
+  SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ClockCircleOutlined,
@@ -25,6 +28,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
 import { getAlerts } from '../services/alertService';
+import AccountMenuModals from '../components/AccountMenuModals';
 
 const { Sider, Header, Content } = Layout;
 
@@ -126,9 +130,10 @@ const MainLayout = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 600);
   const [isTablet, setIsTablet] = useState(window.innerWidth < 900 && window.innerWidth >= 600);
 
-  const { user: currentUser, logout } = useAuth();
+  const { user: currentUser, logout, setUserData } = useAuth();
   const { hasPermission } = usePermission();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
+  const [activeAccountModal, setActiveAccountModal] = useState(null);
 
   const visibleMenuItems = useMemo(() => menuItems
     .map((item) => {
@@ -181,15 +186,37 @@ const MainLayout = () => {
       icon: <UserOutlined />,
       label: 'Thông tin cá nhân',
     },
+    {
+      key: 'change-password',
+      icon: <LockOutlined />,
+      label: 'Đổi mật khẩu',
+    },
+    {
+      key: 'login-history',
+      icon: <HistoryOutlined />,
+      label: 'Lịch sử đăng nhập',
+    },
+    {
+      key: 'settings',
+      icon: <SettingOutlined />,
+      label: 'Cài đặt tài khoản',
+    },
     { type: 'divider' },
     {
       key: 'logout',
       icon: <LogoutOutlined />,
       label: 'Đăng xuất',
       danger: true,
-      onClick: handleLogout,
     },
   ];
+
+  const handleUserMenuClick = ({ key }) => {
+    if (key === 'logout') {
+      handleLogout();
+      return;
+    }
+    setActiveAccountModal(key);
+  };
 
   // Chiều rộng sidebar (fixed)
   const siderWidth = 240;
@@ -318,7 +345,7 @@ const MainLayout = () => {
 
             {/* Thông tin người dùng */}
             {currentUser && (
-              <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
+              <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight" arrow>
                 <Space style={{ cursor: 'pointer', gap: 10 }}>
                   <Avatar
                     style={{ backgroundColor: '#2E7D9A' }}
@@ -340,6 +367,13 @@ const MainLayout = () => {
         <Content className="page-content">
           <Outlet />
         </Content>
+
+        <AccountMenuModals
+          activeModal={activeAccountModal}
+          onClose={() => setActiveAccountModal(null)}
+          user={currentUser}
+          onUserUpdated={setUserData}
+        />
       </Layout>
     </Layout>
   );

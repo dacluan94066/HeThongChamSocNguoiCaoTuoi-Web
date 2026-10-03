@@ -44,11 +44,18 @@ axiosClient.interceptors.response.use(
     const { status, data } = error.response;
 
     if (status === 401) {
-      // Token hết hạn hoặc không hợp lệ → xóa và chuyển về login
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      // Chuyển hướng mà không dùng useNavigate (vì đây không phải component)
-      window.location.href = '/login';
+      const isLoginRequest = error.config?.url?.includes('/auth/login');
+
+      // Sai thông tin đăng nhập phải được LoginPage tự hiển thị, không reload trang.
+      // Chỉ chuyển về /login khi token của một request đã xác thực bị hết hạn/sai.
+      if (!isLoginRequest) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+
+        if (window.location.pathname !== '/login') {
+          window.location.assign('/login');
+        }
+      }
     } else if (status === 403 && data?.errorCode !== 'WEB_ACCESS_DENIED') {
       // Không đủ quyền truy cập (dùng key để tránh hiện nhiều thông báo đè nhau)
       message.error({

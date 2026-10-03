@@ -13,4 +13,11 @@ router.post('/login', authController.login);
 // GET /api/auth/me - Lay thong tin ca nhan (can dang nhap)
 router.get('/me', authMiddleware, authController.me);
 
+// Cap nhat thong tin tai khoan dang dang nhap
+router.put('/me', authMiddleware, authController.updateMe);
+
+// Doi mat khau va xem lich su dang nhap
+router.post('/change-password', authMiddleware, authController.changePassword);
+router.get('/login-history', authMiddleware, authController.getLoginHistory);
+
 module.exports = router;

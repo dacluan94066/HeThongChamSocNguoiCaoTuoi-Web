@@ -15,6 +15,33 @@ const MAP_LOAI = {
   'Cân nặng':         { ma: 'CAN_NANG',    donVi: 'kg' },
 };
 
+const evaluateMetric = ({ tenChiSo, giaTri, giaTriPhu, min, max, min2, max2, manuallyAbnormal }) => {
+  const primaryOutOfRange = (min != null && giaTri < Number(min)) || (max != null && giaTri > Number(max));
+  const secondaryOutOfRange = giaTriPhu != null
+    && ((min2 != null && giaTriPhu < Number(min2)) || (max2 != null && giaTriPhu > Number(max2)));
+  const abnormal = manuallyAbnormal || primaryOutOfRange || secondaryOutOfRange;
+
+  if (!abnormal) return { abnormal: false, level: null, description: null };
+
+  const farOutsidePrimary = (min != null && giaTri < Number(min) * 0.8)
+    || (max != null && giaTri > Number(max) * 1.2);
+  const farOutsideSecondary = giaTriPhu != null
+    && ((min2 != null && giaTriPhu < Number(min2) * 0.8)
+      || (max2 != null && giaTriPhu > Number(max2) * 1.2));
+  const level = farOutsidePrimary || farOutsideSecondary ? 'Cao' : 'TrungBinh';
+  const measuredValue = giaTriPhu != null ? `${giaTri}/${giaTriPhu}` : String(giaTri);
+  const primaryRange = min != null || max != null ? `${min ?? '—'}–${max ?? '—'}` : 'chưa cấu hình';
+  const secondaryRange = giaTriPhu != null && (min2 != null || max2 != null)
+    ? `; ngưỡng phụ ${min2 ?? '—'}–${max2 ?? '—'}`
+    : '';
+
+  return {
+    abnormal: true,
+    level,
+    description: `${tenChiSo} ghi nhận ${measuredValue}, ngoài ngưỡng theo dõi ${primaryRange}${secondaryRange}.`,
+  };
+};
+
 const mapMetric = (row) => {
   const loaiInfo = MAP_LOAI[row.tenChiSo] || { ma: row.tenChiSo, donVi: row.donVi };
   // Gop GiaTri + GiaTriPhu thanh chuoi (VD huyet ap: "120/80")
@@ -77,11 +104,16 @@ const create = async (req, res, next) => {
     // Lay LoaiChiSoID tu TenChiSo
     const tenChiSo = Object.entries(MAP_LOAI).find(([, v]) => v.ma === loaiChiSo)?.[0];
     const loaiRes = await pool.request().input('ten', sql.NVarChar, tenChiSo || loaiChiSo)
-      .query(`SELECT LoaiChiSoID FROM LoaiChiSoSucKhoe WHERE TenChiSo=@ten`);
+      .query(`
+        SELECT LoaiChiSoID, TenChiSo, GiaTriMin, GiaTriMax, GiaTriMin2, GiaTriMax2
+        FROM LoaiChiSoSucKhoe
+        WHERE TenChiSo=@ten
+      `);
     if (!loaiRes.recordset.length)
       return fail(res, 'Loai chi so khong hop le', 'INVALID_TYPE', 400);
 
-    const loaiChiSoId = loaiRes.recordset[0].LoaiChiSoID;
+    const metricType = loaiRes.recordset[0];
+    const loaiChiSoId = metricType.LoaiChiSoID;
 
     // Parse GiaTri: co the la "120/80" (huyet ap) hoac so don
     let giaTriNum = null, giaTriPhuNum = null;
@@ -93,6 +125,20 @@ const create = async (req, res, next) => {
       giaTriNum = parseFloat(giaTri);
     }
 
+    if (!Number.isFinite(giaTriNum) || (giaTriPhuNum != null && !Number.isFinite(giaTriPhuNum)))
+      return fail(res, 'Gia tri chi so khong hop le', 'INVALID_VALUE', 400);
+
+    const assessment = evaluateMetric({
+      tenChiSo: metricType.TenChiSo,
+      giaTri: giaTriNum,
+      giaTriPhu: giaTriPhuNum,
+      min: metricType.GiaTriMin,
+      max: metricType.GiaTriMax,
+      min2: metricType.GiaTriMin2,
+      max2: metricType.GiaTriMax2,
+      manuallyAbnormal: binhThuong === false,
+    });
+
     const thoiGianDo = ngayDo && gioDo ? new Date(`${ngayDo}T${gioDo}:00`) : new Date();
     const r = await pool.request()
       .input('nctId', sql.Int, nguoiCaoTuoiId)
@@ -100,13 +146,40 @@ const create = async (req, res, next) => {
       .input('giaTri', sql.Decimal(10, 2), giaTriNum)
       .input('giaTriPhu', sql.Decimal(10, 2), giaTriPhuNum)
       .input('thoiGian', sql.DateTime2, thoiGianDo)
-      .input('laBatThuong', sql.Bit, binhThuong === false ? 1 : 0)
+      .input('laBatThuong', sql.Bit, assessment.abnormal ? 1 : 0)
       .input('ghiChu', sql.NVarChar, ghiChu || null)
       .input('nguoiDoId', sql.Int, req.user.userId)
-      .query(`INSERT INTO ChiSoSucKhoe (NguoiCaoTuoiID,LoaiChiSoID,GiaTri,GiaTriPhu,ThoiGianDo,NguoiDoID,LaBatThuong,GhiChu)
-              OUTPUT INSERTED.ChiSoID AS id
-              VALUES (@nctId,@loaiId,@giaTri,@giaTriPhu,@thoiGian,@nguoiDoId,@laBatThuong,@ghiChu)`);
-    return ok(res, { id: r.recordset[0].id }, 'Them chi so thanh cong', 201);
+      .input('noiDungCanhBao', sql.NVarChar(500), assessment.description)
+      .input('mucDoCanhBao', sql.NVarChar(20), assessment.level)
+      .query(`
+        DECLARE @ChiSoMoi TABLE (ChiSoID INT);
+        DECLARE @chiSoId INT;
+        DECLARE @canhBaoId INT = NULL;
+
+        INSERT INTO ChiSoSucKhoe
+          (NguoiCaoTuoiID,LoaiChiSoID,GiaTri,GiaTriPhu,ThoiGianDo,NguoiDoID,LaBatThuong,GhiChu)
+        OUTPUT INSERTED.ChiSoID INTO @ChiSoMoi
+        VALUES (@nctId,@loaiId,@giaTri,@giaTriPhu,@thoiGian,@nguoiDoId,@laBatThuong,@ghiChu);
+
+        SELECT TOP 1 @chiSoId = ChiSoID FROM @ChiSoMoi;
+
+        IF @laBatThuong = 1
+        BEGIN
+          INSERT INTO CanhBao
+            (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID)
+          VALUES
+            (@nctId, N'ChiSoBatThuong', @noiDungCanhBao, @mucDoCanhBao, N'ChiSoSucKhoe', @chiSoId);
+          SET @canhBaoId = SCOPE_IDENTITY();
+        END;
+
+        SELECT @chiSoId AS id, @canhBaoId AS alertId;
+      `);
+    return ok(res, {
+      id: r.recordset[0].id,
+      alertCreated: r.recordset[0].alertId != null,
+      alertId: r.recordset[0].alertId,
+      automaticAssessment: assessment.abnormal ? 'BAT_THUONG' : 'BINH_THUONG',
+    }, assessment.abnormal ? 'Them chi so va tao canh bao thanh cong' : 'Them chi so thanh cong', 201);
   } catch (err) { next(err); }
 };
 

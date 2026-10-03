@@ -1,6 +1,6 @@
 // Trang tổng quan Dashboard - Hiển thị thống kê và biểu đồ nhanh
-import React, { useState, useEffect } from 'react';
-import { Row, Col, Statistic, Progress, Card, Spin, Tag } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Row, Col, Progress, Card, Spin, Tag } from 'antd';
 import {
   TeamOutlined,
   BellOutlined,
@@ -25,6 +25,7 @@ import {
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { getDashboardStats, getAlertsByMonth, getMedicationCompliance, getAlertsByLevel } from '../../services/reportService';
+import SmartAlertCenter from '../../components/SmartAlertCenter';
 
 // Đăng ký Chart.js
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement);
@@ -57,25 +58,24 @@ const DashboardPage = () => {
   const [alertsByLevel, setAlertsByLevel] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [s, abm, comp, abl] = await Promise.all([
-          getDashboardStats(),
-          getAlertsByMonth(),
-          getMedicationCompliance(),
-          getAlertsByLevel(),
-        ]);
-        setStats(s);
-        setAlertsByMonth(abm);
-        setCompliance(comp);
-        setAlertsByLevel(abl);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+  const loadData = useCallback(async () => {
+    try {
+      const [s, abm, comp, abl] = await Promise.all([
+        getDashboardStats(),
+        getAlertsByMonth(),
+        getMedicationCompliance(),
+        getAlertsByLevel(),
+      ]);
+      setStats(s);
+      setAlertsByMonth(abm);
+      setCompliance(comp);
+      setAlertsByLevel(abl);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   if (loading) {
     return (
@@ -193,6 +193,11 @@ const DashboardPage = () => {
           />
         </Col>
       </Row>
+
+      {/* Trung tâm điều phối cảnh báo theo mức ưu tiên */}
+      <div style={{ marginBottom: 24 }}>
+        <SmartAlertCenter onChanged={loadData} />
+      </div>
 
       {/* Thanh tiến trình uống thuốc */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

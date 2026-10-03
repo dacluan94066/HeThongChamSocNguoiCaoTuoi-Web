@@ -62,12 +62,16 @@ const HealthMetricsPage = () => {
   const handleSave = async (values) => {
     setSaving(true);
     try {
-      await createHealthMetric({
+      const result = await createHealthMetric({
         ...values,
         ngayDo: values.ngayDo?.format('YYYY-MM-DD'),
         gioDo: values.gioDo?.format('HH:mm'),
       });
-      message.success('Thêm chỉ số sức khỏe thành công');
+      if (result.alertCreated) {
+        message.warning('Chỉ số vượt ngưỡng — hệ thống đã tự động tạo cảnh báo');
+      } else {
+        message.success('Thêm chỉ số sức khỏe thành công');
+      }
       setModalOpen(false);
       form.resetFields();
       getHealthMetrics({ nguoiCaoTuoiId: selectedElder, loaiChiSo: selectedType || undefined }).then(setMetrics);
@@ -283,7 +287,7 @@ const HealthMetricsPage = () => {
           </Row>
         </FormSection>
 
-        <FormSection title="Kết quả đo" description="Nhập giá trị và đánh giá sơ bộ">
+        <FormSection title="Kết quả đo" description="Hệ thống tự đối chiếu ngưỡng cấu hình và tạo cảnh báo khi phát hiện bất thường">
           <Row gutter={18}>
             <Col xs={24} md={12}>
               <Form.Item name="giaTri" label="Giá trị" rules={[{ required: true, message: 'Vui lòng nhập giá trị đo' }, { pattern: /^\d+(\.\d+)?(\/\d+(\.\d+)?)?$/, message: 'Giá trị không hợp lệ, ví dụ: 72 hoặc 120/80' }]}>
@@ -291,10 +295,10 @@ const HealthMetricsPage = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="binhThuong" label="Đánh giá" initialValue={true} rules={[{ required: true, message: 'Vui lòng chọn đánh giá' }]}>
-                <Select placeholder="Chọn mức đánh giá">
-                  <Option value={true}>Bình thường</Option>
-                  <Option value={false}>Bất thường</Option>
+              <Form.Item name="binhThuong" label="Đánh giá bổ sung" initialValue={true} rules={[{ required: true, message: 'Vui lòng chọn đánh giá' }]}>
+                <Select placeholder="Chọn đánh giá bổ sung">
+                  <Option value={true}>Để hệ thống tự đánh giá</Option>
+                  <Option value={false}>Đánh dấu bất thường thủ công</Option>
                 </Select>
               </Form.Item>
             </Col>

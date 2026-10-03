@@ -1,18 +1,13 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Checkbox, Alert, Typography, Modal, message } from 'antd';
+import { Form, Input, Button, Checkbox, Alert, Typography } from 'antd';
 import {
   UserOutlined,
   LockOutlined,
   HeartFilled,
-  UserAddOutlined,
-  MailOutlined,
-  PhoneOutlined,
-  IdcardOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import {
   login,
-  register,
   isAuthenticated,
   logout as clearStoredAuth,
 } from '../../services/authService';
@@ -22,128 +17,6 @@ import loginIllustration from '../../assets/login_illustration.png';
 import './Login.css';
 
 const { Title, Text } = Typography;
-
-// --- Modal Đăng ký tài khoản mới ---
-const RegisterModal = ({ open, onCancel, onSuccess }) => {
-  const [form] = Form.useForm();
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleFinish = async (values) => {
-    setSubmitting(true);
-    try {
-      await register({
-        tenDangNhap: values.tenDangNhap,
-        matKhau: values.matKhau,
-        hoTen: values.hoTen,
-        email: values.email || undefined,
-        soDienThoai: values.soDienThoai || undefined,
-      });
-      message.success('Đăng ký tài khoản thành công! Bạn có thể đăng nhập ngay.');
-      form.resetFields();
-      onSuccess(values.tenDangNhap, values.matKhau);
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Đăng ký thất bại';
-      message.error(msg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal
-      title={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 18 }}>
-          <UserAddOutlined style={{ color: '#0e7490' }} />
-          <span>Đăng ký tài khoản</span>
-        </div>
-      }
-      open={open}
-      onCancel={() => {
-        form.resetFields();
-        onCancel();
-      }}
-      footer={null}
-      destroyOnClose
-      centered
-    >
-      <Form form={form} layout="vertical" onFinish={handleFinish} style={{ marginTop: 16 }}>
-        <Form.Item
-          name="hoTen"
-          label="Họ và tên"
-          rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }]}
-        >
-          <Input prefix={<IdcardOutlined />} placeholder="Ví dụ: Nguyễn Văn A" />
-        </Form.Item>
-
-        <Form.Item
-          name="tenDangNhap"
-          label="Tên đăng nhập"
-          rules={[
-            { required: true, message: 'Vui lòng nhập tên đăng nhập' },
-            { min: 3, message: 'Tên đăng nhập ít nhất 3 ký tự' },
-          ]}
-        >
-          <Input prefix={<UserOutlined />} placeholder="Tên đăng nhập viết liền" />
-        </Form.Item>
-
-        <Form.Item
-          name="matKhau"
-          label="Mật khẩu"
-          rules={[
-            { required: true, message: 'Vui lòng nhập mật khẩu' },
-            { min: 6, message: 'Mật khẩu ít nhất 6 ký tự' },
-          ]}
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder="Mật khẩu tối thiểu 6 ký tự" />
-        </Form.Item>
-
-        <Form.Item
-          name="xacNhanMatKhau"
-          label="Xác nhận mật khẩu"
-          dependencies={['matKhau']}
-          rules={[
-            { required: true, message: 'Vui lòng xác nhận lại mật khẩu' },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue('matKhau') === value) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(new Error('Mật khẩu xác nhận không khớp!'));
-              },
-            }),
-          ]}
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder="Nhập lại mật khẩu" />
-        </Form.Item>
-
-        <Form.Item
-          name="soDienThoai"
-          label="Số điện thoại"
-          rules={[{ pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại không hợp lệ' }]}
-        >
-          <Input prefix={<PhoneOutlined />} placeholder="Số điện thoại liên hệ" />
-        </Form.Item>
-
-        <Form.Item
-          name="email"
-          label="Email"
-          rules={[{ type: 'email', message: 'Email không đúng định dạng' }]}
-        >
-          <Input prefix={<MailOutlined />} placeholder="Địa chỉ email" />
-        </Form.Item>
-
-        <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-            <Button onClick={onCancel}>Hủy</Button>
-            <Button type="primary" htmlType="submit" loading={submitting}>
-              Đăng ký
-            </Button>
-          </div>
-        </Form.Item>
-      </Form>
-    </Modal>
-  );
-};
 
 // --- Component phần illustration bên trái ---
 const LoginIllustration = () => (
@@ -202,16 +75,8 @@ const LoginIllustration = () => (
 );
 
 // --- Component form đăng nhập ---
-const LoginForm = ({ onSubmit, loading, errorMsg, alertType, onOpenRegister, autoFill }) => {
+const LoginForm = ({ onSubmit, loading, errorMsg, alertType }) => {
   const [form] = Form.useForm();
-
-  // Tự động điền khi đăng ký thành công
-  React.useEffect(() => {
-    if (autoFill) {
-      form.setFieldsValue({ tenDangNhap: autoFill.tenDangNhap, matKhau: autoFill.matKhau });
-      form.validateFields(['tenDangNhap', 'matKhau']).catch(() => {});
-    }
-  }, [autoFill, form]);
 
   return (
     <div className="login-form-panel">
@@ -273,7 +138,6 @@ const LoginForm = ({ onSubmit, loading, errorMsg, alertType, onOpenRegister, aut
             label="Mật khẩu"
             rules={[
               { required: true, message: 'Vui lòng nhập mật khẩu' },
-              { min: 6, message: 'Mật khẩu ít nhất 6 ký tự' },
             ]}
             hasFeedback
           >
@@ -308,17 +172,6 @@ const LoginForm = ({ onSubmit, loading, errorMsg, alertType, onOpenRegister, aut
             </Button>
           </Form.Item>
 
-          {/* Link Đăng ký tài khoản */}
-          <div style={{ textAlign: 'center', marginTop: 14 }}>
-            <Text type="secondary" style={{ fontSize: 14 }}>Chưa có tài khoản? </Text>
-            <Button
-              type="link"
-              onClick={onOpenRegister}
-              style={{ padding: 0, fontWeight: 600, color: '#0891b2', fontSize: 14 }}
-            >
-              Đăng ký ngay
-            </Button>
-          </div>
         </Form>
 
         {/* Footer */}
@@ -337,19 +190,11 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [alertType, setAlertType] = useState('error');
-  const [showRegister, setShowRegister] = useState(false);
-  const [autoFill, setAutoFill] = useState(null);
 
   // Nếu đã đăng nhập, chuyển về dashboard
   React.useEffect(() => {
     if (isAuthenticated()) navigate('/dashboard', { replace: true });
   }, [navigate]);
-
-  // Xử lý khi đăng ký thành công
-  const handleRegisterSuccess = (tenDangNhap, matKhau) => {
-    setShowRegister(false);
-    setAutoFill({ tenDangNhap, matKhau });
-  };
 
   // Xử lý submit: gọi POST /auth/login với { tenDangNhap, matKhau }
   const handleSubmit = async (values) => {
@@ -370,12 +215,20 @@ const LoginPage = () => {
       if (user) await setUserData(user);
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      if (err.response?.data?.errorCode === 'WEB_ACCESS_DENIED') {
+      const errorCode = err.response?.data?.errorCode;
+
+      if (errorCode === 'WEB_ACCESS_DENIED') {
         clearStoredAuth();
         setAlertType('warning');
         setErrorMsg('Tài khoản này chỉ sử dụng được trên ứng dụng Mobile, vui lòng tải app để đăng nhập.');
         return;
       }
+
+      if (errorCode === 'INVALID_CREDENTIALS') {
+        setErrorMsg('Tên đăng nhập hoặc mật khẩu không chính xác.');
+        return;
+      }
+
       // Lấy message từ response của backend, hoặc dùng message mặc định
       const msg =
         err.response?.data?.message ||
@@ -395,13 +248,6 @@ const LoginPage = () => {
         loading={loading}
         errorMsg={errorMsg}
         alertType={alertType}
-        onOpenRegister={() => setShowRegister(true)}
-        autoFill={autoFill}
-      />
-      <RegisterModal
-        open={showRegister}
-        onCancel={() => setShowRegister(false)}
-        onSuccess={handleRegisterSuccess}
       />
     </div>
   );

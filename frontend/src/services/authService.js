@@ -39,6 +39,24 @@ export const getMe = async () => {
   return res.data?.data || res.data?.user || res.data;
 };
 
+// Cap nhat thong tin tai khoan hien tai
+export const updateMyProfile = async (profileData) => {
+  const res = await axiosClient.put('/auth/me', profileData);
+  return res.data?.data ?? res.data;
+};
+
+// Doi mat khau cua tai khoan hien tai
+export const changeMyPassword = async (matKhauHienTai, matKhauMoi) => {
+  const res = await axiosClient.post('/auth/change-password', { matKhauHienTai, matKhauMoi });
+  return res.data;
+};
+
+// Lay 50 lan dang nhap gan nhat
+export const getLoginHistory = async () => {
+  const res = await axiosClient.get('/auth/login-history');
+  return res.data?.data ?? [];
+};
+
 // ─── Đăng ký tài khoản ──────────────────────────────────────────────────────
 export const register = async (userData) => {
   const res = await axiosClient.post('/auth/register', userData);
