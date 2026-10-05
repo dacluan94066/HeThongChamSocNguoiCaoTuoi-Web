@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../services/appointment_storage.dart';
+import '../../services/api_client.dart';
 
 class AppointmentScreen extends StatefulWidget {
   const AppointmentScreen({super.key});
@@ -8,43 +10,43 @@ class AppointmentScreen extends StatefulWidget {
 }
 
 class _AppointmentScreenState extends State<AppointmentScreen> {
-  final List<Map<String, dynamic>> upcomingAppointments = [
-    {
-      'doctor': 'BS. Nguyễn Minh Tuấn',
-      'specialty': 'Tim mạch',
-      'date': '25/09/2026',
-      'time': '10:00',
-      'hospital': 'Bệnh viện Đại học Y Dược',
-      'status': 'Sắp tới',
-    },
-    {
-      'doctor': 'BS. Trần Thu Hà',
-      'specialty': 'Nội tổng quát',
-      'date': '30/09/2026',
-      'time': '08:30',
-      'hospital': 'Bệnh viện Nhân Dân 115',
-      'status': 'Sắp tới',
-    },
-  ];
+  List<Map<String, dynamic>> appointments = [];
 
-  final List<Map<String, dynamic>> historyAppointments = [
-    {
-      'doctor': 'BS. Lê Hoàng Nam',
-      'specialty': 'Tim mạch',
-      'date': '12/09/2026',
-      'time': '09:00',
-      'hospital': 'Bệnh viện Chợ Rẫy',
-      'status': 'Đã khám',
-    },
-    {
-      'doctor': 'BS. Phạm Thanh Mai',
-      'specialty': 'Nội tổng quát',
-      'date': '28/08/2026',
-      'time': '14:00',
-      'hospital': 'Bệnh viện Thống Nhất',
-      'status': 'Đã khám',
-    },
-  ];
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    loadAppointments();
+  }
+
+  Future<void> loadAppointments() async {
+    try {
+      final data = await AppointmentStorage.loadAppointments();
+
+      if (!mounted) return;
+
+      setState(() {
+        appointments = data;
+        loading = false;
+        error = null;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        error = e.message;
+        loading = false;
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> get upcomingAppointments =>
+      appointments.where((item) => item['status'] == 'Chưa đến').toList();
+
+  List<Map<String, dynamic>> get historyAppointments =>
+      appointments.where((item) => item['status'] != 'Chưa đến').toList();
 
   void showAppointmentDetail(Map<String, dynamic> appointment) {
     showModalBottomSheet(

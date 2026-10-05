@@ -1,163 +1,113 @@
-import 'dart:convert';
+import 'package:dio/dio.dart';
 
-import 'package:shared_preferences/shared_preferences.dart';
-
-import 'appointment_storage.dart';
-import 'health_storage.dart';
+import 'api_client.dart';
 
 class NotificationStorage {
-  static const String keyNotifications = 'saved_notifications';
-
-  static Future<List<Map<String, dynamic>>> _loadRawNotifications() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final raw = prefs.getString(keyNotifications);
-
-    if (raw == null || raw.isEmpty) {
-      return [];
-    }
-
-    try {
-      final decoded = jsonDecode(raw) as List<dynamic>;
-
-      return decoded.map((item) => Map<String, dynamic>.from(item)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  static Future<void> saveNotifications(
-    List<Map<String, dynamic>> notifications,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setString(keyNotifications, jsonEncode(notifications));
-  }
-
-  // =====================================================
-  // LOAD + ĐỒNG BỘ TOÀN BỘ
-  // =====================================================
-
   static Future<List<Map<String, dynamic>>> loadNotifications() async {
-    final oldNotifications = await _loadRawNotifications();
+    try {
+      final response =
+          await ApiClient.instance.dio.get('/notifications/me');
 
-    final readStatus = <String, bool>{};
+      final body = response.data;
 
-    for (final item in oldNotifications) {
-      final id = item['id']?.toString() ?? '';
-
-      readStatus[id] = item['read'] == true;
-    }
-
-    final notifications = <Map<String, dynamic>>[];
-
-    // ==================================================
-    // 1. SỨC KHỎE
-    // ==================================================
-
-    final healthData = await HealthStorage.loadHealthData();
-
-    final updatedAt = healthData['updatedAt'] ?? 'Chưa cập nhật';
-
-    final now = DateTime.now();
-
-    final today =
-        '${now.day.toString().padLeft(2, '0')}/'
-        '${now.month.toString().padLeft(2, '0')}/'
-        '${now.year}';
-
-    final updatedToday =
-        updatedAt != 'Chưa cập nhật' && updatedAt.startsWith(today);
-
-    if (!updatedToday) {
-      const id = 'health_daily_update';
-
-      notifications.add({
-        'id': id,
-        'title': 'Cập nhật sức khỏe',
-        'message': 'Bạn chưa cập nhật các chỉ số sức khỏe hôm nay.',
-        'time': 'Hôm nay',
-        'type': 'health',
-        'read': readStatus[id] ?? false,
-      });
-    }
-
-    // ==================================================
-    // 2. LỊCH KHÁM
-    // ==================================================
-
-    final appointment = await AppointmentStorage.getNextAppointment();
-
-    if (appointment != null) {
-      const id = 'next_appointment';
-
-      final doctor = appointment['doctor']?.toString() ?? 'Bác sĩ';
-
-      final date = appointment['date']?.toString() ?? '';
-
-      final time = appointment['time']?.toString() ?? '';
-
-      final hospital = appointment['hospital']?.toString() ?? '';
-
-      notifications.add({
-        'id': id,
-        'title': 'Lịch khám sắp tới',
-        'message':
-            'Bạn có lịch khám với $doctor vào $date lúc $time'
-            '${hospital.isNotEmpty ? ' tại $hospital' : ''}.',
-        'time': '$date • $time',
-        'type': 'appointment',
-        'read': readStatus[id] ?? false,
-      });
-    }
-
-    // ==================================================
-    // CHƯA ĐỌC LÊN TRƯỚC
-    // ==================================================
-
-    notifications.sort((a, b) {
-      final aRead = a['read'] == true;
-
-      final bRead = b['read'] == true;
-
-      if (aRead != bRead) {
-        return aRead ? 1 : -1;
+      if (body is! Map || body['data'] is! List) {
+        return [];
       }
 
-      return 0;
-    });
+      final notifications = (body['data'] as List)
+          .whereType<Map>()
+          .map((item) {
+        final data = Map<String, dynamic>.from(item);
 
-    await saveNotifications(notifications);
+        return {
+          'id': data['id']?.toString() ?? '',
+          'title': data['tieuDe']?.toString() ?? 'Thông báo',
+          'message': data['noiDung']?.toString() ?? '',
+          'time': _formatDateTime(data['ngayTao']),
+          'type': _mapType(data['loaiThongBao']),
+          'read': data['daDoc'] == true,
+        };
+      }).toList();
 
-    return notifications;
+      notifications.sort((a, b) {
+        final aRead = a['read'] == true;
+        final bRead = b['read'] == true;
+
+        if (aRead != bRead) {
+          return aRead ? 1 : -1;
+        }
+
+        return 0;
+      });
+
+      return notifications;
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
   }
 
   static Future<void> markAsRead(String id) async {
-    final notifications = await loadNotifications();
-
-    for (final item in notifications) {
-      if (item['id'] == id) {
-        item['read'] = true;
-        break;
-      }
+    try {
+      await ApiClient.instance.dio.patch(
+        '/notifications/$id/read',
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
     }
-
-    await saveNotifications(notifications);
   }
 
   static Future<void> markAllAsRead() async {
     final notifications = await loadNotifications();
 
     for (final item in notifications) {
-      item['read'] = true;
-    }
+      if (item['read'] != true) {
+        final id = item['id']?.toString();
 
-    await saveNotifications(notifications);
+        if (id != null && id.isNotEmpty) {
+          await markAsRead(id);
+        }
+      }
+    }
   }
 
   static Future<int> getUnreadCount() async {
     final notifications = await loadNotifications();
 
-    return notifications.where((item) => item['read'] == false).length;
+    return notifications
+        .where((item) => item['read'] != true)
+        .length;
+  }
+
+  static String _mapType(Object? raw) {
+    final value = raw?.toString().toLowerCase() ?? '';
+
+    if (value.contains('thuoc')) {
+      return 'medicine';
+    }
+
+    if (value.contains('kham')) {
+      return 'appointment';
+    }
+
+    if (value.contains('khancap') ||
+        value.contains('canhbao')) {
+      return 'alert';
+    }
+
+    return 'health';
+  }
+
+  static String _formatDateTime(Object? raw) {
+    final date =
+        DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+
+    if (date == null) {
+      return '';
+    }
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
   }
 }

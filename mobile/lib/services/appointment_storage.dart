@@ -1,71 +1,69 @@
-import 'dart:convert';
+import 'package:dio/dio.dart';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'api_client.dart';
 
 class AppointmentStorage {
-  static const String keyAppointments = 'saved_appointments';
-
   static Future<List<Map<String, dynamic>>> loadAppointments() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final response = await ApiClient.instance.dio.get('/appointments');
 
-    final raw = prefs.getString(keyAppointments);
+      final body = response.data;
 
-    if (raw == null || raw.isEmpty) {
-      final defaultAppointments = [
-        {
-          'id': 'a1',
-          'doctor': 'BS. Nguyễn Minh Tuấn',
-          'specialty': 'Tim mạch',
-          'date': '25/09/2026',
-          'time': '10:00',
-          'hospital': 'Bệnh viện Đại học Y Dược',
-          'status': 'Sắp tới',
-        },
-        {
-          'id': 'a2',
-          'doctor': 'BS. Trần Thu Hà',
-          'specialty': 'Nội tổng quát',
-          'date': '30/09/2026',
-          'time': '08:30',
-          'hospital': 'Bệnh viện Nhân Dân 115',
-          'status': 'Sắp tới',
-        },
-        {
-          'id': 'a3',
-          'doctor': 'BS. Lê Hoàng Nam',
-          'specialty': 'Tim mạch',
-          'date': '12/09/2026',
-          'time': '09:00',
-          'hospital': 'Bệnh viện Chợ Rẫy',
-          'status': 'Đã khám',
-        },
-        {
-          'id': 'a4',
-          'doctor': 'BS. Phạm Thanh Mai',
-          'specialty': 'Nội tổng quát',
-          'date': '28/08/2026',
-          'time': '14:00',
-          'hospital': 'Bệnh viện Thống Nhất',
-          'status': 'Đã khám',
-        },
-      ];
+      if (body is! Map || body['data'] is! List) {
+        return [];
+      }
 
-      await saveAppointments(defaultAppointments);
+      final items = (body['data'] as List)
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .map(_mapAppointment)
+          .toList();
 
-      return defaultAppointments;
+      return items;
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
     }
-
-    final decoded = jsonDecode(raw) as List<dynamic>;
-
-    return decoded.map((item) => Map<String, dynamic>.from(item)).toList();
   }
 
-  static Future<void> saveAppointments(
-    List<Map<String, dynamic>> appointments,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
+  static Map<String, dynamic> _mapAppointment(
+    Map<String, dynamic> data,
+  ) {
+    return {
+      'id': data['id']?.toString() ?? '',
+      'doctor': data['bacSiTen']?.toString() ?? 'Chưa xác định',
+      'specialty': data['ghiChu']?.toString() ?? '',
+      'date': _formatDate(data['ngayKham']),
+      'time': data['gioKham']?.toString() ?? '',
+      'hospital': data['noiKham']?.toString() ?? '',
+      'status': data['trangThaiLabel']?.toString() ?? '',
+      'reason': data['lyDoKham']?.toString() ?? '',
+      'result': data['ketQua']?.toString() ?? '',
+    };
+  }
 
-    await prefs.setString(keyAppointments, jsonEncode(appointments));
+  static String _formatDate(Object? raw) {
+    final date = DateTime.tryParse(raw?.toString() ?? '');
+
+    if (date == null) {
+      return raw?.toString() ?? '';
+    }
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  static Future<Map<String, dynamic>?> getNextAppointment() async {
+    final appointments = await loadAppointments();
+
+    final upcoming = appointments
+        .where((appointment) => appointment['status'] == 'Chưa đến')
+        .toList();
+
+    if (upcoming.isEmpty) {
+      return null;
+    }
+
+    return upcoming.first;
   }
 
   static Future<void> addAppointment({
@@ -75,56 +73,23 @@ class AppointmentStorage {
     required String time,
     required String hospital,
   }) async {
-    final appointments = await loadAppointments();
-
-    appointments.insert(0, {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'doctor': doctor,
-      'specialty': specialty,
-      'date': date,
-      'time': time,
-      'hospital': hospital,
-      'status': 'Sắp tới',
-    });
-
-    await saveAppointments(appointments);
+    throw UnsupportedError(
+      'Mobile người cao tuổi không được tạo lịch khám.',
+    );
   }
 
   static Future<void> updateStatus({
     required String id,
     required String status,
   }) async {
-    final appointments = await loadAppointments();
-
-    for (final appointment in appointments) {
-      if (appointment['id'] == id) {
-        appointment['status'] = status;
-        break;
-      }
-    }
-
-    await saveAppointments(appointments);
+    throw UnsupportedError(
+      'Mobile người cao tuổi không được thay đổi trạng thái lịch khám.',
+    );
   }
 
   static Future<void> deleteAppointment(String id) async {
-    final appointments = await loadAppointments();
-
-    appointments.removeWhere((appointment) => appointment['id'] == id);
-
-    await saveAppointments(appointments);
-  }
-
-  static Future<Map<String, dynamic>?> getNextAppointment() async {
-    final appointments = await loadAppointments();
-
-    final upcoming = appointments
-        .where((appointment) => appointment['status'] == 'Sắp tới')
-        .toList();
-
-    if (upcoming.isEmpty) {
-      return null;
-    }
-
-    return upcoming.first;
+    throw UnsupportedError(
+      'Mobile người cao tuổi không được xóa lịch khám.',
+    );
   }
 }

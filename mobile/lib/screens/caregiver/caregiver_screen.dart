@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../services/alert_storage.dart';
+import '../../services/api_client.dart';
+import '../../services/caregiver_service.dart';
+import '../../services/emergency_alert_service.dart';
+import '../../services/alert_service.dart';
 
 class CaregiverScreen extends StatefulWidget {
   const CaregiverScreen({super.key});
@@ -10,52 +13,73 @@ class CaregiverScreen extends StatefulWidget {
 }
 
 class _CaregiverScreenState extends State<CaregiverScreen> {
-  final List<Map<String, String>> emergencyContacts = [
-    {'name': 'Nguyễn Văn Bình', 'relation': 'Con trai', 'phone': '0909876543'},
-    {'name': 'Nguyễn Thị Lan', 'relation': 'Con gái', 'phone': '0911222333'},
-    {
-      'name': 'Trần Minh Hoàng',
-      'relation': 'Người chăm sóc',
-      'phone': '0988777666',
-    },
-  ];
+  List<Map<String, dynamic>> caregivers = [];
+  List<Map<String, dynamic>> emergencyContacts = [];
+
+  bool loading = true;
+  bool sendingSOS = false;
+  String? error;
 
   String latestAlertTime = 'Chưa có';
 
   @override
   void initState() {
     super.initState();
-    loadLatestAlert();
+    loadData();
   }
 
-  Future<void> loadLatestAlert() async {
-    final alerts = await AlertStorage.loadAlerts();
-
-    if (!mounted) {
-      return;
+  Future<void> loadData() async {
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = null;
+      });
     }
 
-    setState(() {
-      latestAlertTime = alerts.isEmpty
-          ? 'Chưa có'
-          : alerts.first['time'] ?? 'Chưa có';
-    });
-  }
+    try {
+      final results = await Future.wait([
+        CaregiverService.instance.getCaregivers(),
+        CaregiverService.instance.getEmergencyContacts(),
+        AlertService.instance.getAlerts(),
+      ]);
 
-  void showCallMessage(String name, String phone) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Đang chuẩn bị gọi $name - $phone')));
+      if (!mounted) return;
+
+      final alertList = results[2];
+
+      setState(() {
+        caregivers = results[0];
+        emergencyContacts = results[1];
+        if (alertList.isNotEmpty) {
+          latestAlertTime = formatDateTime(alertList.first['thoiGianPhatHien']);
+        } else {
+          latestAlertTime = 'Chưa có';
+        }
+
+        loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        error = e.message;
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        error = 'Không thể tải thông tin người chăm sóc.';
+        loading = false;
+      });
+    }
   }
 
   Future<void> sendEmergencyAlert() async {
-    showDialog(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
           title: const Row(
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.red),
@@ -63,39 +87,14 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
               Text('Xác nhận SOS'),
             ],
           ),
-          content: const Text(
-            'Bạn có chắc muốn gửi cảnh báo khẩn cấp đến người chăm sóc không?',
-            style: TextStyle(height: 1.4),
-          ),
+          content: const Text('Bạn có chắc muốn gửi cảnh báo khẩn cấp không?'),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Hủy'),
             ),
             ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(dialogContext);
-
-                await AlertStorage.addEmergencyAlert();
-
-                if (!mounted) {
-                  return;
-                }
-
-                await loadLatestAlert();
-
-                if (!mounted) {
-                  return;
-                }
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Đã gửi và lưu cảnh báo khẩn cấp.'),
-                  ),
-                );
-              },
+              onPressed: () => Navigator.pop(dialogContext, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
@@ -106,87 +105,112 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
         );
       },
     );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      sendingSOS = true;
+    });
+
+    try {
+      await EmergencyAlertService.instance.sendSOS(
+        noiDung: 'Người cao tuổi yêu cầu trợ giúp khẩn cấp.',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã gửi cảnh báo SOS đến hệ thống.')),
+      );
+
+      await loadData();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          sendingSOS = false;
+        });
+      }
+    }
   }
 
-  Widget infoRow({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: const BoxDecoration(
-            color: Color(0xffeef7f4),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: const Color(0xff07856d), size: 21),
-        ),
+  String formatDateTime(Object? raw) {
+    final date = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
 
-        const SizedBox(width: 12),
+    if (date == null) return 'Chưa có';
 
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
+  }
 
-              const SizedBox(height: 3),
-
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+  void showPhone(String name, String phone) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$name - $phone')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xfff3f3f1),
-
       appBar: AppBar(
         backgroundColor: const Color(0xfff3f3f1),
-        elevation: 0,
         centerTitle: true,
         title: const Text(
           'Người chăm sóc',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
+      body: _buildBody(),
+    );
+  }
 
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
+  Widget _buildBody() {
+    if (loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xff07856d)),
+      );
+    }
+
+    if (error != null) {
+      return Center(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
+            Text(error!),
+            const SizedBox(height: 15),
+            ElevatedButton(onPressed: loadData, child: const Text('Thử lại')),
+          ],
+        ),
+      );
+    }
+
+    final mainCaregiver = caregivers.isNotEmpty ? caregivers.first : null;
+
+    return RefreshIndicator(
+      onRefresh: loadData,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
+        children: [
+          if (mainCaregiver != null)
             Container(
-              width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xffe8fff5), Color(0xfffffce8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(28),
               ),
-              child: const Column(
+              child: Column(
                 children: [
-                  CircleAvatar(
+                  const CircleAvatar(
                     radius: 42,
                     backgroundColor: Colors.white,
                     child: Icon(
@@ -195,251 +219,54 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
                       color: Color(0xff07856d),
                     ),
                   ),
-
-                  SizedBox(height: 14),
-
+                  const SizedBox(height: 14),
                   Text(
-                    'Nguyễn Văn Bình',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    mainCaregiver['hoTen']?.toString() ?? 'Người chăm sóc',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-
-                  SizedBox(height: 4),
-
+                  const SizedBox(height: 4),
                   Text(
-                    'Người chăm sóc chính',
-                    style: TextStyle(fontSize: 14, color: Colors.black54),
+                    mainCaregiver['trinhDoChuyenMon']?.toString() ??
+                        'Người chăm sóc',
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    mainCaregiver['soDienThoai']?.toString() ?? '',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
-            ),
+            )
+          else
+            const Center(child: Text('Chưa có người chăm sóc được phân công.')),
 
-            const SizedBox(height: 22),
+          const SizedBox(height: 28),
 
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Column(
-                children: [
-                  infoRow(
-                    icon: Icons.family_restroom_rounded,
-                    label: 'Mối quan hệ',
-                    value: 'Con trai',
-                  ),
+          const Text(
+            'Liên hệ khẩn cấp',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
 
-                  const SizedBox(height: 18),
+          const SizedBox(height: 12),
 
-                  infoRow(
-                    icon: Icons.phone_outlined,
-                    label: 'Số điện thoại',
-                    value: '0909876543',
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  infoRow(
-                    icon: Icons.location_on_outlined,
-                    label: 'Địa chỉ',
-                    value: 'TP. Hồ Chí Minh',
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  showCallMessage('Nguyễn Văn Bình', '0909876543');
-                },
-                icon: const Icon(Icons.phone_rounded),
-                label: const Text(
-                  'GỌI NGƯỜI CHĂM SÓC',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 28),
-
+          if (emergencyContacts.isEmpty)
             const Text(
-              'Liên hệ khẩn cấp',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              'Chưa có liên hệ khẩn cấp.',
+              style: TextStyle(color: Colors.black54),
             ),
 
-            const SizedBox(height: 12),
+          ...emergencyContacts.map((contact) {
+            final name = contact['hoTen']?.toString() ?? '';
+            final relation = contact['moiQuanHe']?.toString() ?? '';
+            final phone = contact['soDienThoai']?.toString() ?? '';
 
-            ...emergencyContacts.map((contact) {
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: const BoxDecoration(
-                        color: Color(0xffeef7f4),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.person_outline_rounded,
-                        color: Color(0xff07856d),
-                      ),
-                    ),
-
-                    const SizedBox(width: 12),
-
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            contact['name']!,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-
-                          const SizedBox(height: 3),
-
-                          Text(
-                            contact['relation']!,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
-                            ),
-                          ),
-
-                          const SizedBox(height: 3),
-
-                          Text(
-                            contact['phone']!,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    IconButton(
-                      onPressed: () {
-                        showCallMessage(contact['name']!, contact['phone']!);
-                      },
-                      icon: const Icon(
-                        Icons.phone_rounded,
-                        color: Color(0xff07856d),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-
-            const SizedBox(height: 18),
-
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: const Color(0xffffeeee),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Column(
-                children: [
-                  const Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 26,
-                        backgroundColor: Colors.white,
-                        child: Icon(
-                          Icons.sos_rounded,
-                          color: Colors.red,
-                          size: 30,
-                        ),
-                      ),
-
-                      SizedBox(width: 12),
-
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Cần trợ giúp khẩn cấp?',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            SizedBox(height: 4),
-
-                            Text(
-                              'Gửi cảnh báo ngay đến người chăm sóc.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      onPressed: sendEmergencyAlert,
-                      icon: const Icon(Icons.warning_rounded),
-                      label: const Text(
-                        'GỬI CẢNH BÁO SOS',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(17),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 22),
-
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(22),
@@ -447,41 +274,91 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
               child: Row(
                 children: [
                   const CircleAvatar(
-                    backgroundColor: Color(0xffe8f8ee),
+                    backgroundColor: Color(0xffeef7f4),
                     child: Icon(
-                      Icons.check_circle_outline_rounded,
+                      Icons.person_outline_rounded,
                       color: Color(0xff07856d),
                     ),
                   ),
-
                   const SizedBox(width: 12),
-
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Cảnh báo gần nhất',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-
-                        const SizedBox(height: 4),
-
                         Text(
-                          latestAlertTime,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                          ),
+                          name,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
+                        Text(
+                          relation,
+                          style: const TextStyle(color: Colors.black54),
+                        ),
+                        Text(phone),
                       ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => showPhone(name, phone),
+                    icon: const Icon(
+                      Icons.phone_rounded,
+                      color: Color(0xff07856d),
                     ),
                   ),
                 ],
               ),
+            );
+          }),
+
+          const SizedBox(height: 20),
+
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: const Color(0xffffeeee),
+              borderRadius: BorderRadius.circular(24),
             ),
-          ],
-        ),
+            child: Column(
+              children: [
+                const Text(
+                  'Cần trợ giúp khẩn cấp?',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: sendingSOS ? null : sendEmergencyAlert,
+                    icon: sendingSOS
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.sos_rounded),
+                    label: Text(
+                      sendingSOS ? 'ĐANG GỬI...' : 'GỬI CẢNH BÁO SOS',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          Text(
+            'Cảnh báo gần nhất: $latestAlertTime',
+            style: const TextStyle(color: Colors.black54),
+          ),
+        ],
       ),
     );
   }
