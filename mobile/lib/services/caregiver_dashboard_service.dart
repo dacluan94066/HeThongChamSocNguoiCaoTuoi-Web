@@ -15,9 +15,8 @@ class CaregiverDashboardService {
 
   void beginSession() => clearCache();
 
-  Future<List<Map<String, dynamic>>> getMyElderlyList({
-    bool refresh = false,
-  }) => _getList('elderly', '/caregivers/me/elderly', refresh: refresh);
+  Future<List<Map<String, dynamic>>> getMyElderlyList({bool refresh = false}) =>
+      _getList('elderly', '/caregivers/me/elderly', refresh: refresh);
 
   Future<Map<String, dynamic>> getElderlyDetail(
     int id, {
@@ -40,11 +39,8 @@ class CaregiverDashboardService {
   Future<List<Map<String, dynamic>>> getElderlyHealthMetrics(
     int id, {
     bool refresh = false,
-  }) => _getList(
-    'metrics:$id',
-    '/elderly/$id/health-metrics',
-    refresh: refresh,
-  );
+  }) =>
+      _getList('metrics:$id', '/elderly/$id/health-metrics', refresh: refresh);
 
   Future<List<Map<String, dynamic>>> getElderlyUpcomingAppointments(
     int id, {
@@ -55,6 +51,63 @@ class CaregiverDashboardService {
     refresh: refresh,
   );
 
+  Future<List<Map<String, dynamic>>> getElderlyAlerts(
+    int id, {
+    String? loai,
+    String? mucDo,
+    DateTime? tuNgay,
+    DateTime? denNgay,
+    bool refresh = false,
+  }) {
+    final query = <String, dynamic>{
+      if (loai?.trim().isNotEmpty == true) 'loai': loai!.trim(),
+      if (mucDo?.trim().isNotEmpty == true) 'mucDo': mucDo!.trim(),
+      if (tuNgay != null) 'tuNgay': _date(tuNgay),
+      if (denNgay != null) 'denNgay': _date(denNgay),
+    };
+    final queryKey = query.entries
+        .map((item) => '${item.key}=${item.value}')
+        .join('&');
+    return _getList(
+      'alerts:$id:$queryKey',
+      '/elderly/$id/alerts',
+      queryParameters: query,
+      refresh: refresh,
+    );
+  }
+
+  Future<Map<String, dynamic>> markAlertSeen(int id) =>
+      _updateAlert('/alerts/$id/seen');
+
+  Future<Map<String, dynamic>> resolveAlert(int id, String note) =>
+      _updateAlert('/alerts/$id/resolve', data: {'ghiChu': note.trim()});
+
+  Future<Map<String, dynamic>> _updateAlert(
+    String path, {
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      final response = await ApiClient.instance.dio.patch<Map<String, dynamic>>(
+        path,
+        data: data,
+      );
+      final result = response.data?['data'];
+      if (result is! Map) {
+        throw ApiException(
+          response.data?['message']?.toString() ??
+              'Phản hồi cập nhật cảnh báo không hợp lệ.',
+          statusCode: response.statusCode,
+        );
+      }
+      _generation++;
+      _cache.removeWhere((key, _) => key.startsWith('alerts:'));
+      _inFlight.removeWhere((key, _) => key.startsWith('alerts:'));
+      return Map<String, dynamic>.from(result);
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getEmergencyContacts(
     int id, {
     bool refresh = false,
@@ -64,25 +117,6 @@ class CaregiverDashboardService {
     queryParameters: {'nguoiCaoTuoiId': id},
     refresh: refresh,
   );
-
-  Future<List<Map<String, dynamic>>> getNotifications({
-    bool refresh = false,
-  }) => _getList(
-    'notifications',
-    '/notifications/me',
-    refresh: refresh,
-  );
-
-  Future<void> markNotificationRead(int id) async {
-    try {
-      await ApiClient.instance.dio.patch<Map<String, dynamic>>(
-        '/notifications/$id/read',
-      );
-      _invalidateKey('notifications');
-    } on DioException catch (error) {
-      throw ApiException.fromDio(error);
-    }
-  }
 
   Future<List<Map<String, dynamic>>> _getList(
     String key,
@@ -168,11 +202,6 @@ class CaregiverDashboardService {
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
     }
-  }
-
-  void _invalidateKey(String key) {
-    _cache.remove(key);
-    _inFlight.remove(key);
   }
 
   void clearCache() {

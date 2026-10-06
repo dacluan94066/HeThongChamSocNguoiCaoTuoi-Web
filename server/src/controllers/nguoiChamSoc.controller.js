@@ -54,7 +54,11 @@ const getMine = async (req, res, next) => {
           ncs.Email AS email,
           ncs.DiaChi AS diaChi,
           ncs.NgheNghiep AS ngheNghiep,
-          lk.MoiQuanHe AS moiQuanHe,
+          CASE
+            WHEN lk.LaChinh = 1 THEN N'Người chăm sóc chính'
+            WHEN lk.MoiQuanHe = N'Người chăm sóc chính' THEN N'Người chăm sóc'
+            ELSE lk.MoiQuanHe
+          END AS moiQuanHe,
           lk.LaChinh AS laChinh
         FROM HoSoNguoiCaoTuoi nct
         INNER JOIN NguoiCaoTuoi_NguoiChamSoc lk

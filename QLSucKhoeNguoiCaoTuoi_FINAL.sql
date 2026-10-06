@@ -169,6 +169,12 @@ CREATE TABLE NguoiCaoTuoi_NguoiChamSoc (
 );
 GO
 
+-- Moi nguoi cao tuoi chi co toi da mot nguoi cham soc chinh dang hoat dong.
+CREATE UNIQUE INDEX UX_NCT_NCS_OneActivePrimary
+    ON NguoiCaoTuoi_NguoiChamSoc(NguoiCaoTuoiID)
+    WHERE LaChinh = 1;
+GO
+
 CREATE TABLE LienHeKhanCap (
     LienHeID        INT IDENTITY(1,1) PRIMARY KEY,
     NguoiCaoTuoiID  INT NOT NULL,

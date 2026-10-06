@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../services/api_client.dart';
+import '../../services/alert_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/caregiver_dashboard_service.dart';
+import '../../widgets/alert_card.dart';
+import '../notifications/notification_screen.dart';
 import '../profile/profile_screen.dart';
 import 'caregiver_elderly_detail_screen.dart';
-import 'caregiver_notification_screen.dart';
 
 class CaregiverHomeScreen extends StatefulWidget {
   const CaregiverHomeScreen({super.key});
@@ -31,7 +33,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     try {
       final results = await Future.wait([
         CaregiverDashboardService.instance.getMyElderlyList(refresh: refresh),
-        CaregiverDashboardService.instance.getNotifications(refresh: refresh),
+        AlertService.instance.getNotifications(refresh: refresh),
       ]);
       if (!mounted) return;
       setState(() {
@@ -80,13 +82,14 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
   }
 
-  void _openElderly(Map<String, dynamic> person) {
-    Navigator.push(
+  Future<void> _openElderly(Map<String, dynamic> person) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => CaregiverElderlyDetailScreen(elderly: person),
       ),
     );
+    if (mounted) await _load(refresh: true);
   }
 
   bool _truthy(dynamic value) => value == true || value == 1 || value == '1';
@@ -99,6 +102,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     final unread = _notifications
         .where((item) => !_truthy(item['daDoc']))
         .length;
+    final emergencyStyle = AlertVisuals.styleForSeverity('KhanCap');
 
     return Scaffold(
       backgroundColor: const Color(0xfff4f6f5),
@@ -138,7 +142,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Material(
-                        color: const Color(0xffffe5e5),
+                        color: emergencyStyle.background,
                         borderRadius: BorderRadius.circular(18),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(18),
@@ -147,24 +151,24 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                             padding: const EdgeInsets.all(15),
                             child: Row(
                               children: [
-                                const Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: Color(0xffc62828),
+                                Icon(
+                                  emergencyStyle.icon,
+                                  color: emergencyStyle.color,
                                   size: 30,
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
                                     '${emergency['hoTen'] ?? 'Người cao tuổi'} vừa gửi cảnh báo khẩn cấp - Bấm để xem',
-                                    style: const TextStyle(
-                                      color: Color(0xff9b1c1c),
+                                    style: TextStyle(
+                                      color: emergencyStyle.color,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
-                                const Icon(
+                                Icon(
                                   Icons.chevron_right_rounded,
-                                  color: Color(0xffc62828),
+                                  color: emergencyStyle.color,
                                 ),
                               ],
                             ),
@@ -181,7 +185,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const CaregiverNotificationScreen(),
+                            builder: (_) => const NotificationScreen(),
                           ),
                         );
                         await _load(refresh: true);

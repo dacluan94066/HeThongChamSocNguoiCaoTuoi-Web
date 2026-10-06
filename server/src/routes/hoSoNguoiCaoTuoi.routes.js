@@ -8,6 +8,7 @@ const medicationScheduleController = require('../controllers/lichUongThuoc.contr
 const prescriptionController = require('../controllers/donThuoc.controller');
 const appointmentController = require('../controllers/lichKhamBenh.controller');
 const caregiverController = require('../controllers/nguoiChamSoc.controller');
+const alertController = require('../controllers/canhBao.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const { checkPermission } = require('../middlewares/permission.middleware');
 const scope = require('../middlewares/mobile-scope.middleware');
@@ -31,6 +32,7 @@ router.post('/me/health-metrics', healthMetricController.createMine);
 router.get('/me/medication-schedule', medicationScheduleController.getMine);
 router.get('/me/appointments/upcoming', appointmentController.getUpcomingMine);
 router.get('/me/appointments', appointmentController.getMine);
+router.get('/me/alerts', alertController.getMine);
 router.get(
   '/:id/medication-schedule',
   scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
@@ -45,6 +47,12 @@ router.get(
   '/:id/appointments/upcoming',
   scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
   appointmentController.getUpcomingByElderly
+);
+router.get(
+  '/:id/alerts',
+  scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
+  checkScopedReadPermission,
+  alertController.getByElderly
 );
 router.get(
   '/:id/prescriptions',

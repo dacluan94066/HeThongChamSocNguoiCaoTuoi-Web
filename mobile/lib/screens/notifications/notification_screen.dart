@@ -1,637 +1,218 @@
 import 'package:flutter/material.dart';
 
-import '../../services/notification_storage.dart';
-
-import '../appointments/appointment_screen.dart';
-import '../health/health_screen.dart';
-import '../medication/medication_screen.dart';
+import '../../services/alert_service.dart';
+import '../../services/api_client.dart';
 
 class NotificationScreen extends StatefulWidget {
-  const NotificationScreen({
-    super.key,
-  });
+  const NotificationScreen({super.key});
 
   @override
-  State<NotificationScreen> createState() =>
-      _NotificationScreenState();
+  State<NotificationScreen> createState() => _NotificationScreenState();
 }
 
-class _NotificationScreenState
-    extends State<NotificationScreen> {
-  List<Map<String, dynamic>> notifications = [];
-
-  bool loading = true;
+class _NotificationScreenState extends State<NotificationScreen> {
+  List<Map<String, dynamic>> _items = const [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    loadNotifications();
+    _load();
   }
 
-  Future<void> loadNotifications() async {
-    final data =
-        await NotificationStorage.loadNotifications();
+  bool _truthy(Object? value) =>
+      value == true || value == 1 || value?.toString() == '1';
 
-    if (!mounted) {
-      return;
-    }
+  int get _unreadCount =>
+      _items.where((item) => !_truthy(item['daDoc'])).length;
 
-    setState(() {
-      notifications = data;
-      loading = false;
-    });
-  }
-
-  int get unreadCount {
-    return notifications
-        .where(
-          (item) =>
-              item['read'] == false,
-        )
-        .length;
-  }
-
-  Future<void> markAllAsRead() async {
-    await NotificationStorage.markAllAsRead();
-
-    await loadNotifications();
-
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Đã đánh dấu tất cả thông báo là đã đọc.',
-        ),
-      ),
-    );
-  }
-
-  Future<void> openNotification(
-    Map<String, dynamic> notification,
-  ) async {
-    final id =
-        notification['id']?.toString() ?? '';
-
-    await NotificationStorage.markAsRead(id);
-
-    await loadNotifications();
-
-    if (!mounted) {
-      return;
-    }
-
-    final type =
-        notification['type']?.toString() ?? '';
-
-    if (type == 'medicine') {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              const MedicationScreen(),
-        ),
+  Future<void> _load({bool refresh = false}) async {
+    if (!refresh && mounted) setState(() => _loading = true);
+    try {
+      final items = await AlertService.instance.getNotifications(
+        refresh: refresh,
       );
-
-      await loadNotifications();
-
-      return;
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _error = null;
+        _loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Không thể tải thông báo.';
+        _loading = false;
+      });
     }
+  }
 
-    if (type == 'health') {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              const HealthScreen(),
-        ),
+  Future<void> _openNotification(Map<String, dynamic> item) async {
+    if (_truthy(item['daDoc'])) return;
+    final id = int.tryParse(item['id']?.toString() ?? '');
+    if (id == null) return;
+    try {
+      await AlertService.instance.markNotificationRead(id);
+      if (!mounted) return;
+      setState(() => item['daDoc'] = true);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
       );
-
-      await loadNotifications();
-
-      return;
-    }
-
-    if (type == 'appointment') {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              const AppointmentScreen(),
-        ),
-      );
-
-      await loadNotifications();
-    }
-  }
-
-  IconData getNotificationIcon(
-    String type,
-  ) {
-    switch (type) {
-      case 'medicine':
-        return Icons.medication_rounded;
-
-      case 'appointment':
-        return Icons.calendar_month_rounded;
-
-      default:
-        return Icons.favorite_rounded;
-    }
-  }
-
-  Color getNotificationColor(
-    String type,
-  ) {
-    switch (type) {
-      case 'medicine':
-        return const Color(
-          0xffe85d75,
-        );
-
-      case 'appointment':
-        return const Color(
-          0xff4b6edb,
-        );
-
-      default:
-        return const Color(
-          0xff43a66b,
-        );
-    }
-  }
-
-  Color getNotificationBackground(
-    String type,
-  ) {
-    switch (type) {
-      case 'medicine':
-        return const Color(
-          0xffffe8ec,
-        );
-
-      case 'appointment':
-        return const Color(
-          0xffe9efff,
-        );
-
-      default:
-        return const Color(
-          0xffe8f8ee,
-        );
     }
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(
-        0xfff3f3f1,
-      ),
-
+      backgroundColor: const Color(0xfff4f6f5),
       appBar: AppBar(
-        backgroundColor:
-            const Color(
-          0xfff3f3f1,
-        ),
-        elevation: 0,
-        centerTitle: true,
         title: const Text(
           'Thông báo',
-          style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-
-      body: loading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(
-                color:
-                    Color(
-                  0xff07856d,
-                ),
-              ),
-            )
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? _ErrorView(message: _error!, onRetry: _load)
           : RefreshIndicator(
-              onRefresh:
-                  loadNotifications,
-              color:
-                  const Color(
-                0xff07856d,
-              ),
+              onRefresh: () => _load(refresh: true),
               child: ListView(
-                padding:
-                    const EdgeInsets
-                        .fromLTRB(
-                  18,
-                  10,
-                  18,
-                  30,
-                ),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 30),
                 children: [
                   Container(
-                    width:
-                        double.infinity,
-                    padding:
-                        const EdgeInsets
-                            .all(
-                      18,
-                    ),
-                    decoration:
-                        BoxDecoration(
-                      gradient:
-                          const LinearGradient(
-                        colors: [
-                          Color(
-                            0xffe9fff6,
-                          ),
-                          Color(
-                            0xffffffe8,
-                          ),
-                        ],
-                      ),
-                      borderRadius:
-                          BorderRadius
-                              .circular(
-                        26,
-                      ),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xffe8f7f2),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
                       children: [
-                        const CircleAvatar(
-                          radius: 30,
-                          backgroundColor:
-                              Colors.white,
-                          child: Icon(
-                            Icons
-                                .notifications_active_rounded,
-                            color:
-                                Color(
-                              0xff07856d,
-                            ),
-                            size: 30,
-                          ),
+                        const Icon(
+                          Icons.notifications_active_outlined,
+                          color: Color(0xff07856d),
+                          size: 32,
                         ),
-
-                        const SizedBox(
-                          width: 14,
-                        ),
-
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
-                            children: [
-                              const Text(
-                                'Thông báo chưa đọc',
-                                style:
-                                    TextStyle(
-                                  fontSize:
-                                      13,
-                                  color:
-                                      Colors.black54,
-                                ),
-                              ),
-
-                              const SizedBox(
-                                height: 3,
-                              ),
-
-                              Text(
-                                '$unreadCount thông báo',
-                                style:
-                                    const TextStyle(
-                                  fontSize:
-                                      21,
-                                  fontWeight:
-                                      FontWeight
-                                          .bold,
-                                ),
-                              ),
-                            ],
+                        const SizedBox(width: 12),
+                        Text(
+                          '$_unreadCount thông báo chưa đọc',
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
                     ),
                   ),
-
-                  const SizedBox(
-                    height: 18,
-                  ),
-
-                  Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
-                    children: [
-                      const Text(
-                        'Tất cả thông báo',
-                        style:
-                            TextStyle(
-                          fontSize: 18,
-                          fontWeight:
-                              FontWeight
-                                  .bold,
-                        ),
-                      ),
-
-                      if (unreadCount >
-                          0)
-                        TextButton(
-                          onPressed:
-                              markAllAsRead,
-                          child:
-                              const Text(
-                            'Đánh dấu đã đọc',
-                            style:
-                                TextStyle(
-                              color:
-                                  Color(
-                                0xff07856d,
-                              ),
-                              fontSize:
-                                  12,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-
-                  const SizedBox(
-                    height: 8,
-                  ),
-
-                  if (notifications
-                      .isEmpty)
-                    Container(
-                      padding:
-                          const EdgeInsets
-                              .all(
-                        28,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            Colors.white,
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          22,
-                        ),
-                      ),
-                      child:
-                          const Column(
+                  const SizedBox(height: 14),
+                  if (_items.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 120),
+                      child: Column(
                         children: [
                           Icon(
-                            Icons
-                                .notifications_none_rounded,
-                            size: 46,
-                            color:
-                                Colors.black26,
+                            Icons.notifications_none_rounded,
+                            size: 68,
+                            color: Colors.black26,
                           ),
-
-                          SizedBox(
-                            height: 10,
-                          ),
-
-                          Text(
-                            'Chưa có thông báo nào.',
-                            style:
-                                TextStyle(
-                              color:
-                                  Colors.black54,
-                            ),
-                          ),
+                          SizedBox(height: 12),
+                          Text('Chưa có thông báo nào.'),
                         ],
                       ),
                     )
                   else
-                    ...notifications.map(
-                      (notification) {
-                        final isRead =
-                            notification[
-                                    'read'] ==
-                                true;
-
-                        final type =
-                            notification[
-                                        'type']
-                                    ?.toString() ??
-                                'health';
-
-                        return InkWell(
-                          onTap: () =>
-                              openNotification(
-                            notification,
-                          ),
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            22,
-                          ),
-                          child:
-                              Container(
-                            margin:
-                                const EdgeInsets
-                                    .only(
-                              bottom: 12,
-                            ),
-                            padding:
-                                const EdgeInsets
-                                    .all(
-                              14,
-                            ),
-                            decoration:
-                                BoxDecoration(
-                              color: isRead
-                                  ? Colors.white
-                                  : const Color(
-                                      0xfff8fffb,
-                                    ),
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                22,
-                              ),
-                              border:
-                                  Border.all(
-                                color: isRead
-                                    ? Colors
-                                        .transparent
-                                    : const Color(
-                                        0xffd9f3e6,
-                                      ),
-                              ),
-                            ),
-                            child: Row(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
-                              children: [
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration:
-                                      BoxDecoration(
-                                    color:
-                                        getNotificationBackground(
-                                      type,
-                                    ),
-                                    borderRadius:
-                                        BorderRadius
-                                            .circular(
-                                      16,
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    getNotificationIcon(
-                                      type,
-                                    ),
-                                    color:
-                                        getNotificationColor(
-                                      type,
-                                    ),
-                                  ),
-                                ),
-
-                                const SizedBox(
-                                  width: 12,
-                                ),
-
-                                Expanded(
-                                  child:
-                                      Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment
-                                            .start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child:
-                                                Text(
-                                              notification['title']
-                                                      ?.toString() ??
-                                                  'Thông báo',
-                                              style:
-                                                  TextStyle(
-                                                fontSize:
-                                                    15,
-                                                fontWeight: isRead
-                                                    ? FontWeight.w600
-                                                    : FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-
-                                          if (!isRead)
-                                            Container(
-                                              width:
-                                                  9,
-                                              height:
-                                                  9,
-                                              decoration:
-                                                  const BoxDecoration(
-                                                color:
-                                                    Color(
-                                                  0xff07856d,
-                                                ),
-                                                shape:
-                                                    BoxShape.circle,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-
-                                      const SizedBox(
-                                        height: 5,
-                                      ),
-
-                                      Text(
-                                        notification['message']
-                                                ?.toString() ??
-                                            '',
-                                        style:
-                                            const TextStyle(
-                                          fontSize:
-                                              13,
-                                          color:
-                                              Colors.black54,
-                                          height:
-                                              1.4,
-                                        ),
-                                      ),
-
-                                      const SizedBox(
-                                        height: 7,
-                                      ),
-
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            type ==
-                                                    'appointment'
-                                                ? Icons
-                                                    .calendar_today_outlined
-                                                : Icons
-                                                    .schedule_rounded,
-                                            size:
-                                                15,
-                                            color:
-                                                Colors.black38,
-                                          ),
-
-                                          const SizedBox(
-                                            width:
-                                                5,
-                                          ),
-
-                                          Text(
-                                            notification['time']
-                                                    ?.toString() ??
-                                                '',
-                                            style:
-                                                const TextStyle(
-                                              fontSize:
-                                                  12,
-                                              color:
-                                                  Colors.black45,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                                const SizedBox(
-                                  width: 6,
-                                ),
-
-                                const Icon(
-                                  Icons
-                                      .chevron_right_rounded,
-                                  color:
-                                      Colors.black26,
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                    ..._items.map(_notificationCard),
                 ],
               ),
             ),
     );
   }
+
+  Widget _notificationCard(Map<String, dynamic> item) {
+    final read = _truthy(item['daDoc']);
+    final type = item['loaiThongBao']?.toString();
+    final emergency = type == 'KhanCap';
+    final color = emergency ? const Color(0xffc62828) : const Color(0xff07856d);
+    final background = read
+        ? Colors.white
+        : emergency
+        ? const Color(0xffffe8e8)
+        : const Color(0xffe9f8f4);
+    return Card(
+      elevation: 0,
+      color: background,
+      margin: const EdgeInsets.only(bottom: 9),
+      child: ListTile(
+        onTap: () => _openNotification(item),
+        leading: CircleAvatar(
+          backgroundColor: color.withValues(alpha: 0.12),
+          child: Icon(_iconFor(type), color: color),
+        ),
+        title: Text(
+          item['tieuDe']?.toString() ?? 'Thông báo',
+          style: TextStyle(
+            fontWeight: read ? FontWeight.w500 : FontWeight.bold,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(item['noiDung']?.toString() ?? ''),
+            const SizedBox(height: 6),
+            Text(
+              _dateTime(item['ngayTao']),
+              style: const TextStyle(fontSize: 12, color: Colors.black45),
+            ),
+          ],
+        ),
+        trailing: read ? null : Icon(Icons.circle, size: 10, color: color),
+      ),
+    );
+  }
+
+  static IconData _iconFor(String? type) => switch (type) {
+    'NhacThuoc' => Icons.medication_rounded,
+    'NhacLichKham' => Icons.calendar_month_rounded,
+    'CanhBaoChiSo' => Icons.monitor_heart_rounded,
+    'KhanCap' => Icons.sos_rounded,
+    _ => Icons.notifications_outlined,
+  };
+
+  static String _dateTime(Object? raw) {
+    final value = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    if (value == null) return '';
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(value.hour)}:${two(value.minute)} • '
+        '${two(value.day)}/${two(value.month)}/${value.year}';
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(message, textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        FilledButton(onPressed: onRetry, child: const Text('Thử lại')),
+      ],
+    ),
+  );
 }

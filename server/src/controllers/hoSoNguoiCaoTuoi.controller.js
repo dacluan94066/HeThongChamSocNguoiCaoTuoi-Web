@@ -23,9 +23,10 @@ const getMe = async (req, res, next) => {
         FROM NguoiCaoTuoi_NguoiChamSoc lk
         JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lk.NguoiChamSocID
         WHERE lk.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+          AND lk.LaChinh = 1
           AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
           AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
-        ORDER BY lk.LaChinh DESC, lk.ID DESC
+        ORDER BY lk.ID DESC
       ) ncsMain
       WHERE nct.UserID = @userId
     `);
@@ -122,10 +123,11 @@ const getAll = async (req, res, next) => {
       OUTER APPLY (
         SELECT TOP 1 ncs.NguoiChamSocID, ncs.HoTen
         FROM NguoiCaoTuoi_NguoiChamSoc lienKet
-        INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
-        WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+          INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
+          WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+          AND lienKet.LaChinh = 1
           AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
-        ORDER BY lienKet.LaChinh DESC, lienKet.ID DESC
+        ORDER BY lienKet.ID DESC
       ) ncsMain
       WHERE 1=1
     `;
@@ -180,8 +182,9 @@ const getById = async (req, res, next) => {
           FROM NguoiCaoTuoi_NguoiChamSoc lienKet
           INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
           WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+            AND lienKet.LaChinh = 1
             AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
-          ORDER BY lienKet.LaChinh DESC, lienKet.ID DESC
+          ORDER BY lienKet.ID DESC
         ) ncsMain
         WHERE nct.NguoiCaoTuoiID = @id
       `);
@@ -370,7 +373,11 @@ const assignCaregiver = async (req, res, next) => {
       .input('nguoiChamSocId', sql.Int, nguoiChamSocId)
       .query(`
         UPDATE NguoiCaoTuoi_NguoiChamSoc
-        SET LaChinh = 0
+        SET LaChinh = 0,
+            MoiQuanHe = CASE
+              WHEN MoiQuanHe = N'Người chăm sóc chính' THEN N'Người chăm sóc'
+              ELSE MoiQuanHe
+            END
         WHERE NguoiCaoTuoiID = @id;
 
         MERGE NguoiCaoTuoi_NguoiChamSoc WITH (HOLDLOCK) AS target
@@ -378,7 +385,9 @@ const assignCaregiver = async (req, res, next) => {
           ON target.NguoiCaoTuoiID = source.NguoiCaoTuoiID
          AND target.NguoiChamSocID = source.NguoiChamSocID
         WHEN MATCHED THEN
-          UPDATE SET LaChinh = 1, NgayKetThuc = NULL
+          UPDATE SET LaChinh = 1,
+            MoiQuanHe = N'Người chăm sóc chính',
+            NgayKetThuc = NULL
         WHEN NOT MATCHED THEN
           INSERT (NguoiCaoTuoiID, NguoiChamSocID, MoiQuanHe, LaChinh, NgayBatDau)
           VALUES (source.NguoiCaoTuoiID, source.NguoiChamSocID, N'Người chăm sóc chính', 1, CAST(GETDATE() AS DATE));

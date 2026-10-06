@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../services/appointment_service.dart';
+import '../../services/alert_service.dart';
 import '../../services/health_metric_service.dart';
 import '../../services/medication_schedule_service.dart';
-import '../../services/notification_storage.dart';
 import '../../services/api_client.dart';
 import '../../services/elderly_service.dart';
 
@@ -52,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
       loadProfile(refresh: refreshProfile),
       loadHealthData(),
       loadMedicationSchedule(),
-      loadUnreadNotificationCount(),
+      loadUnreadNotificationCount(refresh: refreshProfile),
       loadNextAppointment(refresh: refreshProfile),
     ]);
   }
@@ -182,16 +182,21 @@ class _HomeScreenState extends State<HomeScreen> {
   // NOTIFICATION BADGE
   // =====================================================
 
-  Future<void> loadUnreadNotificationCount() async {
-    final count = await NotificationStorage.getUnreadCount();
-
-    if (!mounted) {
-      return;
+  Future<void> loadUnreadNotificationCount({bool refresh = false}) async {
+    try {
+      final notifications = await AlertService.instance.getNotifications(
+        refresh: refresh,
+      );
+      final count = notifications.where((item) {
+        final value = item['daDoc'];
+        return !(value == true || value == 1 || value?.toString() == '1');
+      }).length;
+      if (!mounted) return;
+      setState(() => unreadNotificationCount = count);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => unreadNotificationCount = 0);
     }
-
-    setState(() {
-      unreadNotificationCount = count;
-    });
   }
 
   // =====================================================

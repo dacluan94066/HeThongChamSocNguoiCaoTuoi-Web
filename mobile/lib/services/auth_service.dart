@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import 'api_client.dart';
+import 'alert_service.dart';
 import 'appointment_service.dart';
 import 'caregiver_service.dart';
 import 'caregiver_dashboard_service.dart';
@@ -22,6 +23,7 @@ class AuthService {
     // Huy du lieu cua tai khoan truoc ngay khi bat dau lan dang nhap moi.
     // Response ho so dang chay cua phien cu cung bi danh dau het hieu luc.
     ElderlyService.instance.clearCache();
+    AlertService.instance.clearCache();
     AppointmentService.instance.clearCache();
     CaregiverService.instance.clearCache();
     CaregiverDashboardService.instance.clearCache();
@@ -55,6 +57,7 @@ class AuthService {
       );
 
       ElderlyService.instance.beginSession(userMap['userId']);
+      AlertService.instance.beginSession();
       AppointmentService.instance.beginSession();
       CaregiverService.instance.beginSession();
       CaregiverDashboardService.instance.beginSession();
@@ -115,6 +118,7 @@ class AuthService {
 
   Future<void> logout() async {
     ElderlyService.instance.clearCache();
+    AlertService.instance.clearCache();
     AppointmentService.instance.clearCache();
     CaregiverService.instance.clearCache();
     CaregiverDashboardService.instance.clearCache();
@@ -131,6 +135,7 @@ class AuthService {
   Future<Map<String, dynamic>> getMe() async {
     final user = await _get('/auth/me');
     ElderlyService.instance.beginSession(user['userId']);
+    AlertService.instance.beginSession();
     AppointmentService.instance.beginSession();
     CaregiverService.instance.beginSession();
     CaregiverDashboardService.instance.beginSession();

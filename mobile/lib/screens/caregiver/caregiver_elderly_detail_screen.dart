@@ -3,12 +3,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/api_client.dart';
 import '../../services/caregiver_dashboard_service.dart';
+import '../../widgets/alert_card.dart';
 
 class CaregiverElderlyDetailScreen extends StatefulWidget {
-  const CaregiverElderlyDetailScreen({
-    super.key,
-    required this.elderly,
-  });
+  const CaregiverElderlyDetailScreen({super.key, required this.elderly});
 
   final Map<String, dynamic> elderly;
 
@@ -24,6 +22,8 @@ class _CaregiverElderlyDetailScreenState
   List<Map<String, dynamic>> _metrics = const [];
   List<Map<String, dynamic>> _appointments = const [];
   List<Map<String, dynamic>> _contacts = const [];
+  List<Map<String, dynamic>> _alerts = const [];
+  final Set<int> _savingAlertIds = <int>{};
   bool _loading = true;
   String? _error;
 
@@ -47,6 +47,7 @@ class _CaregiverElderlyDetailScreenState
         service.getElderlyHealthMetrics(_elderlyId, refresh: refresh),
         service.getElderlyUpcomingAppointments(_elderlyId, refresh: refresh),
         service.getEmergencyContacts(_elderlyId, refresh: refresh),
+        service.getElderlyAlerts(_elderlyId, refresh: refresh),
       ]);
       if (!mounted) return;
       setState(() {
@@ -55,6 +56,7 @@ class _CaregiverElderlyDetailScreenState
         _metrics = List<Map<String, dynamic>>.from(results[2] as List);
         _appointments = List<Map<String, dynamic>>.from(results[3] as List);
         _contacts = List<Map<String, dynamic>>.from(results[4] as List);
+        _alerts = List<Map<String, dynamic>>.from(results[5] as List);
         _error = null;
         _loading = false;
       });
@@ -77,7 +79,8 @@ class _CaregiverElderlyDetailScreenState
     final seen = <String>{};
     final latest = <Map<String, dynamic>>[];
     for (final metric in _metrics) {
-      final key = metric['loaiChiSoId']?.toString() ??
+      final key =
+          metric['loaiChiSoId']?.toString() ??
           metric['tenChiSo']?.toString() ??
           '';
       if (seen.add(key)) latest.add(metric);
@@ -106,6 +109,145 @@ class _CaregiverElderlyDetailScreenState
         const SnackBar(content: Text('Không thể mở ứng dụng gọi điện.')),
       );
     }
+  }
+
+  Future<void> _reloadAlerts() async {
+    final alerts = await CaregiverDashboardService.instance.getElderlyAlerts(
+      _elderlyId,
+      refresh: true,
+    );
+    if (!mounted) return;
+    setState(() => _alerts = alerts);
+  }
+
+  Future<void> _acceptAlert(Map<String, dynamic> alert) async {
+    final id = int.tryParse(alert['id']?.toString() ?? '');
+    if (id == null || _savingAlertIds.contains(id)) return;
+    setState(() => _savingAlertIds.add(id));
+    try {
+      await CaregiverDashboardService.instance.markAlertSeen(id);
+      await _reloadAlerts();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã tiếp nhận cảnh báo.'),
+          backgroundColor: Color(0xff07856d),
+        ),
+      );
+    } on ApiException catch (error) {
+      await _reloadAlerts();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _savingAlertIds.remove(id));
+    }
+  }
+
+  Future<void> _resolveAlert(Map<String, dynamic> alert) async {
+    final id = int.tryParse(alert['id']?.toString() ?? '');
+    if (id == null || _savingAlertIds.contains(id)) return;
+    final formKey = GlobalKey<FormState>();
+    var noteInput = '';
+    final note = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hoàn tất xử lý cảnh báo'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            maxLength: 500,
+            maxLines: 4,
+            autofocus: true,
+            onChanged: (value) => noteInput = value,
+            decoration: const InputDecoration(
+              labelText: 'Kết quả xử lý',
+              hintText: 'Ví dụ: Đã gọi điện và xác nhận người bệnh ổn định.',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) => value?.trim().isEmpty == true
+                ? 'Vui lòng nhập kết quả xử lý'
+                : null,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() != true) return;
+              Navigator.pop(dialogContext, noteInput.trim());
+            },
+            child: const Text('Xác nhận đã xử lý'),
+          ),
+        ],
+      ),
+    );
+    if (note == null || note.isEmpty || !mounted) return;
+
+    setState(() => _savingAlertIds.add(id));
+    try {
+      await CaregiverDashboardService.instance.resolveAlert(id, note);
+      await _reloadAlerts();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cảnh báo đã được xử lý.'),
+          backgroundColor: Color(0xff07856d),
+        ),
+      );
+    } on ApiException catch (error) {
+      await _reloadAlerts();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _savingAlertIds.remove(id));
+    }
+  }
+
+  Widget? _alertAction(Map<String, dynamic> alert) {
+    final id = int.tryParse(alert['id']?.toString() ?? '');
+    final status = alert['trangThai']?.toString();
+    final saving = id != null && _savingAlertIds.contains(id);
+    if (saving) {
+      return const Align(
+        alignment: Alignment.centerRight,
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    if (status == 'CHUA_XU_LY' || status == 'ChuaXuLy') {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () => _acceptAlert(alert),
+          icon: const Icon(Icons.visibility_outlined),
+          label: const Text('TIẾP NHẬN CẢNH BÁO'),
+        ),
+      );
+    }
+    if (status == 'DA_XEM' || status == 'DaXem') {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () => _resolveAlert(alert),
+          icon: const Icon(Icons.check_circle_outline_rounded),
+          label: const Text('ĐÁNH DẤU ĐÃ XỬ LÝ'),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xff07856d),
+          ),
+        ),
+      );
+    }
+    return null;
   }
 
   @override
@@ -146,7 +288,10 @@ class _CaregiverElderlyDetailScreenState
                     icon: Icons.person_outline_rounded,
                     child: Column(
                       children: [
-                        _InfoRow(label: 'Họ tên', value: _text(_profile['hoTen'])),
+                        _InfoRow(
+                          label: 'Họ tên',
+                          value: _text(_profile['hoTen']),
+                        ),
                         _InfoRow(
                           label: 'Tuổi',
                           value: '${widget.elderly['tuoi'] ?? '--'} tuổi',
@@ -174,7 +319,9 @@ class _CaregiverElderlyDetailScreenState
                     title: 'Lịch uống thuốc hôm nay',
                     icon: Icons.medication_outlined,
                     child: _medications.isEmpty
-                        ? const _EmptyLine(text: 'Hôm nay không có lịch uống thuốc.')
+                        ? const _EmptyLine(
+                            text: 'Hôm nay không có lịch uống thuốc.',
+                          )
                         : Column(
                             children: _medications.map((item) {
                               return ListTile(
@@ -188,12 +335,16 @@ class _CaregiverElderlyDetailScreenState
                                 ),
                                 title: Text(
                                   _text(item['tenThuoc']),
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 subtitle: Text(
                                   '${_text(item['lieuDung'])} • ${_dateTime(item['thoiGianDuKien'])}',
                                 ),
-                                trailing: Text(_medicationStatus(item['trangThai'])),
+                                trailing: Text(
+                                  _medicationStatus(item['trangThai']),
+                                ),
                               );
                             }).toList(),
                           ),
@@ -223,7 +374,9 @@ class _CaregiverElderlyDetailScreenState
                                 subtitle: Text(_dateTime(item['thoiGianDo'])),
                                 trailing: Text(
                                   '$value ${item['donVi'] ?? ''}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               );
                             }).toList(),
@@ -247,7 +400,9 @@ class _CaregiverElderlyDetailScreenState
                                 ),
                                 title: Text(
                                   _text(item['tenBenhVien']),
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 subtitle: Text(
                                   '${_dateTime(item['thoiGianKham'])}\nBS. ${_text(item['bacSiPhuTrach'])} • ${_text(item['chuyenKhoa'])}',
@@ -264,7 +419,8 @@ class _CaregiverElderlyDetailScreenState
                         ? const _EmptyLine(text: 'Chưa có số liên hệ khẩn cấp.')
                         : Column(
                             children: _contacts.map((item) {
-                              final phone = item['soDienThoai']?.toString() ?? '';
+                              final phone =
+                                  item['soDienThoai']?.toString() ?? '';
                               return ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 leading: const Icon(
@@ -277,11 +433,30 @@ class _CaregiverElderlyDetailScreenState
                                 ),
                                 trailing: IconButton.filledTonal(
                                   tooltip: 'Gọi điện',
-                                  onPressed: phone.isEmpty ? null : () => _call(phone),
+                                  onPressed: phone.isEmpty
+                                      ? null
+                                      : () => _call(phone),
                                   icon: const Icon(Icons.call_rounded),
                                 ),
                               );
                             }).toList(),
+                          ),
+                  ),
+                  _Section(
+                    title: 'Lịch sử cảnh báo',
+                    icon: Icons.notifications_active_outlined,
+                    child: _alerts.isEmpty
+                        ? const _EmptyLine(text: 'Chưa có cảnh báo nào.')
+                        : Column(
+                            children: _alerts
+                                .map(
+                                  (item) => AlertCard(
+                                    alert: item,
+                                    compact: true,
+                                    footer: _alertAction(item),
+                                  ),
+                                )
+                                .toList(),
                           ),
                   ),
                 ],
@@ -340,7 +515,11 @@ class _EmergencyCard extends StatelessWidget {
 }
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.icon, required this.child});
+  const _Section({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
 
   final String title;
   final IconData icon;
@@ -362,7 +541,10 @@ class _Section extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 title,
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -391,7 +573,10 @@ class _InfoRow extends StatelessWidget {
           child: Text(label, style: const TextStyle(color: Colors.black54)),
         ),
         Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ),
       ],
     ),

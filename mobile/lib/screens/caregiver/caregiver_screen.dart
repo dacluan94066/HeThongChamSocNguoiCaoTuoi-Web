@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../services/alert_storage.dart';
+import '../../services/alert_service.dart';
 import '../../services/api_client.dart';
 import '../../services/caregiver_service.dart';
 
@@ -35,7 +35,7 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
     try {
       final results = await Future.wait([
         CaregiverService.instance.getMyCaregivers(refresh: refresh),
-        AlertStorage.loadAlerts(),
+        AlertService.instance.getMyAlerts(refresh: refresh),
       ]);
       if (!mounted) return;
       final alerts = results[1];
@@ -43,7 +43,7 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
         _caregivers = results[0];
         _latestAlertTime = alerts.isEmpty
             ? 'Chưa có'
-            : _text(alerts.first['time'], fallback: 'Chưa có');
+            : _formatAlertTime(alerts.first['thoiGianPhatHien']);
         _loading = false;
         _error = null;
       });
@@ -56,16 +56,6 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
             : 'Không thể tải danh sách người chăm sóc.';
       });
     }
-  }
-
-  Future<void> _loadLatestAlert() async {
-    final alerts = await AlertStorage.loadAlerts();
-    if (!mounted) return;
-    setState(() {
-      _latestAlertTime = alerts.isEmpty
-          ? 'Chưa có'
-          : _text(alerts.first['time'], fallback: 'Chưa có');
-    });
   }
 
   Future<void> _callCaregiver(Map<String, dynamic> caregiver) async {
@@ -113,14 +103,13 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
               try {
                 final response = await CaregiverService.instance
                     .sendEmergencyAlert(noiDung: content);
-                await AlertStorage.addEmergencyAlert(
-                  message: content,
-                  backendId: response['id'],
-                );
+                AlertService.instance.invalidateAlerts();
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
-                await _loadLatestAlert();
                 if (mounted) {
+                  setState(() {
+                    _latestAlertTime = _formatAlertTime(response['ngayGui']);
+                  });
                   _showMessage(
                     'Đã gửi cảnh báo SOS đến hệ thống và người chăm sóc.',
                   );
@@ -359,10 +348,7 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
   }
 
   Widget _buildCaregiverCard(Map<String, dynamic> caregiver) {
-    final isPrimary =
-        caregiver['laChinh'] == true ||
-        caregiver['laChinh'] == 1 ||
-        caregiver['laChinh']?.toString().toLowerCase() == 'true';
+    final isPrimary = _isPrimaryCaregiver(caregiver);
     final phone = _text(caregiver['soDienThoai']);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -425,7 +411,7 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _text(caregiver['moiQuanHe'], fallback: 'Người chăm sóc'),
+                  _caregiverRoleLabel(caregiver),
                   style: const TextStyle(fontSize: 13, color: Colors.black54),
                 ),
                 const SizedBox(height: 4),
@@ -580,18 +566,45 @@ class _CaregiverScreenState extends State<CaregiverScreen> {
 
   Map<String, dynamic>? get _primaryCaregiver {
     for (final caregiver in _caregivers) {
-      if (caregiver['laChinh'] == true ||
-          caregiver['laChinh'] == 1 ||
-          caregiver['laChinh']?.toString().toLowerCase() == 'true') {
+      if (_isPrimaryCaregiver(caregiver)) {
         return caregiver;
       }
     }
-    return _caregivers.isEmpty ? null : _caregivers.first;
+    return null;
+  }
+
+  static bool _isPrimaryCaregiver(Map<String, dynamic> caregiver) {
+    final value = caregiver['laChinh'];
+    return value == true ||
+        value == 1 ||
+        value?.toString().toLowerCase() == 'true';
+  }
+
+  static String _caregiverRoleLabel(Map<String, dynamic> caregiver) {
+    if (_isPrimaryCaregiver(caregiver)) {
+      return 'Người chăm sóc chính';
+    }
+
+    final relationship = _text(
+      caregiver['moiQuanHe'],
+      fallback: 'Người chăm sóc',
+    );
+    return relationship.toLowerCase() == 'người chăm sóc chính'
+        ? 'Người chăm sóc'
+        : relationship;
   }
 
   static String _text(Object? value, {String fallback = 'Chưa cập nhật'}) {
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? fallback : text;
+  }
+
+  static String _formatAlertTime(Object? value) {
+    final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+    if (date == null) return 'Chưa cập nhật';
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(date.hour)}:${two(date.minute)} • '
+        '${two(date.day)}/${two(date.month)}/${date.year}';
   }
 }
 
