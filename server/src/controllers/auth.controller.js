@@ -25,29 +25,60 @@ const writeLoginLog = async (pool, req, userId, ketQua, platform) => {
 
 // ─── DANG KY ────────────────────────────────────────────────────────────────
 // POST /api/auth/register
-// Nhan: { tenDangNhap, matKhau, hoTen, ngaySinh, gioiTinh, email?, soDienThoai?, ... }
+// Nhan: { tenDangNhap, matKhau, hoTen, loaiTaiKhoan?, ngaySinh?, gioiTinh?, ... }
 const register = async (req, res, next) => {
   let transaction;
   try {
     const {
       tenDangNhap, matKhau, hoTen, ngaySinh, gioiTinh,
       email, soDienThoai, cccd, diaChi, nhomMau, benhNen, diUng,
+      loaiTaiKhoan,
     } = req.body;
+    const accountType = loaiTaiKhoan === undefined
+      ? 'NguoiCaoTuoi'
+      : loaiTaiKhoan;
 
-    // Hai truong nay NOT NULL trong HoSoNguoiCaoTuoi; khong tao ngay sinh/gioi tinh gia.
+    // Chi hai vai tro Mobile nay duoc phep tu dang ky cong khai. Khong suy dien
+    // VaiTroID tu gia tri bat ky do client gui.
+    if (typeof accountType !== 'string'
+      || !['NguoiCaoTuoi', 'NguoiChamSoc'].includes(accountType)) {
+      return fail(
+        res,
+        'loaiTaiKhoan chi duoc la NguoiCaoTuoi hoac NguoiChamSoc',
+        'INVALID_PUBLIC_ACCOUNT_TYPE',
+        400
+      );
+    }
+
     if (typeof tenDangNhap !== 'string' || !tenDangNhap.trim()
       || typeof matKhau !== 'string' || !matKhau
-      || typeof hoTen !== 'string' || !hoTen.trim() || !ngaySinh || !gioiTinh) {
-      return fail(res, 'tenDangNhap, matKhau, hoTen, ngaySinh, gioiTinh la bat buoc', 'MISSING_FIELDS', 400);
+      || typeof hoTen !== 'string' || !hoTen.trim()) {
+      return fail(res, 'tenDangNhap, matKhau va hoTen la bat buoc', 'MISSING_FIELDS', 400);
     }
     if (matKhau.length < 6) {
       return fail(res, 'Mat khau phai co it nhat 6 ky tu', 'WEAK_PASSWORD', 400);
     }
-    const date = new Date(`${ngaySinh}T00:00:00Z`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(ngaySinh) || Number.isNaN(date.getTime())
-      || date.toISOString().slice(0, 10) !== ngaySinh || date > new Date()
-      || !['Nam', 'Nữ', 'Khác'].includes(gioiTinh)) {
-      return fail(res, 'ngaySinh phai theo YYYY-MM-DD va gioiTinh la Nam, Nữ hoac Khác', 'INVALID_PROFILE', 400);
+    for (const [field, value] of Object.entries({ email, soDienThoai, cccd, diaChi, nhomMau })) {
+      if (value != null && typeof value !== 'string') {
+        return fail(res, `${field} phai la chuoi`, 'INVALID_FIELD_TYPE', 400);
+      }
+    }
+
+    if (accountType === 'NguoiCaoTuoi') {
+      if (!ngaySinh || !gioiTinh) {
+        return fail(res, 'ngaySinh va gioiTinh la bat buoc voi nguoi cao tuoi', 'MISSING_ELDERLY_FIELDS', 400);
+      }
+      const date = new Date(`${ngaySinh}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ngaySinh) || Number.isNaN(date.getTime())
+        || date.toISOString().slice(0, 10) !== ngaySinh || date > new Date()
+        || !['Nam', 'Nữ', 'Khác'].includes(gioiTinh)) {
+        return fail(res, 'ngaySinh phai theo YYYY-MM-DD va gioiTinh la Nam, Nữ hoac Khác', 'INVALID_PROFILE', 400);
+      }
+    }
+
+    if (accountType === 'NguoiChamSoc'
+      && (typeof soDienThoai !== 'string' || !soDienThoai.trim())) {
+      return fail(res, 'soDienThoai la bat buoc voi nguoi cham soc', 'MISSING_CAREGIVER_PHONE', 400);
     }
 
     const normalizedUsername = tenDangNhap.trim();
@@ -62,20 +93,20 @@ const register = async (req, res, next) => {
       return fail(res, 'Ten dang nhap da duoc su dung', 'USERNAME_TAKEN', 409);
     }
 
-    // Lay ID cua vai tro mac dinh "NguoiCaoTuoi"
+    // accountType da duoc whitelist nghiem ngat o tren.
     const vaiTroResult = await pool.request()
-      .input('tenVaiTro', sql.NVarChar, 'NguoiCaoTuoi')
+      .input('tenVaiTro', sql.NVarChar, accountType)
       .query(`SELECT VaiTroID FROM VaiTro WHERE TenVaiTro = @tenVaiTro`);
 
     if (vaiTroResult.recordset.length === 0) {
-      return fail(res, 'Khong tim thay vai tro mac dinh trong he thong', 'ROLE_NOT_FOUND', 500);
+      return fail(res, 'Khong tim thay vai tro dang ky trong he thong', 'ROLE_NOT_FOUND', 500);
     }
     const vaiTroId = vaiTroResult.recordset[0].VaiTroID;
 
     // Hash mat khau (10 rounds)
     const matKhauHash = await bcrypt.hash(matKhau, 10);
 
-    // Ca hai INSERT cung transaction de khong de lai tai khoan khong co ho so.
+    // Tai khoan va ho so tuong ung luon duoc tao trong cung transaction.
     transaction = new sql.Transaction(pool);
     await transaction.begin();
     const userResult = await new sql.Request(transaction)
@@ -94,30 +125,58 @@ const register = async (req, res, next) => {
       `);
 
     const userId = userResult.recordset[0].userId;
-    const profileResult = await new sql.Request(transaction)
-      .input('userId', sql.Int, userId)
-      .input('hoTen', sql.NVarChar, hoTen.trim())
-      .input('ngaySinh', sql.Date, ngaySinh)
-      .input('gioiTinh', sql.NVarChar, gioiTinh)
-      .input('cccd', sql.VarChar, cccd || null)
-      .input('diaChi', sql.NVarChar, diaChi || null)
-      .input('soDienThoai', sql.VarChar, soDienThoai || null)
-      .input('nhomMau', sql.VarChar, nhomMau || null)
-      .input('benhNen', sql.NVarChar, Array.isArray(benhNen) ? benhNen.join(', ') : benhNen || null)
-      .input('diUng', sql.NVarChar, Array.isArray(diUng) ? diUng.join(', ') : diUng || null)
-      .query(`
-        INSERT INTO HoSoNguoiCaoTuoi
-          (UserID, HoTen, NgaySinh, GioiTinh, CCCD, DiaChi, SoDienThoai,
-           NhomMau, BenhNen, DiUng, NguoiTaoID)
-        OUTPUT INSERTED.NguoiCaoTuoiID AS nguoiCaoTuoiId
-        VALUES
-          (@userId, @hoTen, @ngaySinh, @gioiTinh, @cccd, @diaChi,
-           @soDienThoai, @nhomMau, @benhNen, @diUng, @userId)
-      `);
+    let linkedProfile;
+    if (accountType === 'NguoiCaoTuoi') {
+      const profileResult = await new sql.Request(transaction)
+        .input('userId', sql.Int, userId)
+        .input('hoTen', sql.NVarChar, hoTen.trim())
+        .input('ngaySinh', sql.Date, ngaySinh)
+        .input('gioiTinh', sql.NVarChar, gioiTinh)
+        .input('cccd', sql.VarChar, cccd || null)
+        .input('diaChi', sql.NVarChar, diaChi || null)
+        .input('soDienThoai', sql.VarChar, soDienThoai || null)
+        .input('nhomMau', sql.VarChar, nhomMau || null)
+        .input('benhNen', sql.NVarChar, Array.isArray(benhNen) ? benhNen.join(', ') : benhNen || null)
+        .input('diUng', sql.NVarChar, Array.isArray(diUng) ? diUng.join(', ') : diUng || null)
+        .query(`
+          INSERT INTO HoSoNguoiCaoTuoi
+            (UserID, HoTen, NgaySinh, GioiTinh, CCCD, DiaChi, SoDienThoai,
+             NhomMau, BenhNen, DiUng, NguoiTaoID)
+          OUTPUT INSERTED.NguoiCaoTuoiID AS nguoiCaoTuoiId
+          VALUES
+            (@userId, @hoTen, @ngaySinh, @gioiTinh, @cccd, @diaChi,
+             @soDienThoai, @nhomMau, @benhNen, @diUng, @userId)
+        `);
+      linkedProfile = {
+        nguoiCaoTuoiId: profileResult.recordset[0].nguoiCaoTuoiId,
+      };
+    } else {
+      const caregiverResult = await new sql.Request(transaction)
+        .input('userId', sql.Int, userId)
+        .input('hoTen', sql.NVarChar(100), hoTen.trim())
+        .input('soDienThoai', sql.VarChar(15), soDienThoai.trim())
+        .input('email', sql.VarChar(100), email?.trim() || null)
+        .input('diaChi', sql.NVarChar(255), diaChi?.trim() || null)
+        .query(`
+          INSERT INTO NguoiChamSoc
+            (UserID, HoTen, SoDienThoai, Email, DiaChi)
+          OUTPUT INSERTED.NguoiChamSocID AS nguoiChamSocId
+          VALUES
+            (@userId, @hoTen, @soDienThoai, @email, @diaChi)
+        `);
+      linkedProfile = {
+        nguoiChamSocId: caregiverResult.recordset[0].nguoiChamSocId,
+      };
+    }
 
     await transaction.commit();
     transaction = null;
-    return ok(res, { userId, nguoiCaoTuoiId: profileResult.recordset[0].nguoiCaoTuoiId }, 'Dang ky tai khoan thanh cong', 201);
+    return ok(
+      res,
+      { userId, loaiTaiKhoan: accountType, ...linkedProfile },
+      'Dang ky tai khoan thanh cong',
+      201
+    );
   } catch (err) {
     if (transaction) {
       try { await transaction.rollback(); } catch (_) { /* SQL da ket thuc transaction */ }

@@ -16,10 +16,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool agreeTerms = false;
   bool registering = false;
   String selectedGender = 'Nam';
+  String selectedAccountType = 'NguoiCaoTuoi';
 
   final TextEditingController nameController = TextEditingController();
   final TextEditingController usernameController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
   final TextEditingController birthController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController =
@@ -30,6 +32,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     nameController.dispose();
     usernameController.dispose();
     phoneController.dispose();
+    emailController.dispose();
     birthController.dispose();
     passwordController.dispose();
     confirmPasswordController.dispose();
@@ -43,10 +46,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final password = passwordController.text;
     final confirmPassword = confirmPasswordController.text;
 
+    final isElderly = selectedAccountType == 'NguoiCaoTuoi';
     if (name.isEmpty ||
         username.isEmpty ||
         phone.isEmpty ||
-        birthController.text.isEmpty ||
+        (isElderly && birthController.text.isEmpty) ||
         password.isEmpty ||
         confirmPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -78,14 +82,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    final dateParts = birthController.text.split('/');
-    if (dateParts.length != 3) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Ngày sinh không hợp lệ.')));
-      return;
+    String? birthDate;
+    if (isElderly) {
+      final dateParts = birthController.text.split('/');
+      if (dateParts.length != 3) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ngày sinh không hợp lệ.')),
+        );
+        return;
+      }
+      birthDate = '${dateParts[2]}-${dateParts[1]}-${dateParts[0]}';
     }
-    final birthDate = '${dateParts[2]}-${dateParts[1]}-${dateParts[0]}';
 
     setState(() {
       registering = true;
@@ -96,8 +103,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         tenDangNhap: username,
         matKhau: password,
         hoTen: name,
+        loaiTaiKhoan: selectedAccountType,
         ngaySinh: birthDate,
-        gioiTinh: selectedGender,
+        gioiTinh: isElderly ? selectedGender : null,
+        email: emailController.text.trim().isEmpty
+            ? null
+            : emailController.text.trim(),
         soDienThoai: phone,
       );
 
@@ -158,7 +169,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 24),
+
+            const Text(
+              'Bạn đăng ký với vai trò nào?',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            ),
+
+            const SizedBox(height: 12),
+
+            _RoleChoice(
+              selected: selectedAccountType == 'NguoiCaoTuoi',
+              icon: Icons.elderly_rounded,
+              title: 'Tôi là người cao tuổi',
+              subtitle: 'Theo dõi sức khỏe, thuốc và lịch khám của tôi',
+              onTap: registering
+                  ? null
+                  : () => setState(() => selectedAccountType = 'NguoiCaoTuoi'),
+            ),
+
+            const SizedBox(height: 10),
+
+            _RoleChoice(
+              selected: selectedAccountType == 'NguoiChamSoc',
+              icon: Icons.volunteer_activism_rounded,
+              title: 'Tôi là người chăm sóc, người thân',
+              subtitle: 'Theo dõi người cao tuổi được quản trị viên phân công',
+              onTap: registering
+                  ? null
+                  : () => setState(() => selectedAccountType = 'NguoiChamSoc'),
+            ),
+
+            const SizedBox(height: 28),
 
             const Text(
               'Họ và tên',
@@ -229,83 +271,111 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
 
-            const SizedBox(height: 18),
+            if (selectedAccountType == 'NguoiChamSoc') ...[
+              const SizedBox(height: 18),
 
-            const Text(
-              'Ngày sinh',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-            ),
+              const Text(
+                'Email (không bắt buộc)',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
 
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-            TextField(
-              controller: birthController,
-              readOnly: true,
-              decoration: InputDecoration(
-                hintText: 'Chọn ngày sinh',
-                prefixIcon: const Icon(Icons.calendar_month_outlined),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  hintText: 'Nhập email nếu có',
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
-              onTap: () async {
-                final DateTime? pickedDate = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime(1950),
-                  firstDate: DateTime(1920),
-                  lastDate: DateTime.now(),
-                  helpText: 'Chọn ngày sinh',
-                  cancelText: 'Hủy',
-                  confirmText: 'Chọn',
-                );
+            ],
 
-                if (pickedDate != null) {
-                  birthController.text =
-                      '${pickedDate.day.toString().padLeft(2, '0')}/'
-                      '${pickedDate.month.toString().padLeft(2, '0')}/'
-                      '${pickedDate.year}';
-                }
-              },
-            ),
+            if (selectedAccountType == 'NguoiCaoTuoi') ...[
+              const SizedBox(height: 18),
 
-            const SizedBox(height: 18),
+              const Text(
+                'Ngày sinh',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
 
-            const Text(
-              'Giới tính',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-            ),
+              const SizedBox(height: 8),
 
-            const SizedBox(height: 8),
+              TextField(
+                controller: birthController,
+                readOnly: true,
+                decoration: InputDecoration(
+                  hintText: 'Chọn ngày sinh',
+                  prefixIcon: const Icon(Icons.calendar_month_outlined),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onTap: () async {
+                  final DateTime? pickedDate = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime(1950),
+                    firstDate: DateTime(1920),
+                    lastDate: DateTime.now(),
+                    helpText: 'Chọn ngày sinh',
+                    cancelText: 'Hủy',
+                    confirmText: 'Chọn',
+                  );
 
-            DropdownButtonFormField<String>(
-              initialValue: selectedGender,
-              items: const [
-                DropdownMenuItem(value: 'Nam', child: Text('Nam')),
-                DropdownMenuItem(value: 'Nữ', child: Text('Nữ')),
-                DropdownMenuItem(value: 'Khác', child: Text('Khác')),
-              ],
-              onChanged: registering
-                  ? null
-                  : (value) {
-                      if (value != null) {
-                        setState(() {
-                          selectedGender = value;
-                        });
-                      }
-                    },
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.wc_outlined),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
+                  if (pickedDate != null) {
+                    birthController.text =
+                        '${pickedDate.day.toString().padLeft(2, '0')}/'
+                        '${pickedDate.month.toString().padLeft(2, '0')}/'
+                        '${pickedDate.year}';
+                  }
+                },
+              ),
+
+              const SizedBox(height: 18),
+
+              const Text(
+                'Giới tính',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
+
+              const SizedBox(height: 8),
+
+              DropdownButtonFormField<String>(
+                initialValue: selectedGender,
+                items: const [
+                  DropdownMenuItem(value: 'Nam', child: Text('Nam')),
+                  DropdownMenuItem(value: 'Nữ', child: Text('Nữ')),
+                  DropdownMenuItem(value: 'Khác', child: Text('Khác')),
+                ],
+                onChanged: registering
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          setState(() {
+                            selectedGender = value;
+                          });
+                        }
+                      },
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.wc_outlined),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
-            ),
+            ],
 
             const SizedBox(height: 18),
 
@@ -469,6 +539,89 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
             const SizedBox(height: 25),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleChoice extends StatelessWidget {
+  const _RoleChoice({
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? const Color(0xff07856d) : Colors.black54;
+    return Material(
+      color: selected ? const Color(0xffe5f7f1) : Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? const Color(0xff07856d) : Colors.black12,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 25,
+                backgroundColor: selected
+                    ? const Color(0xff07856d)
+                    : const Color(0xffeeeeec),
+                child: Icon(icon, color: selected ? Colors.white : color),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.black54,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                color: color,
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import 'api_client.dart';
+import 'appointment_service.dart';
+import 'caregiver_service.dart';
+import 'caregiver_dashboard_service.dart';
 import 'elderly_service.dart';
 import 'health_metric_service.dart';
 import 'local_notification_service.dart';
@@ -19,6 +22,9 @@ class AuthService {
     // Huy du lieu cua tai khoan truoc ngay khi bat dau lan dang nhap moi.
     // Response ho so dang chay cua phien cu cung bi danh dau het hieu luc.
     ElderlyService.instance.clearCache();
+    AppointmentService.instance.clearCache();
+    CaregiverService.instance.clearCache();
+    CaregiverDashboardService.instance.clearCache();
     HealthMetricService.instance.clearCache();
     MedicationScheduleService.instance.clearCache();
     await LocalNotificationService.cancelMedicationReminders();
@@ -49,10 +55,15 @@ class AuthService {
       );
 
       ElderlyService.instance.beginSession(userMap['userId']);
+      AppointmentService.instance.beginSession();
+      CaregiverService.instance.beginSession();
+      CaregiverDashboardService.instance.beginSession();
       HealthMetricService.instance.beginSession();
       MedicationScheduleService.instance.beginSession();
-      // Nap dung ho so cua tai khoan moi truoc khi LoginScreen mo HomeScreen.
-      await ElderlyService.instance.getMyProfile(refresh: true);
+      // Chi tai khoan NguoiCaoTuoi moi co HoSoNguoiCaoTuoi gan truc tiep.
+      if (userMap['tenVaiTro'] == 'NguoiCaoTuoi') {
+        await ElderlyService.instance.getMyProfile(refresh: true);
+      }
 
       return userMap;
     } on DioException catch (error) {
@@ -64,8 +75,9 @@ class AuthService {
     required String tenDangNhap,
     required String matKhau,
     required String hoTen,
-    required String ngaySinh,
-    required String gioiTinh,
+    required String loaiTaiKhoan,
+    String? ngaySinh,
+    String? gioiTinh,
     String? email,
     String? soDienThoai,
     String? cccd,
@@ -79,6 +91,7 @@ class AuthService {
         'tenDangNhap': tenDangNhap,
         'matKhau': matKhau,
         'hoTen': hoTen,
+        'loaiTaiKhoan': loaiTaiKhoan,
         'ngaySinh': ngaySinh,
         'gioiTinh': gioiTinh,
         'email': email,
@@ -102,6 +115,9 @@ class AuthService {
 
   Future<void> logout() async {
     ElderlyService.instance.clearCache();
+    AppointmentService.instance.clearCache();
+    CaregiverService.instance.clearCache();
+    CaregiverDashboardService.instance.clearCache();
     HealthMetricService.instance.clearCache();
     MedicationScheduleService.instance.clearCache();
     await LocalNotificationService.cancelMedicationReminders();
@@ -115,10 +131,36 @@ class AuthService {
   Future<Map<String, dynamic>> getMe() async {
     final user = await _get('/auth/me');
     ElderlyService.instance.beginSession(user['userId']);
+    AppointmentService.instance.beginSession();
+    CaregiverService.instance.beginSession();
+    CaregiverDashboardService.instance.beginSession();
     HealthMetricService.instance.beginSession();
     MedicationScheduleService.instance.beginSession();
-    await ElderlyService.instance.getMyProfile(refresh: true);
+    if (user['tenVaiTro'] == 'NguoiCaoTuoi') {
+      await ElderlyService.instance.getMyProfile(refresh: true);
+    }
     return user;
+  }
+
+  Future<Map<String, dynamic>> updateMe({
+    required String hoTen,
+    String? email,
+    String? soDienThoai,
+  }) async {
+    try {
+      final response = await _dio.put<Map<String, dynamic>>(
+        '/auth/me',
+        data: {'hoTen': hoTen, 'email': email, 'soDienThoai': soDienThoai},
+      );
+      final user = _extractData(response);
+      await ApiClient.storage.write(
+        key: ApiClient.userKey,
+        value: jsonEncode(user),
+      );
+      return user;
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
   }
 
   Future<Map<String, dynamic>> getMyElderlyProfile() async {

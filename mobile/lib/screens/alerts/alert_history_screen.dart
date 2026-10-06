@@ -250,7 +250,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
                                 decoration: BoxDecoration(
                                   color: getStatusColor(
                                     status,
-                                  ).withOpacity(0.12),
+                                  ).withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(

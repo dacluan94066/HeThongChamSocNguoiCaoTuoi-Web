@@ -7,6 +7,7 @@ import 'services/auth_storage.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/caregiver/caregiver_home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +36,7 @@ class ElderlyCareApp extends StatelessWidget {
         '/welcome': (_) => const WelcomeScreen(),
         '/login': (_) => const LoginScreen(),
         '/home': (_) => const HomeScreen(),
+        '/caregiver-home': (_) => const CaregiverHomeScreen(),
       },
       home: const SplashScreen(),
     );
@@ -54,6 +56,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   String? _connectionError;
+  bool _unsupportedRole = false;
   bool _checkingSession = false;
 
   @override
@@ -67,6 +70,7 @@ class _SplashScreenState extends State<SplashScreen> {
     setState(() {
       _checkingSession = true;
       _connectionError = null;
+      _unsupportedRole = false;
     });
 
     final authService = AuthService.instance;
@@ -79,9 +83,23 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     try {
-      await authService.getMe();
+      final user = await authService.getMe();
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
+      final role = user['tenVaiTro']?.toString();
+      if (role == 'NguoiCaoTuoi') {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else if (role == 'NguoiChamSoc') {
+        Navigator.pushReplacementNamed(context, '/caregiver-home');
+      } else {
+        await authService.logout();
+        if (!mounted) return;
+        setState(() {
+          _checkingSession = false;
+          _unsupportedRole = true;
+          _connectionError =
+              'Tài khoản này không hỗ trợ trên ứng dụng Mobile, vui lòng dùng hệ thống Web';
+        });
+      }
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
         await authService.logout();
@@ -135,9 +153,21 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
-                      onPressed: _checkingSession ? null : _restoreSession,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Thử lại'),
+                      onPressed: _checkingSession
+                          ? null
+                          : _unsupportedRole
+                          ? () => Navigator.pushNamedAndRemoveUntil(
+                              context,
+                              '/login',
+                              (route) => false,
+                            )
+                          : _restoreSession,
+                      icon: Icon(
+                        _unsupportedRole
+                            ? Icons.login_rounded
+                            : Icons.refresh_rounded,
+                      ),
+                      label: Text(_unsupportedRole ? 'Về đăng nhập' : 'Thử lại'),
                     ),
                   ],
                 ),
@@ -405,10 +435,29 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await AuthService.instance.login(username, password);
+      final user = await AuthService.instance.login(username, password);
       if (!mounted) return;
-
-      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      final role = user['tenVaiTro']?.toString();
+      if (role == 'NguoiCaoTuoi') {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      } else if (role == 'NguoiChamSoc') {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/caregiver-home',
+          (route) => false,
+        );
+      } else {
+        await AuthService.instance.logout();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Color(0xffc0392b),
+            content: Text(
+              'Tài khoản này không hỗ trợ trên ứng dụng Mobile, vui lòng dùng hệ thống Web',
+            ),
+          ),
+        );
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(

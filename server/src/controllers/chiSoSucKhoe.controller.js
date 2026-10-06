@@ -162,6 +162,56 @@ const getMine = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// GET /api/elderly/:id/health-metrics?loaiChiSoId=&tuNgay=&denNgay=
+const getByElderly = async (req, res, next) => {
+  try {
+    const elderlyId = Number(req.params.id);
+    if (!Number.isInteger(elderlyId) || elderlyId < 1) {
+      return fail(res, 'ID nguoi cao tuoi khong hop le', 'INVALID_ID', 400);
+    }
+    const { loaiChiSoId, tuNgay, denNgay } = req.query;
+    const typeId = loaiChiSoId == null || loaiChiSoId === '' ? null : Number(loaiChiSoId);
+    if (typeId != null && (!Number.isInteger(typeId) || typeId < 1)) {
+      return fail(res, 'loaiChiSoId khong hop le', 'INVALID_TYPE_ID', 400);
+    }
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if ((tuNgay && !datePattern.test(tuNgay)) || (denNgay && !datePattern.test(denNgay))) {
+      return fail(res, 'tuNgay va denNgay phai co dinh dang YYYY-MM-DD', 'INVALID_DATE', 400);
+    }
+    if (tuNgay && denNgay && tuNgay > denNgay) {
+      return fail(res, 'tuNgay khong duoc lon hon denNgay', 'INVALID_DATE_RANGE', 400);
+    }
+
+    let query = `
+      SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
+        c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
+        c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
+        c.ThoiGianDo AS thoiGianDo, c.LaBatThuong AS laBatThuong,
+        c.GhiChu AS ghiChu
+      FROM ChiSoSucKhoe c
+      JOIN LoaiChiSoSucKhoe l ON l.LoaiChiSoID = c.LoaiChiSoID
+      WHERE c.NguoiCaoTuoiID = @elderlyId
+    `;
+    const pool = await poolPromise;
+    const request = pool.request().input('elderlyId', sql.Int, elderlyId);
+    if (typeId != null) {
+      query += ' AND c.LoaiChiSoID = @typeId';
+      request.input('typeId', sql.Int, typeId);
+    }
+    if (tuNgay) {
+      query += ' AND c.ThoiGianDo >= CAST(@fromDate AS DATE)';
+      request.input('fromDate', sql.VarChar(10), tuNgay);
+    }
+    if (denNgay) {
+      query += ' AND c.ThoiGianDo < DATEADD(DAY, 1, CAST(@toDate AS DATE))';
+      request.input('toDate', sql.VarChar(10), denNgay);
+    }
+    query += ' ORDER BY c.ThoiGianDo DESC, c.ChiSoID DESC';
+    const result = await request.query(query);
+    return ok(res, result.recordset.map(mapMobileMetric));
+  } catch (error) { next(error); }
+};
+
 // POST /api/elderly/me/health-metrics
 const createMine = async (req, res, next) => {
   try {
@@ -403,4 +453,4 @@ const create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getMetricTypes, getMine, createMine, getAll, create };
+module.exports = { getMetricTypes, getMine, getByElderly, createMine, getAll, create };

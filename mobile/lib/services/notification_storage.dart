@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'appointment_storage.dart';
+import 'appointment_service.dart';
 import 'health_storage.dart';
 
 class NotificationStorage {
@@ -86,18 +86,35 @@ class NotificationStorage {
     // 2. LỊCH KHÁM
     // ==================================================
 
-    final appointment = await AppointmentStorage.getNextAppointment();
+    Map<String, dynamic>? appointment;
+    try {
+      final upcoming = await AppointmentService.instance
+          .getUpcomingAppointments();
+      appointment = upcoming.isEmpty ? null : upcoming.first;
+    } catch (_) {
+      // Thong bao cu van hoat dong khi API lich kham tam thoi mat ket noi.
+    }
 
     if (appointment != null) {
-      const id = 'next_appointment';
+      final id = 'appointment_${appointment['id']}';
 
-      final doctor = appointment['doctor']?.toString() ?? 'Bác sĩ';
+      final doctor = appointment['bacSiPhuTrach']?.toString() ?? 'Bác sĩ';
 
-      final date = appointment['date']?.toString() ?? '';
+      final dateTime = DateTime.tryParse(
+        appointment['thoiGianKham']?.toString() ?? '',
+      );
 
-      final time = appointment['time']?.toString() ?? '';
+      final date = dateTime == null
+          ? ''
+          : '${dateTime.day.toString().padLeft(2, '0')}/'
+                '${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
 
-      final hospital = appointment['hospital']?.toString() ?? '';
+      final time = dateTime == null
+          ? ''
+          : '${dateTime.hour.toString().padLeft(2, '0')}:'
+                '${dateTime.minute.toString().padLeft(2, '0')}';
+
+      final hospital = appointment['tenBenhVien']?.toString() ?? '';
 
       notifications.add({
         'id': id,

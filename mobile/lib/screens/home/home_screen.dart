@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../services/appointment_storage.dart';
+import '../../services/appointment_service.dart';
 import '../../services/health_metric_service.dart';
 import '../../services/medication_schedule_service.dart';
 import '../../services/notification_storage.dart';
@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
       loadHealthData(),
       loadMedicationSchedule(),
       loadUnreadNotificationCount(),
-      loadNextAppointment(),
+      loadNextAppointment(refresh: refreshProfile),
     ]);
   }
 
@@ -198,17 +198,39 @@ class _HomeScreenState extends State<HomeScreen> {
   // APPOINTMENT
   // =====================================================
 
-  Future<void> loadNextAppointment() async {
-    final appointment = await AppointmentStorage.getNextAppointment();
-
-    if (!mounted) {
-      return;
+  Future<void> loadNextAppointment({bool refresh = false}) async {
+    try {
+      final appointments = await AppointmentService.instance
+          .getUpcomingAppointments(refresh: refresh);
+      if (!mounted) return;
+      setState(() {
+        nextAppointment = appointments.isEmpty ? null : appointments.first;
+        loadingAppointment = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        nextAppointment = null;
+        loadingAppointment = false;
+      });
     }
+  }
 
-    setState(() {
-      nextAppointment = appointment;
-      loadingAppointment = false;
-    });
+  static DateTime? _appointmentDateTime(Object? raw) =>
+      DateTime.tryParse(raw?.toString() ?? '');
+
+  static String _appointmentDate(Object? raw) {
+    final date = _appointmentDateTime(raw);
+    if (date == null) return 'Chưa cập nhật';
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  static String _appointmentTime(Object? raw) {
+    final date = _appointmentDateTime(raw);
+    if (date == null) return '--:--';
+    return '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
   }
 
   // =====================================================
@@ -279,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (_) => const AppointmentScreen()),
     );
 
-    await loadNextAppointment();
+    await loadNextAppointment(refresh: true);
     await loadUnreadNotificationCount();
   }
 
@@ -881,7 +903,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  nextAppointment?['doctor'] ?? 'Bác sĩ',
+                                  nextAppointment?['bacSiPhuTrach'] ??
+                                      'Chưa cập nhật bác sĩ',
                                   style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.bold,
@@ -891,7 +914,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 3),
 
                                 Text(
-                                  nextAppointment?['specialty'] ?? '',
+                                  nextAppointment?['chuyenKhoa'] ??
+                                      'Chưa cập nhật chuyên khoa',
                                   style: const TextStyle(
                                     fontSize: 13,
                                     color: Colors.black54,
@@ -912,7 +936,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                     Expanded(
                                       child: Text(
-                                        '${nextAppointment?['date'] ?? ''} • ${nextAppointment?['time'] ?? ''}',
+                                        '${_appointmentDate(nextAppointment?['thoiGianKham'])} • '
+                                        '${_appointmentTime(nextAppointment?['thoiGianKham'])}',
                                         style: const TextStyle(fontSize: 12),
                                       ),
                                     ),
@@ -933,7 +958,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                     Expanded(
                                       child: Text(
-                                        nextAppointment?['hospital'] ?? '',
+                                        nextAppointment?['tenBenhVien'] ??
+                                            'Chưa cập nhật bệnh viện',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 3),
+
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(
+                                      Icons.description_outlined,
+                                      size: 14,
+                                      color: Colors.black54,
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Expanded(
+                                      child: Text(
+                                        nextAppointment?['lyDoKham'] ??
+                                            'Chưa cập nhật lý do khám',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
                                           fontSize: 12,
                                           color: Colors.black54,
@@ -946,9 +998,32 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
 
-                          const Icon(
-                            Icons.chevron_right_rounded,
-                            color: Colors.black38,
+                          Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xffe5f0ff),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Text(
+                                  'Chưa đến',
+                                  style: TextStyle(
+                                    color: Color(0xff2563a7),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                color: Colors.black38,
+                              ),
+                            ],
                           ),
                         ],
                       ),

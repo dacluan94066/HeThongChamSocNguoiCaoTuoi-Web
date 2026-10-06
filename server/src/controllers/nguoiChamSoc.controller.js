@@ -35,6 +35,89 @@ const mapCaregiver = (row) => ({
     : [],
 });
 
+// GET /api/elderly/me/caregivers
+// Lay nguoi cham soc dang phu trach ho so gan voi tai khoan NguoiCaoTuoi.
+const getMine = async (req, res, next) => {
+  if (req.user.tenVaiTro !== 'NguoiCaoTuoi') {
+    return fail(res, 'Chi tai khoan nguoi cao tuoi duoc xem nguoi cham soc cua minh', 'FORBIDDEN', 403);
+  }
+
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('userId', sql.Int, req.user.userId)
+      .query(`
+        SELECT ncs.NguoiChamSocID AS id,
+          ncs.UserID AS userId,
+          ncs.HoTen AS hoTen,
+          ncs.SoDienThoai AS soDienThoai,
+          ncs.Email AS email,
+          ncs.DiaChi AS diaChi,
+          ncs.NgheNghiep AS ngheNghiep,
+          lk.MoiQuanHe AS moiQuanHe,
+          lk.LaChinh AS laChinh
+        FROM HoSoNguoiCaoTuoi nct
+        INNER JOIN NguoiCaoTuoi_NguoiChamSoc lk
+          ON lk.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+        INNER JOIN NguoiChamSoc ncs
+          ON ncs.NguoiChamSocID = lk.NguoiChamSocID
+        WHERE nct.UserID = @userId
+          AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
+          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
+        ORDER BY lk.LaChinh DESC, ncs.HoTen ASC
+      `);
+
+    return ok(res, result.recordset, 'Lay danh sach nguoi cham soc thanh cong');
+  } catch (error) { next(error); }
+};
+
+// GET /api/caregivers/me/elderly
+const getMyElderly = async (req, res, next) => {
+  if (req.user.tenVaiTro !== 'NguoiChamSoc') {
+    return fail(res, 'Chi tai khoan nguoi cham soc duoc xem danh sach phu trach', 'FORBIDDEN', 403);
+  }
+
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('userId', sql.Int, req.user.userId)
+      .query(`
+        SELECT nct.NguoiCaoTuoiID AS id,
+          nct.HoTen AS hoTen,
+          nct.NgaySinh AS ngaySinh,
+          DATEDIFF(YEAR, nct.NgaySinh, CAST(GETDATE() AS DATE))
+            - CASE WHEN DATEADD(YEAR, DATEDIFF(YEAR, nct.NgaySinh, CAST(GETDATE() AS DATE)), nct.NgaySinh)
+              > CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END AS tuoi,
+          nct.GioiTinh AS gioiTinh,
+          nct.TrangThai AS trangThai,
+          lk.MoiQuanHe AS moiQuanHe,
+          lk.LaChinh AS laChinh,
+          pending.CanhBaoKhanCapID AS canhBaoKhanCapId,
+          pending.NoiDung AS noiDungCanhBao,
+          pending.NgayGui AS ngayGuiCanhBao,
+          CAST(CASE WHEN pending.CanhBaoKhanCapID IS NULL THEN 0 ELSE 1 END AS BIT)
+            AS coCanhBaoKhanCap
+        FROM NguoiChamSoc ncs
+        INNER JOIN NguoiCaoTuoi_NguoiChamSoc lk
+          ON lk.NguoiChamSocID = ncs.NguoiChamSocID
+        INNER JOIN HoSoNguoiCaoTuoi nct
+          ON nct.NguoiCaoTuoiID = lk.NguoiCaoTuoiID
+        OUTER APPLY (
+          SELECT TOP 1 kc.CanhBaoKhanCapID, kc.NoiDung, kc.NgayGui
+          FROM CanhBaoKhanCap kc
+          WHERE kc.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+            AND kc.TrangThai IN (N'DangGui', N'DaTiepNhan')
+          ORDER BY kc.NgayGui DESC, kc.CanhBaoKhanCapID DESC
+        ) pending
+        WHERE ncs.UserID = @userId
+          AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
+          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
+        ORDER BY coCanhBaoKhanCap DESC, nct.HoTen ASC
+      `);
+    return ok(res, result.recordset, 'Lay danh sach nguoi cao tuoi dang phu trach thanh cong');
+  } catch (error) { next(error); }
+};
+
 // GET /api/caregivers?keyword=
 const getAll = async (req, res, next) => {
   try {
@@ -115,4 +198,4 @@ const update = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAll, getById, create, update };
+module.exports = { getMine, getMyElderly, getAll, getById, create, update };
