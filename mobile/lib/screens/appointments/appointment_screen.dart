@@ -2,15 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
+import '../../widgets/foreground_refresh.dart';
 
 class AppointmentScreen extends StatefulWidget {
-  const AppointmentScreen({super.key});
+  const AppointmentScreen({super.key, this.elderlyId, this.elderlyName});
+  final int? elderlyId;
+  final String? elderlyName;
 
   @override
   State<AppointmentScreen> createState() => _AppointmentScreenState();
 }
 
-class _AppointmentScreenState extends State<AppointmentScreen> {
+class _AppointmentScreenState extends State<AppointmentScreen>
+    with ForegroundRefresh<AppointmentScreen> {
+  @override
+  Future<void> refreshForeground() =>
+      _loadAppointments(refresh: true, silent: true);
   static const List<MapEntry<String?, String>> _filters = [
     MapEntry(null, 'Tất cả'),
     MapEntry('ChuaDen', 'Chưa đến'),
@@ -30,17 +37,24 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
     _loadAppointments(refresh: true);
   }
 
-  Future<void> _loadAppointments({bool refresh = false}) async {
-    if (mounted) {
+  Future<void> _loadAppointments({
+    bool refresh = false,
+    bool silent = false,
+  }) async {
+    if (mounted && !silent) {
       setState(() {
         _loading = true;
         _error = null;
       });
     }
     try {
-      final data = await AppointmentService.instance.getAppointments(
-        refresh: refresh,
-      );
+      final id = widget.elderlyId;
+      final data = id == null
+          ? await AppointmentService.instance.getAppointments(refresh: refresh)
+          : await AppointmentService.instance.getForElderly(
+              id,
+              refresh: refresh,
+            );
       if (!mounted) return;
       setState(() {
         _allAppointments = data;
@@ -48,6 +62,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       });
     } on ApiException catch (error) {
       if (!mounted) return;
+      if (silent) return;
       setState(() {
         _allAppointments = [];
         _error = error.message;
@@ -55,6 +70,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       });
     } catch (_) {
       if (!mounted) return;
+      if (silent) return;
       setState(() {
         _allAppointments = [];
         _error = 'Không thể tải lịch khám. Vui lòng thử lại.';
@@ -198,9 +214,11 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
         backgroundColor: const Color(0xfff3f3f1),
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          'Lịch khám',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          widget.elderlyName == null
+              ? 'Lịch khám'
+              : 'Lịch khám • ${widget.elderlyName}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       body: Column(

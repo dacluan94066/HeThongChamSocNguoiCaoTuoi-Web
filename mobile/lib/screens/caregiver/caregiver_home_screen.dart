@@ -5,6 +5,7 @@ import '../../services/alert_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/caregiver_dashboard_service.dart';
 import '../../widgets/alert_card.dart';
+import '../../widgets/foreground_refresh.dart';
 import '../notifications/notification_screen.dart';
 import '../profile/profile_screen.dart';
 import 'caregiver_elderly_detail_screen.dart';
@@ -16,7 +17,10 @@ class CaregiverHomeScreen extends StatefulWidget {
   State<CaregiverHomeScreen> createState() => _CaregiverHomeScreenState();
 }
 
-class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
+class _CaregiverHomeScreenState extends State<CaregiverHomeScreen>
+    with ForegroundRefresh<CaregiverHomeScreen> {
+  @override
+  Future<void> refreshForeground() => _load(refresh: true, silent: true);
   List<Map<String, dynamic>> _elderly = const [];
   List<Map<String, dynamic>> _notifications = const [];
   bool _loading = true;
@@ -28,7 +32,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     _load();
   }
 
-  Future<void> _load({bool refresh = false}) async {
+  Future<void> _load({bool refresh = false, bool silent = false}) async {
     if (!refresh) setState(() => _loading = true);
     try {
       final results = await Future.wait([
@@ -44,12 +48,14 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
       });
     } on ApiException catch (error) {
       if (!mounted) return;
+      if (silent) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
+      if (silent) return;
       setState(() {
         _error = 'Không thể tải dữ liệu người chăm sóc. Vui lòng thử lại.';
         _loading = false;
@@ -136,6 +142,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
           : RefreshIndicator(
               onRefresh: () => _load(refresh: true),
               child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
                 children: [
                   for (final emergency in emergencies)

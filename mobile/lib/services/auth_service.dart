@@ -29,8 +29,9 @@ class AuthService {
     CaregiverDashboardService.instance.clearCache();
     HealthMetricService.instance.clearCache();
     MedicationScheduleService.instance.clearCache();
-    await LocalNotificationService.cancelMedicationReminders();
     await ApiClient.clearSession();
+    final loginVersion = ApiClient.sessionVersion;
+    await LocalNotificationService.cancelMedicationReminders();
 
     try {
       final response = await _dio.post<Map<String, dynamic>>(
@@ -50,10 +51,17 @@ class AuthService {
       }
 
       final userMap = Map<String, dynamic>.from(user);
-      await ApiClient.storage.write(key: ApiClient.tokenKey, value: token);
-      await ApiClient.storage.write(
-        key: ApiClient.userKey,
-        value: jsonEncode(userMap),
+      if (userMap['tenVaiTro'] != 'NguoiCaoTuoi' &&
+          userMap['tenVaiTro'] != 'NguoiChamSoc') {
+        throw const ApiException(
+          'Tài khoản này không hỗ trợ trên Mobile. Vui lòng dùng hệ thống Web.',
+          statusCode: 403,
+        );
+      }
+      await ApiClient.saveSession(
+        token: token,
+        encodedUser: jsonEncode(userMap),
+        expectedVersion: loginVersion,
       );
 
       ElderlyService.instance.beginSession(userMap['userId']);
@@ -63,11 +71,8 @@ class AuthService {
       CaregiverDashboardService.instance.beginSession();
       HealthMetricService.instance.beginSession();
       MedicationScheduleService.instance.beginSession();
-      // Chi tai khoan NguoiCaoTuoi moi co HoSoNguoiCaoTuoi gan truc tiep.
-      if (userMap['tenVaiTro'] == 'NguoiCaoTuoi') {
-        await ElderlyService.instance.getMyProfile(refresh: true);
-      }
-
+      // Authentication succeeds independently of profile availability.
+      // The home screen handles an unlinked profile and offers retry/logout.
       return userMap;
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
@@ -172,16 +177,35 @@ class AuthService {
     CaregiverDashboardService.instance.clearCache();
     HealthMetricService.instance.clearCache();
     MedicationScheduleService.instance.clearCache();
-    await LocalNotificationService.cancelMedicationReminders();
-    await ApiClient.clearSession();
+    try {
+      await ApiClient.clearSession();
+    } finally {
+      await LocalNotificationService.cancelMedicationReminders();
+    }
   }
 
   Future<String?> getToken() {
     return ApiClient.storage.read(key: ApiClient.tokenKey);
   }
 
+  Future<Map<String, dynamic>?> getStoredUser() async {
+    final raw = await ApiClient.storage.read(key: ApiClient.userKey);
+    if (raw == null) return null;
+    try {
+      final value = jsonDecode(raw);
+      return value is Map ? Map<String, dynamic>.from(value) : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>> getMe() async {
+    final version = ApiClient.sessionVersion;
     final user = await _get('/auth/me');
+    await ApiClient.updateStoredUser(
+      encodedUser: jsonEncode(user),
+      expectedVersion: version,
+    );
     ElderlyService.instance.beginSession(user['userId']);
     AlertService.instance.beginSession();
     AppointmentService.instance.beginSession();
@@ -189,9 +213,6 @@ class AuthService {
     CaregiverDashboardService.instance.beginSession();
     HealthMetricService.instance.beginSession();
     MedicationScheduleService.instance.beginSession();
-    if (user['tenVaiTro'] == 'NguoiCaoTuoi') {
-      await ElderlyService.instance.getMyProfile(refresh: true);
-    }
     return user;
   }
 
@@ -200,15 +221,16 @@ class AuthService {
     String? email,
     String? soDienThoai,
   }) async {
+    final version = ApiClient.sessionVersion;
     try {
       final response = await _dio.put<Map<String, dynamic>>(
         '/auth/me',
         data: {'hoTen': hoTen, 'email': email, 'soDienThoai': soDienThoai},
       );
       final user = _extractData(response);
-      await ApiClient.storage.write(
-        key: ApiClient.userKey,
-        value: jsonEncode(user),
+      await ApiClient.updateStoredUser(
+        encodedUser: jsonEncode(user),
+        expectedVersion: version,
       );
       return user;
     } on DioException catch (error) {

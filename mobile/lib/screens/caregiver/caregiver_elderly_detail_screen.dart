@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_client.dart';
 import '../../services/caregiver_dashboard_service.dart';
 import '../../widgets/alert_card.dart';
+import '../../widgets/foreground_refresh.dart';
+import '../appointments/appointment_screen.dart';
 
 class CaregiverElderlyDetailScreen extends StatefulWidget {
   const CaregiverElderlyDetailScreen({super.key, required this.elderly});
@@ -16,7 +18,10 @@ class CaregiverElderlyDetailScreen extends StatefulWidget {
 }
 
 class _CaregiverElderlyDetailScreenState
-    extends State<CaregiverElderlyDetailScreen> {
+    extends State<CaregiverElderlyDetailScreen>
+    with ForegroundRefresh<CaregiverElderlyDetailScreen> {
+  @override
+  Future<void> refreshForeground() => _reloadAlerts();
   Map<String, dynamic> _profile = const {};
   List<Map<String, dynamic>> _medications = const [];
   List<Map<String, dynamic>> _metrics = const [];
@@ -135,7 +140,6 @@ class _CaregiverElderlyDetailScreenState
         ),
       );
     } on ApiException catch (error) {
-      await _reloadAlerts();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message), backgroundColor: Colors.red),
@@ -200,7 +204,6 @@ class _CaregiverElderlyDetailScreenState
         ),
       );
     } on ApiException catch (error) {
-      await _reloadAlerts();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message), backgroundColor: Colors.red),
@@ -255,6 +258,21 @@ class _CaregiverElderlyDetailScreenState
     return Scaffold(
       backgroundColor: const Color(0xfff4f6f5),
       appBar: AppBar(
+        actions: [
+          IconButton(
+            tooltip: 'Tất cả lịch khám',
+            icon: const Icon(Icons.calendar_month_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AppointmentScreen(
+                  elderlyId: _elderlyId,
+                  elderlyName: widget.elderly['hoTen']?.toString(),
+                ),
+              ),
+            ),
+          ),
+        ],
         title: Text(
           widget.elderly['hoTen']?.toString() ?? 'Chi tiết người cao tuổi',
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -276,9 +294,18 @@ class _CaregiverElderlyDetailScreenState
           : RefreshIndicator(
               onRefresh: () => _load(refresh: true),
               child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(14, 8, 14, 30),
                 children: [
-                  if (_truthy(widget.elderly['coCanhBaoKhanCap']))
+                  if (_truthy(widget.elderly['coCanhBaoKhanCap']) &&
+                      _alerts.any(
+                        (alert) =>
+                            alert['loaiCanhBao'] == 'KhanCap' &&
+                            (alert['trangThai'] == 'CHUA_XU_LY' ||
+                                alert['trangThai'] == 'ChuaXuLy' ||
+                                alert['trangThai'] == 'DA_XEM' ||
+                                alert['trangThai'] == 'DaXem'),
+                      ))
                     _EmergencyCard(
                       content: _text(widget.elderly['noiDungCanhBao']),
                       sentAt: _dateTime(widget.elderly['ngayGuiCanhBao']),

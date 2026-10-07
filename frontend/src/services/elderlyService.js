@@ -24,6 +24,9 @@ const mapElderFromApi = (item) => {
   // Nếu backend đã trả camelCase thì dùng trực tiếp, chỉ map khi cần
   return {
     id,
+    ...(Object.hasOwn(item, 'userId') ? { userId: item.userId }
+      : Object.hasOwn(item, 'UserID') ? { userId: item.UserID } : {}),
+    username: item.username ?? item.tenDangNhap ?? item.TenDangNhap,
     maHoSo: item.maHoSo ?? item.MaHoSo ?? formatEntityCode('NCT', id),
     hoTen: item.hoTen ?? item.HoTen ?? '',
     ngaySinh,

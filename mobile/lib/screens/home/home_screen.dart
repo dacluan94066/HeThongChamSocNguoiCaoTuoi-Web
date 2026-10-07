@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../services/appointment_service.dart';
 import '../../services/alert_service.dart';
+import '../../services/local_notification_service.dart';
 import '../../services/health_metric_service.dart';
 import '../../services/medication_schedule_service.dart';
 import '../../services/api_client.dart';
 import '../../services/elderly_service.dart';
+import '../../services/auth_service.dart';
+import '../../widgets/foreground_refresh.dart';
 
 import '../appointments/appointment_screen.dart';
 import '../caregiver/caregiver_screen.dart';
@@ -21,9 +24,15 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with ForegroundRefresh<HomeScreen> {
+  @override
+  Future<void> refreshForeground() => loadAllData(refreshProfile: true);
+  bool _openingEmergencyContacts = false;
+  bool _openingLocalNotification = false;
   int selectedIndex = 0;
   int unreadNotificationCount = 0;
+  int _notificationCountSequence = 0;
 
   Map<String, dynamic> profile = {};
   String? profileError;
@@ -41,6 +50,56 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     loadAllData();
+    LocalNotificationService.pendingPayload.addListener(
+      _handleLocalNotification,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _handleLocalNotification();
+    });
+  }
+
+  @override
+  void dispose() {
+    LocalNotificationService.pendingPayload.removeListener(
+      _handleLocalNotification,
+    );
+    super.dispose();
+  }
+
+  Future<void> _handleLocalNotification() async {
+    final payload = LocalNotificationService.pendingPayload.value;
+    if (!mounted ||
+        _openingLocalNotification ||
+        payload?.startsWith('medication:') != true)
+      return;
+    _openingLocalNotification = true;
+    LocalNotificationService.takePendingPayload();
+    try {
+      await openMedication();
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể mở lịch thuốc. Vui lòng thử lại.'),
+          ),
+        );
+    } finally {
+      _openingLocalNotification = false;
+    }
+  }
+
+  Future<void> openEmergencyContacts() async {
+    if (_openingEmergencyContacts || !mounted) return;
+    _openingEmergencyContacts = true;
+    try {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CaregiverScreen()),
+      );
+      if (mounted) await loadUnreadNotificationCount(refresh: true);
+    } finally {
+      _openingEmergencyContacts = false;
+    }
   }
 
   // =====================================================
@@ -50,8 +109,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> loadAllData({bool refreshProfile = false}) async {
     await Future.wait([
       loadProfile(refresh: refreshProfile),
-      loadHealthData(),
-      loadMedicationSchedule(),
+      loadHealthData(refresh: refreshProfile),
+      loadMedicationSchedule(refresh: refreshProfile),
       loadUnreadNotificationCount(refresh: refreshProfile),
       loadNextAppointment(refresh: refreshProfile),
     ]);
@@ -89,9 +148,11 @@ class _HomeScreenState extends State<HomeScreen> {
   // HEALTH
   // =====================================================
 
-  Future<void> loadHealthData() async {
+  Future<void> loadHealthData({bool refresh = false}) async {
     try {
-      final metrics = await HealthMetricService.instance.getMyHealthMetrics();
+      final metrics = await HealthMetricService.instance.getMyHealthMetrics(
+        refresh: refresh,
+      );
       final latest = <String, Map<String, dynamic>>{};
       for (final metric in metrics) {
         final name = metric['tenChiSo']?.toString();
@@ -183,19 +244,30 @@ class _HomeScreenState extends State<HomeScreen> {
   // =====================================================
 
   Future<void> loadUnreadNotificationCount({bool refresh = false}) async {
+    final sequence = ++_notificationCountSequence;
+    final version = ApiClient.sessionVersion;
     try {
       final notifications = await AlertService.instance.getNotifications(
         refresh: refresh,
       );
       final count = notifications.where((item) {
         final value = item['daDoc'];
-        return !(value == true || value == 1 || value?.toString() == '1');
+        return !(value == true ||
+            value == 1 ||
+            value?.toString().trim() == '1' ||
+            value?.toString().trim().toLowerCase() == 'true');
       }).length;
-      if (!mounted) return;
+      if (!mounted ||
+          sequence != _notificationCountSequence ||
+          version != ApiClient.sessionVersion)
+        return;
       setState(() => unreadNotificationCount = count);
     } catch (_) {
-      if (!mounted) return;
-      setState(() => unreadNotificationCount = 0);
+      if (!mounted ||
+          sequence != _notificationCountSequence ||
+          version != ApiClient.sessionVersion)
+        return;
+      // Giữ số đã biết khi mất mạng, thay vì báo sai là không có thông báo.
     }
   }
 
@@ -266,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     await loadHealthData();
-    await loadUnreadNotificationCount();
+    await loadUnreadNotificationCount(refresh: true);
   }
 
   // =====================================================
@@ -280,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     await loadMedicationSchedule(refresh: true);
-    await loadUnreadNotificationCount();
+    await loadUnreadNotificationCount(refresh: true);
   }
 
   // =====================================================
@@ -293,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (_) => const NotificationScreen()),
     );
 
-    await loadUnreadNotificationCount();
+    await loadUnreadNotificationCount(refresh: true);
   }
 
   // =====================================================
@@ -307,7 +379,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     await loadNextAppointment(refresh: true);
-    await loadUnreadNotificationCount();
+    await loadUnreadNotificationCount(refresh: true);
   }
 
   // =====================================================
@@ -316,6 +388,55 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!loadingProfile && profileError != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Hồ sơ người cao tuổi')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.person_off_outlined, size: 60),
+                const SizedBox(height: 16),
+                Text(profileError!, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                const Text(
+                  'Nếu tài khoản chưa có hồ sơ, hãy liên hệ quản trị viên để liên kết hồ sơ có sẵn.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => loadAllData(refreshProfile: true),
+                  child: const Text('Thử lại'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ProfileScreen(accountOnly: true),
+                    ),
+                  ),
+                  child: const Text('Thông tin tài khoản'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    await AuthService.instance.logout();
+                    if (!context.mounted) return;
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/login',
+                      (_) => false,
+                    );
+                  },
+                  child: const Text('Đăng xuất'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     final name = profileError == null
         ? ElderlyService.text(profile, 'hoTen')
         : profileError!;
@@ -680,16 +801,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: 'Khẩn cấp',
                       iconBackground: const Color(0xffffe5e5),
                       iconColor: const Color(0xffd84444),
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CaregiverScreen(),
-                          ),
-                        );
-
-                        await loadUnreadNotificationCount();
-                      },
+                      onTap: openEmergencyContacts,
                     ),
 
                     QuickAction(
@@ -1088,16 +1200,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton.icon(
-                          onPressed: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const CaregiverScreen(),
-                              ),
-                            );
-
-                            await loadUnreadNotificationCount();
-                          },
+                          onPressed: openEmergencyContacts,
                           icon: const Icon(Icons.sos_rounded),
                           label: const Text(
                             'LIÊN HỆ KHẨN CẤP',
