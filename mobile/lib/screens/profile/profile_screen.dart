@@ -112,6 +112,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final birthDate = ElderlyService.displayBirthDate(profile);
     final gender = ElderlyService.text(profile, 'gioiTinh');
     final phone = ElderlyService.text(profile, 'soDienThoai');
+    final email = ElderlyService.text(profile, 'email');
     final address = ElderlyService.text(profile, 'diaChi');
     final bloodType = ElderlyService.text(profile, 'nhomMau');
     final benhNen = ElderlyService.text(profile, 'benhNen');
@@ -225,6 +226,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: Icons.phone_outlined,
                     title: 'Số điện thoại',
                     value: phone,
+                  ),
+
+                  const Divider(height: 24),
+
+                  ProfileItem(
+                    icon: Icons.email_outlined,
+                    title: 'Email',
+                    value: email,
                   ),
 
                   const Divider(height: 24),

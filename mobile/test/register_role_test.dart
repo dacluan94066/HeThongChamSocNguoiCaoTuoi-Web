@@ -14,6 +14,10 @@ void main() {
     expect(find.text('Tôi là người chăm sóc, người thân'), findsOneWidget);
     expect(find.text('Ngày sinh'), findsOneWidget);
     expect(find.text('Giới tính'), findsOneWidget);
+    expect(
+      find.text('Email (dùng để khôi phục mật khẩu)'),
+      findsOneWidget,
+    );
     expect(find.text('Email (không bắt buộc)'), findsNothing);
     expect(find.textContaining('Quản trị'), findsNothing);
     expect(find.textContaining('Bác sĩ'), findsNothing);
@@ -22,6 +26,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Email (không bắt buộc)'), findsOneWidget);
+    expect(find.text('Email (dùng để khôi phục mật khẩu)'), findsNothing);
     expect(find.text('Ngày sinh'), findsNothing);
     expect(find.text('Giới tính'), findsNothing);
   });

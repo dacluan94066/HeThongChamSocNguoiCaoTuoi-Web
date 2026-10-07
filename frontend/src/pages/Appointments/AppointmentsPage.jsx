@@ -20,6 +20,7 @@ import TableAvatar from '../../components/TableAvatar';
 import TableActionButton from '../../components/TableActionButton';
 import { formatEntityCode } from '../../utils/displayUtils';
 import RecordDetailModal from '../../components/RecordDetailModal';
+import { getSocket } from '../../services/socketClient';
 
 const { Option } = Select;
 
@@ -53,6 +54,17 @@ const AppointmentsPage = () => {
       .finally(() => setLoading(false));
   }, [search, filterStatus]);
   useEffect(() => { getElders().then(setElders); }, []);
+
+  useEffect(() => {
+    const socket = getSocket();
+    const handleAppointmentUpdated = () => {
+      getAppointments({ search, trangThai: filterStatus || undefined })
+        .then(setAppointments);
+    };
+
+    socket.on('lichkham:updated', handleAppointmentUpdated);
+    return () => socket.off('lichkham:updated', handleAppointmentUpdated);
+  }, [search, filterStatus]);
 
   const handleSearch = (value) => {
     setLoading(true);

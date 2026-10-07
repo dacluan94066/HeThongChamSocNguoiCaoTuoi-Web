@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { canAccessWeb } from '../../utils/accessControl';
 import loginIllustration from '../../assets/login_illustration.png';
+import ForgotPasswordModal from './ForgotPasswordModal';
 import './Login.css';
 
 const { Title, Text } = Typography;
@@ -75,7 +76,7 @@ const LoginIllustration = () => (
 );
 
 // --- Component form đăng nhập ---
-const LoginForm = ({ onSubmit, loading, errorMsg, alertType }) => {
+const LoginForm = ({ onSubmit, onForgotPassword, loading, errorMsg, alertType }) => {
   const [form] = Form.useForm();
 
   return (
@@ -155,7 +156,13 @@ const LoginForm = ({ onSubmit, loading, errorMsg, alertType }) => {
               <Form.Item name="remember" valuePropName="checked" noStyle>
                 <Checkbox className="login-remember-checkbox">Ghi nhớ đăng nhập</Checkbox>
               </Form.Item>
-              <a className="login-forgot-link" href="#forgot">Quên mật khẩu?</a>
+              <button
+                type="button"
+                className="login-forgot-link"
+                onClick={onForgotPassword}
+              >
+                Quên mật khẩu?
+              </button>
             </div>
           </Form.Item>
 
@@ -190,6 +197,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [alertType, setAlertType] = useState('error');
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
 
   // Nếu đã đăng nhập, chuyển về dashboard
   React.useEffect(() => {
@@ -245,9 +253,14 @@ const LoginPage = () => {
       <LoginIllustration />
       <LoginForm
         onSubmit={handleSubmit}
+        onForgotPassword={() => setForgotPasswordOpen(true)}
         loading={loading}
         errorMsg={errorMsg}
         alertType={alertType}
+      />
+      <ForgotPasswordModal
+        open={forgotPasswordOpen}
+        onClose={() => setForgotPasswordOpen(false)}
       />
     </div>
   );

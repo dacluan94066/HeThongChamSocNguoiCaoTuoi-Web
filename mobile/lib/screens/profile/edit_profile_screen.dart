@@ -124,17 +124,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final name = nameController.text.trim();
     final birthDate = birthController.text.trim();
     final phone = phoneController.text.trim();
+    final email = emailController.text.trim();
     final address = addressController.text.trim();
     final bloodType = bloodTypeController.text.trim();
     final benhNen = benhNenController.text.trim();
     final diUng = diUngController.text.trim();
 
-    if (name.isEmpty || birthDate.isEmpty) {
+    if (name.isEmpty || birthDate.isEmpty || email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Vui lòng nhập đầy đủ thông tin cá nhân.'),
         ),
       );
+      return;
+    }
+
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Email không hợp lệ.')));
       return;
     }
 
@@ -165,6 +173,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'ngaySinh': '${parts[2]}-${parts[1]}-${parts[0]}',
         'gioiTinh': gender,
         'soDienThoai': phone,
+        'email': email,
         'diaChi': address,
         'nhomMau': bloodType,
         'benhNen': benhNen,
@@ -192,9 +201,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final email = emailController.text.trim();
     final phone = phoneController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập họ và tên.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Vui lòng nhập họ và tên.')));
       return;
     }
     if (phone.isNotEmpty && (phone.length != 10 || !phone.startsWith('0'))) {
@@ -216,9 +225,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       Navigator.pop(context, true);
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -427,6 +436,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 16),
 
                   buildTextField(
+                    label: 'Email dùng để khôi phục mật khẩu',
+                    controller: emailController,
+                    icon: Icons.email_outlined,
+                    hint: 'Nhập địa chỉ email',
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  buildTextField(
                     label: 'Địa chỉ',
                     controller: addressController,
                     icon: Icons.location_on_outlined,
@@ -523,7 +542,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 children: [
                   Text(loadError!, textAlign: TextAlign.center),
                   const SizedBox(height: 12),
-                  FilledButton(onPressed: loadProfile, child: const Text('Thử lại')),
+                  FilledButton(
+                    onPressed: loadProfile,
+                    child: const Text('Thử lại'),
+                  ),
                 ],
               ),
             )

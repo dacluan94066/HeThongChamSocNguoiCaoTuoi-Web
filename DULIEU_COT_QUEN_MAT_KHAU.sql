@@ -1,0 +1,29 @@
+USE QLSucKhoeNguoiCaoTuoi;
+GO
+
+IF COL_LENGTH('NguoiDung', 'MaOTP') IS NULL
+    ALTER TABLE NguoiDung ADD MaOTP VARCHAR(255) NULL;
+GO
+IF EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('dbo.NguoiDung')
+      AND name = 'MaOTP' AND max_length < 255
+)
+    ALTER TABLE NguoiDung ALTER COLUMN MaOTP VARCHAR(255) NULL;
+GO
+IF COL_LENGTH('NguoiDung', 'MaOTPHetHan') IS NULL
+    ALTER TABLE NguoiDung ADD MaOTPHetHan DATETIME2 NULL;
+GO
+IF COL_LENGTH('NguoiDung', 'MaOTPGuiLuc') IS NULL
+    ALTER TABLE NguoiDung ADD MaOTPGuiLuc DATETIME2 NULL;
+GO
+IF COL_LENGTH('NguoiDung', 'MaOTPCuaSoBatDau') IS NULL
+    ALTER TABLE NguoiDung ADD MaOTPCuaSoBatDau DATETIME2 NULL;
+GO
+IF COL_LENGTH('NguoiDung', 'SoLanGuiOTP') IS NULL
+    ALTER TABLE NguoiDung ADD SoLanGuiOTP INT NOT NULL
+        CONSTRAINT DF_NguoiDung_SoLanGuiOTP DEFAULT (0) WITH VALUES;
+GO
+
+PRINT N'Da them day du cot OTP vao NguoiDung.';
+GO

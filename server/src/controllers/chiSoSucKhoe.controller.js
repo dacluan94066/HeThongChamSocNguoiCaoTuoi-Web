@@ -5,6 +5,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
+const { emitToAdmin } = require('../socket');
 
 // Map TenChiSo trong DB -> loaiChiSo frontend
 const MAP_LOAI = {
@@ -320,6 +321,23 @@ const createMine = async (req, res, next) => {
       `);
 
     const row = result.recordset[0];
+    if (row.alertId != null) {
+      emitToAdmin('canhbao:new', {
+        id: row.alertId,
+        canhBaoId: row.alertId,
+        nguoiCaoTuoiId: elderlyId,
+        loaiCanhBao: 'ChiSoBatThuong',
+        loaiCanhBaoLabel: 'Chỉ số bất thường',
+        mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
+        mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
+        moTa: assessment.description,
+        thoiGianPhatHien: row.thoiGianDo,
+        trangThai: 'CHUA_XU_LY',
+        trangThaiLabel: 'Chưa xử lý',
+        nguonBang: 'ChiSoSucKhoe',
+        nguonId: row.id,
+      });
+    }
     return ok(res, {
       ...mapMobileMetric(row),
       alertCreated: row.alertId != null,
@@ -444,6 +462,23 @@ const create = async (req, res, next) => {
 
         SELECT @chiSoId AS id, @canhBaoId AS alertId;
       `);
+    if (r.recordset[0].alertId != null) {
+      emitToAdmin('canhbao:new', {
+        id: r.recordset[0].alertId,
+        canhBaoId: r.recordset[0].alertId,
+        nguoiCaoTuoiId,
+        loaiCanhBao: 'ChiSoBatThuong',
+        loaiCanhBaoLabel: 'Chỉ số bất thường',
+        mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
+        mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
+        moTa: assessment.description,
+        thoiGianPhatHien: thoiGianDo,
+        trangThai: 'CHUA_XU_LY',
+        trangThaiLabel: 'Chưa xử lý',
+        nguonBang: 'ChiSoSucKhoe',
+        nguonId: r.recordset[0].id,
+      });
+    }
     return ok(res, {
       id: r.recordset[0].id,
       alertCreated: r.recordset[0].alertId != null,

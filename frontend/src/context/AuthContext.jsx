@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axiosClient from '../services/axiosClient';
 import { getMyPermissions } from '../services/permissionService';
+import { connectSocket, disconnectSocket } from '../services/socketClient';
 
 // ─── Tạo Context ─────────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
@@ -47,8 +48,17 @@ export const AuthProvider = ({ children }) => {
     restoreSession();
   }, []);
 
+  useEffect(() => {
+    if (user && localStorage.getItem('token')) {
+      connectSocket();
+    } else {
+      disconnectSocket();
+    }
+  }, [user]);
+
   // Hàm đăng xuất: xóa token + user khỏi localStorage, reset state, về /login
   const logout = useCallback(() => {
+    disconnectSocket();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);

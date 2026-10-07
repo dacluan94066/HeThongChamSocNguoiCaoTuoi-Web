@@ -4,6 +4,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+const { emitToAdmin } = require('../socket');
 
 const MUC_DO = {
   Thap:      { ma: 'THAP',       label: 'Thấp' },
@@ -347,6 +348,7 @@ const markSeen = async (req, res, next) => {
     );
     await transaction.commit();
     transaction = null;
+    emitToAdmin('canhbao:updated', alert);
     return ok(res, alert, 'Da tiep nhan canh bao');
   } catch (err) {
     if (transaction) {
@@ -427,6 +429,7 @@ const resolve = async (req, res, next) => {
     );
     await transaction.commit();
     transaction = null;
+    emitToAdmin('canhbao:updated', alert);
     return ok(res, alert, 'Da xu ly canh bao');
   } catch (err) {
     if (transaction) {

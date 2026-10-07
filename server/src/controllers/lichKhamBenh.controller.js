@@ -2,6 +2,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+const { emitToAdmin } = require('../socket');
 
 const STATUS = {
   ChuaDen: { ma: 'CHUA_DEN', label: 'Chưa đến' },
@@ -253,6 +254,8 @@ const create = async (req, res, next) => {
           (@nctId, @tenBenhVien, @bacSi, @chuyenKhoa,
            CONVERT(DATETIME2, CONCAT(@ngayKham, 'T', @gioKham, ':00'), 126),
            @lyDo, N'ChuaDen', @nguoiTaoId)`);
+    const eventData = { id: result.recordset[0].id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'created' };
+    emitToAdmin('lichkham:updated', eventData);
     return ok(res, { id: result.recordset[0].id }, 'Thêm lịch khám thành công', 201);
   } catch (error) { next(error); }
 };
@@ -284,6 +287,7 @@ const update = async (req, res, next) => {
         WHERE LichKhamID=@id;
         SELECT @@ROWCOUNT AS affectedRows`);
     if (!result.recordset[0]?.affectedRows) return fail(res, 'Không tìm thấy lịch khám', 'NOT_FOUND', 404);
+    emitToAdmin('lichkham:updated', { id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'updated' });
     return ok(res, { id }, 'Cập nhật lịch khám thành công');
   } catch (error) { next(error); }
 };
@@ -301,6 +305,7 @@ const cancel = async (req, res, next) => {
     if (!result.recordset[0]?.affectedRows) {
       return fail(res, 'Không tìm thấy lịch khám hoặc lịch đã khám', 'APPOINTMENT_NOT_CANCELLABLE', 404);
     }
+    emitToAdmin('lichkham:updated', { id, trangThai: 'HUY', action: 'cancelled' });
     return ok(res, { id }, 'Đã hủy lịch khám');
   } catch (error) { next(error); }
 };
@@ -324,7 +329,9 @@ const recordResult = async (req, res, next) => {
     if (!result.recordset[0]?.affectedRows) {
       return fail(res, 'Không tìm thấy lịch khám hoặc lịch đã bị hủy', 'APPOINTMENT_NOT_UPDATABLE', 404);
     }
-    return ok(res, { id, trangThai: 'DA_KHAM', ketQua: resultText }, 'Đã ghi kết quả khám');
+    const eventData = { id, trangThai: 'DA_KHAM', ketQua: resultText, action: 'result-recorded' };
+    emitToAdmin('lichkham:updated', eventData);
+    return ok(res, eventData, 'Đã ghi kết quả khám');
   } catch (error) { next(error); }
 };
 

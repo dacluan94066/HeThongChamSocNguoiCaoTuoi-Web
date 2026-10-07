@@ -1,6 +1,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+const { emitToAdmin } = require('../socket');
 
 const VALID_STATUSES = new Set(['DangGui', 'DaTiepNhan', 'DaXuLy', 'Huy']);
 
@@ -76,6 +77,22 @@ const create = async (req, res, next) => {
       `);
     await transaction.commit();
     transaction = null;
+    emitToAdmin('canhbao:new', {
+      id: alert.recordset[0].id,
+      canhBaoId: alert.recordset[0].id,
+      nguoiCaoTuoiId: elderlyId,
+      nguoiCaoTuoiTen: elderlyName,
+      loaiCanhBao: 'KhanCap',
+      loaiCanhBaoLabel: 'Khẩn cấp',
+      mucDo: 'KHAN_CAP',
+      mucDoLabel: 'Khẩn cấp',
+      moTa: noiDung || 'Người cao tuổi đã gửi cảnh báo SOS.',
+      thoiGianPhatHien: emergency.recordset[0].ngayGui,
+      trangThai: 'CHUA_XU_LY',
+      trangThaiLabel: 'Chưa xử lý',
+      nguonBang: 'CanhBaoKhanCap',
+      nguonId: emergencyId,
+    });
     return ok(res, {
       id: emergencyId,
       canhBaoId: alert.recordset[0].id,
@@ -188,6 +205,12 @@ const handle = async (req, res, next) => {
       `);
     await transaction.commit();
     transaction = null;
+    emitToAdmin('canhbao:updated', {
+      ...updated.recordset[0],
+      loaiCanhBao: 'KhanCap',
+      nguonBang: 'CanhBaoKhanCap',
+      nguonId: id,
+    });
     return ok(res, updated.recordset[0], 'Cap nhat canh bao khan cap thanh cong');
   } catch (error) {
     if (transaction) {

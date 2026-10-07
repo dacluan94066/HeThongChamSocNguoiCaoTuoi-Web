@@ -1,6 +1,7 @@
 // Trang cảnh báo - Lọc, xử lý và đánh dấu đã xem
 import React, { useState, useEffect } from 'react';
 import { Select, Tag, Form, Input, message, Badge, Space } from 'antd';
+import { useSearchParams } from 'react-router-dom';
 import { AlertOutlined, CheckCircleOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons';
 import { getAlerts, markAlertSeen, resolveAlert } from '../../services/alertService';
 import { getCurrentUser } from '../../services/authService';
@@ -15,6 +16,7 @@ import TableAvatar from '../../components/TableAvatar';
 import TableActionButton from '../../components/TableActionButton';
 import { formatEntityCode } from '../../utils/displayUtils';
 import RecordDetailModal from '../../components/RecordDetailModal';
+import { getSocket } from '../../services/socketClient';
 
 const { Option } = Select;
 
@@ -33,6 +35,8 @@ const AlertsPage = () => {
   const [detailRecord, setDetailRecord] = useState(null);
   const [form] = Form.useForm();
   const currentUser = getCurrentUser();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const highlightedAlertId = searchParams.get('highlight');
 
   const load = () => {
     setLoading(true);
@@ -44,6 +48,64 @@ const AlertsPage = () => {
   };
 
   useEffect(() => { load(); }, [filterLevel, filterStatus]);
+
+  useEffect(() => {
+    if (!highlightedAlertId) return undefined;
+
+    let cancelled = false;
+    const openHighlightedAlert = async () => {
+      try {
+        setLoading(true);
+        const data = await getAlerts();
+        if (cancelled) return;
+        data.sort((a, b) => (MUC_DO_ORDER[b.mucDo] || 0) - (MUC_DO_ORDER[a.mucDo] || 0));
+        setFilterLevel('');
+        setFilterStatus('');
+        setAlerts(data);
+
+        const target = data.find((item) => String(item.id) === String(highlightedAlertId));
+        if (target) {
+          setDetailRecord(target);
+        } else {
+          message.warning('Không tìm thấy cảnh báo cần xem hoặc bạn không có quyền truy cập.');
+        }
+      } catch {
+        if (!cancelled) {
+          message.error('Không thể tải chi tiết cảnh báo. Vui lòng thử lại.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          const nextParams = new URLSearchParams(searchParams);
+          nextParams.delete('highlight');
+          setSearchParams(nextParams, { replace: true });
+        }
+      }
+    };
+
+    openHighlightedAlert();
+    return () => {
+      cancelled = true;
+    };
+  }, [highlightedAlertId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    const refreshAlerts = () => {
+      getAlerts({ mucDo: filterLevel || undefined, trangThai: filterStatus || undefined })
+        .then((data) => {
+          data.sort((a, b) => (MUC_DO_ORDER[b.mucDo] || 0) - (MUC_DO_ORDER[a.mucDo] || 0));
+          setAlerts(data);
+        });
+    };
+
+    socket.on('canhbao:new', refreshAlerts);
+    socket.on('canhbao:updated', refreshAlerts);
+    return () => {
+      socket.off('canhbao:new', refreshAlerts);
+      socket.off('canhbao:updated', refreshAlerts);
+    };
+  }, [filterLevel, filterStatus]);
 
   const handleMarkSeen = async (id) => {
     await markAlertSeen(id, currentUser?.hoTen || 'Hệ thống');

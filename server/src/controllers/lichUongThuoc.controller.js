@@ -5,6 +5,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+const { emitToAdmin } = require('../socket');
 
 const STATUS_MAP = {
   ChuaDenGio: { ma: 'CHUA_DEN_GIO', label: 'Chưa đến giờ' },
@@ -210,7 +211,9 @@ const confirmMine = async (req, res, next) => {
         JOIN DanhMucThuoc dm ON dm.ThuocID=ct.ThuocID
         WHERE l.LichUongThuocID=@id`);
 
-    return ok(res, mapMySchedule(updated.recordset[0]), 'Cap nhat trang thai uong thuoc thanh cong');
+    const schedule = mapMySchedule(updated.recordset[0]);
+    emitToAdmin('lichuongthuoc:updated', schedule);
+    return ok(res, schedule, 'Cap nhat trang thai uong thuoc thanh cong');
   } catch (err) { next(err); }
 };
 
@@ -258,15 +261,28 @@ const updateStatus = async (req, res, next) => {
     const dbVal = Object.keys(STATUS_MAP).find((k) => STATUS_MAP[k].ma === trangThai) || trangThai;
 
     const pool = await poolPromise;
-    await pool.request()
+    const updated = await pool.request()
       .input('id', sql.Int, req.params.id)
       .input('trangThai', sql.NVarChar, dbVal)
       .input('thoiGianThucTe', sql.DateTime2, trangThai === 'DA_UONG' ? new Date() : null)
       .input('nguoiXacNhan', sql.Int, req.user.userId)
       .query(`UPDATE LichUongThuoc SET TrangThai=@trangThai,
               ThoiGianThucTe=@thoiGianThucTe, NguoiXacNhanID=@nguoiXacNhan
+              OUTPUT INSERTED.LichUongThuocID AS id,
+                INSERTED.NguoiCaoTuoiID AS nguoiCaoTuoiId,
+                INSERTED.TrangThai AS trangThai
               WHERE LichUongThuocID=@id`);
-    return ok(res, { id: parseInt(req.params.id), trangThai }, 'Cap nhat trang thai thanh cong');
+    if (!updated.recordset.length) {
+      return fail(res, 'Khong tim thay lich uong thuoc', 'MEDICATION_SCHEDULE_NOT_FOUND', 404);
+    }
+    const eventData = {
+      id: updated.recordset[0].id,
+      nguoiCaoTuoiId: updated.recordset[0].nguoiCaoTuoiId,
+      trangThai,
+      trangThaiDb: updated.recordset[0].trangThai,
+    };
+    emitToAdmin('lichuongthuoc:updated', eventData);
+    return ok(res, eventData, 'Cap nhat trang thai thanh cong');
   } catch (err) { next(err); }
 };
 

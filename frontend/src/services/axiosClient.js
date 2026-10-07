@@ -44,11 +44,17 @@ axiosClient.interceptors.response.use(
     const { status, data } = error.response;
 
     if (status === 401) {
-      const isLoginRequest = error.config?.url?.includes('/auth/login');
+      const isPublicAuthRequest = [
+        '/auth/login',
+        '/auth/register',
+        '/auth/forgot-password',
+        '/auth/verify-otp',
+        '/auth/reset-password-with-token',
+      ].some((path) => error.config?.url?.includes(path));
 
       // Sai thông tin đăng nhập phải được LoginPage tự hiển thị, không reload trang.
       // Chỉ chuyển về /login khi token của một request đã xác thực bị hết hạn/sai.
-      if (!isLoginRequest) {
+      if (!isPublicAuthRequest) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
 

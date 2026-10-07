@@ -66,6 +66,11 @@ CREATE TABLE NguoiDung (
     Email           VARCHAR(100) NULL,
     SoDienThoai     VARCHAR(15) NULL,
     AnhDaiDien      NVARCHAR(255) NULL,
+    MaOTP            VARCHAR(255) NULL,
+    MaOTPHetHan      DATETIME2 NULL,
+    MaOTPGuiLuc      DATETIME2 NULL,
+    MaOTPCuaSoBatDau DATETIME2 NULL,
+    SoLanGuiOTP      INT NOT NULL DEFAULT 0,
     VaiTroID        INT NOT NULL,
     TrangThai       NVARCHAR(20) NOT NULL DEFAULT N'HoatDong'
                         CHECK (TrangThai IN (N'HoatDong', N'KhoaTaiKhoan', N'ChoDuyet')),

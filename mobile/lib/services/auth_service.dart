@@ -116,6 +116,54 @@ class AuthService {
     }
   }
 
+  Future<void> forgotPassword({String? email, String? tenDangNhap}) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/auth/forgot-password',
+        data: {
+          if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+          if (tenDangNhap != null && tenDangNhap.trim().isNotEmpty)
+            'tenDangNhap': tenDangNhap.trim(),
+        },
+      );
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
+  Future<String> verifyOtp({required String email, required String otp}) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/auth/verify-otp',
+        data: {'email': email.trim(), 'otp': otp.trim()},
+      );
+      final data = _extractData(response);
+      final resetToken = data['resetToken']?.toString();
+      if (resetToken == null || resetToken.isEmpty) {
+        throw const ApiException(
+          'Máy chủ không trả về phiên đặt lại mật khẩu.',
+        );
+      }
+      return resetToken;
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
+  Future<void> resetPasswordWithToken({
+    required String resetToken,
+    required String matKhauMoi,
+  }) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/auth/reset-password-with-token',
+        data: {'resetToken': resetToken, 'matKhauMoi': matKhauMoi},
+      );
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   Future<void> logout() async {
     ElderlyService.instance.clearCache();
     AlertService.instance.clearCache();

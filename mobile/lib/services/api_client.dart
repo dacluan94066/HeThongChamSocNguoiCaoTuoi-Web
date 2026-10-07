@@ -59,7 +59,11 @@ class ApiClient {
   static int get sessionVersion => _sessionVersion;
 
   static bool _isPublicAuthPath(String path) {
-    return path.endsWith('/auth/login') || path.endsWith('/auth/register');
+    return path.endsWith('/auth/login') ||
+        path.endsWith('/auth/register') ||
+        path.endsWith('/auth/forgot-password') ||
+        path.endsWith('/auth/verify-otp') ||
+        path.endsWith('/auth/reset-password-with-token');
   }
 
   static Future<void> clearSession() async {

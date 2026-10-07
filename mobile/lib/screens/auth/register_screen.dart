@@ -43,6 +43,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final name = nameController.text.trim();
     final username = usernameController.text.trim();
     final phone = phoneController.text.trim();
+    final email = emailController.text.trim();
     final password = passwordController.text;
     final confirmPassword = confirmPasswordController.text;
 
@@ -50,12 +51,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (name.isEmpty ||
         username.isEmpty ||
         phone.isEmpty ||
+        (isElderly && email.isEmpty) ||
         (isElderly && birthController.text.isEmpty) ||
         password.isEmpty ||
         confirmPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng nhập đầy đủ thông tin.')),
       );
+      return;
+    }
+
+    if (email.isNotEmpty &&
+        !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Email không hợp lệ.')));
       return;
     }
 
@@ -106,9 +116,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         loaiTaiKhoan: selectedAccountType,
         ngaySinh: birthDate,
         gioiTinh: isElderly ? selectedGender : null,
-        email: emailController.text.trim().isEmpty
-            ? null
-            : emailController.text.trim(),
+        email: email.isEmpty ? null : email,
         soDienThoai: phone,
       );
 
@@ -271,31 +279,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
 
-            if (selectedAccountType == 'NguoiChamSoc') ...[
-              const SizedBox(height: 18),
+            const SizedBox(height: 18),
 
-              const Text(
-                'Email (không bắt buộc)',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-              ),
+            Text(
+              selectedAccountType == 'NguoiCaoTuoi'
+                  ? 'Email (dùng để khôi phục mật khẩu)'
+                  : 'Email (không bắt buộc)',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
 
-              const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  hintText: 'Nhập email nếu có',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
-                  ),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: InputDecoration(
+                hintText: selectedAccountType == 'NguoiCaoTuoi'
+                    ? 'Nhập email để khôi phục mật khẩu'
+                    : 'Nhập email nếu có',
+                prefixIcon: const Icon(Icons.email_outlined),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide.none,
                 ),
               ),
-            ],
+            ),
 
             if (selectedAccountType == 'NguoiCaoTuoi') ...[
               const SizedBox(height: 18),
