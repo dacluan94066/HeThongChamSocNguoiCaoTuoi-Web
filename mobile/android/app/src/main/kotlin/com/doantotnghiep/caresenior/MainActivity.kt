@@ -1,4 +1,4 @@
-package com.example.elderly_care_app
+package com.doantotnghiep.caresenior
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -212,7 +212,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             TextField(
               controller: nameController,
               decoration: InputDecoration(
-                hintText: 'Nguyễn Văn An',
+                hintText: 'Nhập họ và tên',
                 prefixIcon: const Icon(Icons.person_outline),
                 filled: true,
                 fillColor: Colors.white,
