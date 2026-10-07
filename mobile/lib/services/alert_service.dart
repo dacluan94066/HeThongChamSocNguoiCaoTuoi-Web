@@ -9,7 +9,6 @@ class AlertService {
 
   final Map<String, List<Map<String, dynamic>>> _cache = {};
   final Map<String, Future<List<Map<String, dynamic>>>> _inFlight = {};
-  final Map<String, int> _revisions = {};
   int _generation = 0;
   int _cacheSessionVersion = -1;
 
@@ -39,32 +38,7 @@ class AlertService {
   Future<List<Map<String, dynamic>>> getNotifications({bool refresh = false}) =>
       _getList('notifications', '/notifications/me', refresh: refresh);
 
-  Future<List<Map<String, dynamic>>> getMyEmergencyAlerts({
-    bool refresh = false,
-  }) => _getList('my-emergency-alerts', '/emergency-alerts', refresh: refresh);
-
-  Future<int?> getNotificationElderlyId(Map<String, dynamic> item) async {
-    final table = item['lienKetBang'];
-    final id = int.tryParse(item['lienKetId']?.toString() ?? '');
-    if (id == null || id < 1) return null;
-    final path = switch (table) {
-      'CanhBaoKhanCap' => '/emergency-alerts',
-      'CanhBao' => '/alerts',
-      _ => null,
-    };
-    if (path == null) return null;
-    // Both existing endpoints enforce the authenticated account's scope.
-    final rows = await _fetch(path, null);
-    for (final row in rows) {
-      if (row['id']?.toString() == id.toString()) {
-        return int.tryParse(row['nguoiCaoTuoiId']?.toString() ?? '');
-      }
-    }
-    return null;
-  }
-
   Future<void> markNotificationRead(int id) async {
-    if (id < 1) throw ArgumentError.value(id, 'id');
     try {
       await ApiClient.instance.dio.patch<Map<String, dynamic>>(
         '/notifications/$id/read',
@@ -77,50 +51,10 @@ class AlertService {
     }
   }
 
-  Future<NotificationReadResult> markAllNotificationsRead(
-    Iterable<int> notificationIds,
-  ) async {
-    final ids = notificationIds.where((id) => id > 0).toSet().toList();
-    final version = ApiClient.sessionVersion;
-    final succeeded = <int>{};
-    final failed = <int>{};
-    var index = 0;
-
-    Future<void> worker() async {
-      while (index < ids.length && version == ApiClient.sessionVersion) {
-        final id = ids[index++];
-        try {
-          await markNotificationRead(id);
-          succeeded.add(id);
-        } on ApiException {
-          failed.add(id);
-        }
-      }
-    }
-
-    await Future.wait(
-      List.generate(ids.length < 3 ? ids.length : 3, (_) => worker()),
-    );
-    if (version != ApiClient.sessionVersion) {
-      throw const ApiException(
-        'Phiên đăng nhập đã thay đổi.',
-        dioType: DioExceptionType.cancel,
-      );
-    }
-    return NotificationReadResult(
-      succeeded: Set.unmodifiable(succeeded),
-      failed: Set.unmodifiable(failed),
-    );
-  }
-
   void invalidateAlerts() {
     _generation++;
-    _cache.removeWhere(
-      (key, _) => key.startsWith('my-alerts:') || key == 'my-emergency-alerts',
-    );
-    _inFlight.removeWhere(
-      (key, _) => key.startsWith('my-alerts:') || key == 'my-emergency-alerts',
-    );
+    _cache.removeWhere((key, _) => key.startsWith('my-alerts:'));
+    _inFlight.removeWhere((key, _) => key.startsWith('my-alerts:'));
   }
 
   Future<List<Map<String, dynamic>>> _getList(
@@ -130,26 +64,18 @@ class AlertService {
     bool refresh = false,
   }) {
     final version = ApiClient.sessionVersion;
-    if (_cacheSessionVersion != version) {
-      clearCache();
-      _cacheSessionVersion = version;
-    }
     final generation = _generation;
     if (!refresh && _cacheSessionVersion == version && _cache[key] != null) {
       return Future.value(_copyList(_cache[key]!));
     }
     final pending = _inFlight[key];
-    if (!refresh && pending != null) return pending.then(_copyList);
-
-    final revision = (_revisions[key] ?? 0) + 1;
-    _revisions[key] = revision;
+    if (!refresh && pending != null) return pending;
 
     late final Future<List<Map<String, dynamic>>> request;
     request = _fetch(path, queryParameters)
         .then((items) {
           if (_generation == generation &&
-              ApiClient.sessionVersion == version &&
-              _revisions[key] == revision) {
+              ApiClient.sessionVersion == version) {
             if (_cacheSessionVersion != version) _cache.clear();
             _cacheSessionVersion = version;
             _cache[key] = _copyList(items);
@@ -193,7 +119,6 @@ class AlertService {
     _generation++;
     _cache.clear();
     _inFlight.clear();
-    _revisions.clear();
     _cacheSessionVersion = -1;
   }
 
@@ -222,11 +147,4 @@ class AlertService {
       '${value.year.toString().padLeft(4, '0')}-'
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
-}
-
-class NotificationReadResult {
-  const NotificationReadResult({required this.succeeded, required this.failed});
-
-  final Set<int> succeeded;
-  final Set<int> failed;
 }

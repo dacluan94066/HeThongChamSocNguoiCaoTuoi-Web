@@ -12,8 +12,6 @@ const alertController = require('../controllers/canhBao.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const { checkPermission } = require('../middlewares/permission.middleware');
 const scope = require('../middlewares/mobile-scope.middleware');
-const adminOnly = require('../middlewares/admin.middleware');
-const accountProfile = require('../controllers/accountProfile.controller');
 
 // Mobile roles are already restricted to their own/assigned elderly records by
 // guardResource. Web roles continue to use the normal permission matrix.
@@ -25,9 +23,6 @@ const checkScopedReadPermission = (req, res, next) => {
 // Tat ca route duoi day deu can xac thuc JWT truoc
 router.use(authMiddleware);
 router.use(scope.loadMobileScope);
-
-router.patch('/:id/link-user', adminOnly, accountProfile.linkElderly);
-router.post('/:id/user', adminOnly, accountProfile.createElderlyUser);
 
 router.get('/me', controller.getMe);
 router.put('/me', controller.updateMe);

@@ -13,7 +13,6 @@ import TableActionButton from '../../components/TableActionButton';
 import StatusTag from '../../components/StatusTag';
 import { formatEntityCode } from '../../utils/displayUtils';
 import RecordDetailModal from '../../components/RecordDetailModal';
-import ProfileAccountCell from '../../components/ProfileAccountCell';
 
 const CaregiversPage = () => {
   const { hasPermission } = usePermission();
@@ -27,15 +26,6 @@ const CaregiversPage = () => {
   const [saving, setSaving] = useState(false);
   const [detailRecord, setDetailRecord] = useState(null);
   const [form] = Form.useForm();
-
-  const loadCaregivers = async () => {
-    setLoading(true);
-    try {
-      setCaregivers(await getCaregivers({ search }));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
     setLoading(true);
@@ -81,12 +71,6 @@ const CaregiversPage = () => {
   };
 
   const columns = [
-    {
-      title: 'Tài khoản',
-      key: 'account',
-      width: 260,
-      render: (_, record) => <ProfileAccountCell key={record.id} record={record} kind="caregiver" onRefresh={loadCaregivers} />,
-    },
     {
       title: 'Nhân viên',
       key: 'hoTen',

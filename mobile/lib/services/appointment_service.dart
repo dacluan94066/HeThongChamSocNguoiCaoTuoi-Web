@@ -17,38 +17,6 @@ class AppointmentService {
   Future<List<Map<String, dynamic>>> getAppointments({bool refresh = false}) =>
       _getCached('all', '/elderly/me/appointments', refresh: refresh);
 
-  Future<List<Map<String, dynamic>>> getForElderly(
-    int elderlyId, {
-    bool refresh = false,
-  }) async {
-    if (elderlyId < 1) throw const ApiException('Hồ sơ không hợp lệ.');
-    final items = await _getCached(
-      'elderly:$elderlyId',
-      '/appointments',
-      queryParameters: {'nguoiCaoTuoiId': elderlyId},
-      refresh: refresh,
-    );
-    return items.map(fromWebAppointment).toList(growable: false);
-  }
-
-  static Map<String, dynamic> fromWebAppointment(Map<String, dynamic> item) {
-    const statuses = {
-      'CHUA_DEN': 'ChuaDen',
-      'DA_KHAM': 'DaKham',
-      'HUY': 'Huy',
-      'DA_DOI_LICH': 'DaDoiLich',
-    };
-    return {
-      ...item,
-      'tenBenhVien': item['noiKham'],
-      'bacSiPhuTrach': item['bacSiTen'],
-      'chuyenKhoa': item['ghiChu'],
-      'ketQuaKham': item['ketQua'],
-      'trangThai': statuses[item['trangThai']] ?? item['trangThai'],
-      'thoiGianKham': '${item['ngayKham']}T${item['gioKham']}:00',
-    };
-  }
-
   Future<List<Map<String, dynamic>>> getUpcomingAppointments({
     bool refresh = false,
   }) => _getCached(

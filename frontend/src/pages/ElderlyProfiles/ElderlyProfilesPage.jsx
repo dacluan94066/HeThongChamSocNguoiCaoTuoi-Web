@@ -19,7 +19,6 @@ import TableAvatar from '../../components/TableAvatar';
 import TableActionButton from '../../components/TableActionButton';
 import usePermission from '../../hooks/usePermission';
 import ModalForm, { FormSection } from '../../components/ModalForm';
-import ProfileAccountCell from '../../components/ProfileAccountCell';
 
 const ElderlyProfilesPage = () => {
   const { hasPermission } = usePermission();
@@ -132,12 +131,6 @@ const ElderlyProfilesPage = () => {
   };
 
   const columns = [
-    {
-      title: 'Tài khoản',
-      key: 'account',
-      width: 260,
-      render: (_, record) => <ProfileAccountCell key={record.id} record={record} kind="elderly" onRefresh={loadElders} />,
-    },
     {
       title: 'Mã hồ sơ',
       dataIndex: 'maHoSo',

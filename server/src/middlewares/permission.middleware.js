@@ -42,9 +42,8 @@ const checkPermission = (maChucNang, hanhDong) => {
             AND cn.MaChucNang = @maChucNang
         `);
 
-      // mssql tra BIT thanh boolean; chi true hoac so 1 moi cap quyen.
-      const quyen = result.recordset[0]?.[cotQuyen];
-      if (quyen !== true && quyen !== 1) {
+      // Khong co dong nao hoac quyen = 0 thi tu choi
+      if (result.recordset.length === 0 || result.recordset[0][cotQuyen] === 0) {
         return fail(res, 'Ban khong co quyen thuc hien thao tac nay', 'FORBIDDEN', 403);
       }
 
