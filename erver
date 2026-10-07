@@ -1,0 +1,29 @@
+warning: in the working copy of 'server/src/routes/nguoiDung.routes.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/server/src/routes/nguoiDung.routes.js b/server/src/routes/nguoiDung.routes.js[m
+[1mindex 5e3ab48..fb495ed 100644[m
+[1m--- a/server/src/routes/nguoiDung.routes.js[m
+[1m+++ b/server/src/routes/nguoiDung.routes.js[m
+[36m@@ -3,6 +3,7 @@[m [mconst express = require('express');[m
+ const router = express.Router();[m
+ const ctrl = require('../controllers/nguoiDung.controller');[m
+ const auth = require('../middlewares/auth.middleware');[m
+[32m+[m[32mconst { checkPermission } = require('../middlewares/permission.middleware');[m
+ const { isMobileRole } = require('../middlewares/mobile-scope.middleware');[m
+ const { fail } = require('../utils/response');[m
+ [m
+[36m@@ -12,10 +13,10 @@[m [mrouter.use((req, res, next) => isMobileRole(req)[m
+   ? fail(res, 'Khong co quyen quan ly nguoi dung', 'FORBIDDEN', 403)[m
+   : next());[m
+ [m
+[31m-router.get('/',           ctrl.getAll);[m
+[31m-router.get('/:id',        ctrl.getById);[m
+[31m-router.post('/',          ctrl.create);[m
+[31m-router.put('/:id',        ctrl.update);[m
+[31m-router.patch('/:id/toggle-status', ctrl.toggleStatus);[m
+[32m+[m[32mrouter.get('/', checkPermission('QLNGUOIDUNG', 'xem'), ctrl.getAll);[m
+[32m+[m[32mrouter.get('/:id', checkPermission('QLNGUOIDUNG', 'xem'), ctrl.getById);[m
+[32m+[m[32mrouter.post('/', checkPermission('QLNGUOIDUNG', 'them'), ctrl.create);[m
+[32m+[m[32mrouter.put('/:id', checkPermission('QLNGUOIDUNG', 'sua'), ctrl.update);[m
+[32m+[m[32mrouter.patch('/:id/toggle-status', checkPermission('QLNGUOIDUNG', 'sua'), ctrl.toggleStatus);[m
+ [m
+ module.exports = router;[m
