@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../services/appointment_storage.dart';
+
 import '../../services/api_client.dart';
+import '../../widgets/foreground_refresh.dart';
+import '../../services/appointment_service.dart';
 
 class AppointmentScreen extends StatefulWidget {
   const AppointmentScreen({super.key});
@@ -9,138 +11,185 @@ class AppointmentScreen extends StatefulWidget {
   State<AppointmentScreen> createState() => _AppointmentScreenState();
 }
 
-class _AppointmentScreenState extends State<AppointmentScreen> {
-  List<Map<String, dynamic>> appointments = [];
+class _AppointmentScreenState extends State<AppointmentScreen>
+    with ForegroundRefresh<AppointmentScreen> {
+  @override
+  Future<void> refreshForeground() =>
+      _loadAppointments(refresh: true, silent: true);
+  int _loadSequence = 0;
+  static const List<MapEntry<String?, String>> _filters = [
+    MapEntry(null, 'Tất cả'),
+    MapEntry('ChuaDen', 'Chưa đến'),
+    MapEntry('DaKham', 'Đã khám'),
+    MapEntry('Huy', 'Hủy'),
+    MapEntry('DaDoiLich', 'Đã dời lịch'),
+  ];
 
-  bool loading = true;
-  String? error;
+  List<Map<String, dynamic>> _allAppointments = [];
+  String? _selectedStatus;
+  String? _error;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    loadAppointments();
+    _loadAppointments(refresh: true);
   }
 
-  Future<void> loadAppointments() async {
-    try {
-      final data = await AppointmentStorage.loadAppointments();
-
-      if (!mounted) return;
-
+  Future<void> _loadAppointments({
+    bool refresh = false,
+    bool silent = false,
+  }) async {
+    final sequence = ++_loadSequence;
+    final version = ApiClient.sessionVersion;
+    if (mounted && !silent) {
       setState(() {
-        appointments = data;
-        loading = false;
-        error = null;
+        _loading = true;
+        _error = null;
       });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-
+    }
+    try {
+      final data = await AppointmentService.instance.getAppointments(
+        refresh: refresh,
+      );
+      if (!mounted ||
+          version != ApiClient.sessionVersion ||
+          sequence != _loadSequence) {
+        return;
+      }
       setState(() {
-        error = e.message;
-        loading = false;
+        _allAppointments = data;
+        _loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted ||
+          version != ApiClient.sessionVersion ||
+          sequence != _loadSequence) {
+        return;
+      }
+      if (silent && _allAppointments.isNotEmpty) return;
+      setState(() {
+        _allAppointments = [];
+        _error = error.message;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted ||
+          version != ApiClient.sessionVersion ||
+          sequence != _loadSequence) {
+        return;
+      }
+      if (silent && _allAppointments.isNotEmpty) return;
+      setState(() {
+        _allAppointments = [];
+        _error = 'Không thể tải lịch khám. Vui lòng thử lại.';
+        _loading = false;
       });
     }
   }
 
-  List<Map<String, dynamic>> get upcomingAppointments =>
-      appointments.where((item) => item['status'] == 'Chưa đến').toList();
+  void _selectStatus(String? status) {
+    if (_selectedStatus == status) return;
+    setState(() => _selectedStatus = status);
+  }
 
-  List<Map<String, dynamic>> get historyAppointments =>
-      appointments.where((item) => item['status'] != 'Chưa đến').toList();
+  List<Map<String, dynamic>> get _visibleAppointments =>
+      AppointmentService.filterByStatus(_allAppointments, _selectedStatus);
 
-  void showAppointmentDetail(Map<String, dynamic> appointment) {
-    showModalBottomSheet(
+  String get _emptyTitle => switch (_selectedStatus) {
+    'ChuaDen' => 'Chưa có lịch khám sắp tới',
+    'DaKham' => 'Chưa có lịch đã khám',
+    'Huy' => 'Chưa có lịch đã hủy',
+    'DaDoiLich' => 'Chưa có lịch đã dời',
+    _ => 'Chưa có lịch khám',
+  };
+
+  String get _emptyMessage => switch (_selectedStatus) {
+    'DaKham' =>
+      'Lịch chỉ xuất hiện ở đây sau khi nhân viên ghi kết quả khám trên Web.',
+    'ChuaDen' => 'Tài khoản này hiện chưa có lịch khám nào đang chờ.',
+    'Huy' => 'Tài khoản này hiện chưa có lịch khám nào bị hủy.',
+    'DaDoiLich' => 'Tài khoản này hiện chưa có lịch khám nào đã dời.',
+    _ => 'Lịch khám do nhân viên quản lý tạo sẽ xuất hiện tại đây.',
+  };
+
+  void _showAppointmentDetail(Map<String, dynamic> appointment) {
+    final status = AppointmentStatusStyle.from(appointment['trangThai']);
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(22, 18, 22, 30),
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 50,
+                width: 48,
                 height: 5,
                 decoration: BoxDecoration(
                   color: Colors.black12,
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
-
-              const SizedBox(height: 22),
-
-              const CircleAvatar(
+              const SizedBox(height: 20),
+              CircleAvatar(
                 radius: 34,
-                backgroundColor: Color(0xffe8f8ee),
+                backgroundColor: status.background,
                 child: Icon(
                   Icons.medical_services_outlined,
                   size: 34,
-                  color: Color(0xff07856d),
+                  color: status.color,
                 ),
               ),
-
-              const SizedBox(height: 16),
-
+              const SizedBox(height: 14),
               Text(
-                appointment['doctor'],
+                _text(appointment['tenBenhVien']),
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
-              const SizedBox(height: 4),
-
-              Text(
-                appointment['specialty'],
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
-              ),
-
+              const SizedBox(height: 8),
+              _StatusBadge(style: status),
               const SizedBox(height: 22),
-
-              DetailRow(
+              _DetailRow(
                 icon: Icons.calendar_today_outlined,
-                label: 'Ngày khám',
-                value: appointment['date'],
+                label: 'Thời gian khám',
+                value: _formatDateTime(appointment['thoiGianKham']),
               ),
-
-              const SizedBox(height: 14),
-
-              DetailRow(
-                icon: Icons.access_time_rounded,
-                label: 'Giờ khám',
-                value: appointment['time'],
+              _DetailRow(
+                icon: Icons.person_outline_rounded,
+                label: 'Bác sĩ phụ trách',
+                value: _text(appointment['bacSiPhuTrach']),
               ),
-
-              const SizedBox(height: 14),
-
-              DetailRow(
-                icon: Icons.location_on_outlined,
-                label: 'Địa điểm',
-                value: appointment['hospital'],
+              _DetailRow(
+                icon: Icons.local_hospital_outlined,
+                label: 'Chuyên khoa',
+                value: _text(appointment['chuyenKhoa']),
               ),
-
-              const SizedBox(height: 14),
-
-              DetailRow(
-                icon: Icons.info_outline_rounded,
-                label: 'Trạng thái',
-                value: appointment['status'],
+              _DetailRow(
+                icon: Icons.description_outlined,
+                label: 'Lý do khám',
+                value: _text(appointment['lyDoKham']),
               ),
-
-              const SizedBox(height: 24),
-
+              if (appointment['trangThai'] == 'DaKham')
+                _DetailRow(
+                  icon: Icons.fact_check_outlined,
+                  label: 'Kết quả khám',
+                  value: _text(appointment['ketQuaKham']),
+                ),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
+                  onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xff07856d),
                     foregroundColor: Colors.white,
@@ -157,16 +206,19 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
               ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final visibleAppointments = _visibleAppointments;
+    final upcomingCount = _allAppointments
+        .where((item) => item['trangThai'] == 'ChuaDen')
+        .length;
     return Scaffold(
       backgroundColor: const Color(0xfff3f3f1),
-
       appBar: AppBar(
         backgroundColor: const Color(0xfff3f3f1),
         elevation: 0,
@@ -176,13 +228,11 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
+            child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -193,10 +243,10 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                 ),
                 borderRadius: BorderRadius.circular(28),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 32,
+                  const CircleAvatar(
+                    radius: 31,
                     backgroundColor: Colors.white,
                     child: Icon(
                       Icons.calendar_month_rounded,
@@ -204,28 +254,28 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                       color: Color(0xff07856d),
                     ),
                   ),
-
-                  SizedBox(width: 14),
-
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Theo dõi lịch khám',
                           style: TextStyle(fontSize: 14, color: Colors.black54),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          '2 lịch khám sắp tới',
-                          style: TextStyle(
+                          _selectedStatus == null
+                              ? '$upcomingCount lịch khám chưa đến'
+                              : '${visibleAppointments.length} lịch phù hợp',
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Đừng quên đến đúng giờ.',
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Kéo xuống để cập nhật dữ liệu mới nhất.',
                           style: TextStyle(fontSize: 13, color: Colors.black54),
                         ),
                       ],
@@ -234,211 +284,268 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                 ],
               ),
             ),
-
-            const SizedBox(height: 24),
-
-            const Text(
-              'Lịch khám sắp tới',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(
+            height: 48,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              scrollDirection: Axis.horizontal,
+              itemCount: _filters.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final filter = _filters[index];
+                return ChoiceChip(
+                  label: Text(filter.value),
+                  selected: _selectedStatus == filter.key,
+                  onSelected: (_) => _selectStatus(filter.key),
+                  selectedColor: const Color(0xffd9f4eb),
+                  checkmarkColor: const Color(0xff07856d),
+                  labelStyle: TextStyle(
+                    color: _selectedStatus == filter.key
+                        ? const Color(0xff076a59)
+                        : Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  side: BorderSide.none,
+                  backgroundColor: Colors.white,
+                );
+              },
             ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(child: _buildContent()),
+        ],
+      ),
+    );
+  }
 
-            const SizedBox(height: 12),
-
-            ...upcomingAppointments.map(
-              (appointment) => AppointmentCard(
-                appointment: appointment,
-                onTap: () {
-                  showAppointmentDetail(appointment);
-                },
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            const Text(
-              'Lịch sử khám',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 12),
-
-            ...historyAppointments.map(
-              (appointment) => AppointmentCard(
-                appointment: appointment,
-                onTap: () {
-                  showAppointmentDetail(appointment);
-                },
-              ),
+  Widget _buildContent() {
+    final appointments = _visibleAppointments;
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xff07856d)),
+      );
+    }
+    if (_error != null) {
+      return _MessageState(
+        icon: Icons.cloud_off_outlined,
+        title: 'Không thể tải lịch khám',
+        message: _error!,
+        actionLabel: 'Thử lại',
+        onAction: () => _loadAppointments(refresh: true),
+      );
+    }
+    if (appointments.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () => _loadAppointments(refresh: true),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            const SizedBox(height: 110),
+            _MessageState(
+              icon: Icons.event_available_outlined,
+              title: _emptyTitle,
+              message: _emptyMessage,
             ),
           ],
         ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: () => _loadAppointments(refresh: true),
+      color: const Color(0xff07856d),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: appointments.length,
+        itemBuilder: (context, index) {
+          final appointment = appointments[index];
+          return _AppointmentCard(
+            appointment: appointment,
+            onTap: () => _showAppointmentDetail(appointment),
+          );
+        },
       ),
     );
   }
 }
 
-class AppointmentCard extends StatelessWidget {
+class _AppointmentCard extends StatelessWidget {
+  const _AppointmentCard({required this.appointment, required this.onTap});
+
   final Map<String, dynamic> appointment;
   final VoidCallback onTap;
 
-  const AppointmentCard({
-    super.key,
-    required this.appointment,
-    required this.onTap,
-  });
-
   @override
   Widget build(BuildContext context) {
-    final bool completed = appointment['status'] == 'Đã khám';
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                color: completed
-                    ? const Color(0xffeeeeee)
-                    : const Color(0xffe8f8ee),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.medical_services_outlined,
-                color: completed ? Colors.black45 : const Color(0xff07856d),
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
+    final status = AppointmentStatusStyle.from(appointment['trangThai']);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    appointment['doctor'],
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: status.background,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.local_hospital_outlined,
+                      color: status.color,
                     ),
                   ),
-
-                  const SizedBox(height: 3),
-
-                  Text(
-                    appointment['specialty'],
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
-                  ),
-
-                  const SizedBox(height: 7),
-
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_today_outlined,
-                        size: 14,
-                        color: Colors.black45,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        '${appointment['date']} • ${appointment['time']}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 14,
-                        color: Colors.black45,
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          appointment['hospital'],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _text(appointment['tenBenhVien']),
                           style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 8),
-
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: completed
-                        ? const Color(0xffeeeeee)
-                        : const Color(0xffe8f8ee),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Text(
-                    appointment['status'],
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: completed
-                          ? Colors.black54
-                          : const Color(0xff07856d),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatDateTime(appointment['thoiGianKham']),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: status.color,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                  _StatusBadge(style: status),
+                ],
+              ),
+              const Divider(height: 24),
+              _InfoLine(
+                icon: Icons.person_outline,
+                label: 'Bác sĩ',
+                value: _text(appointment['bacSiPhuTrach']),
+              ),
+              _InfoLine(
+                icon: Icons.medical_information_outlined,
+                label: 'Chuyên khoa',
+                value: _text(appointment['chuyenKhoa']),
+              ),
+              _InfoLine(
+                icon: Icons.description_outlined,
+                label: 'Lý do',
+                value: _text(appointment['lyDoKham']),
+              ),
+              if (appointment['trangThai'] == 'DaKham')
+                _InfoLine(
+                  icon: Icons.fact_check_outlined,
+                  label: 'Kết quả',
+                  value: _text(appointment['ketQuaKham']),
+                  valueColor: const Color(0xff2e7d4f),
                 ),
-
-                const SizedBox(height: 12),
-
-                const Icon(Icons.chevron_right_rounded, color: Colors.black26),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class DetailRow extends StatelessWidget {
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.style});
+
+  final AppointmentStatusStyle style;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    decoration: BoxDecoration(
+      color: style.background,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Text(
+      style.label,
+      style: TextStyle(
+        color: style.color,
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  );
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
   final IconData icon;
   final String label;
   final String value;
+  final Color? valueColor;
 
-  const DetailRow({
-    super.key,
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 17, color: Colors.black45),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 82,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              color: valueColor ?? Colors.black87,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
     required this.icon,
     required this.label,
     required this.value,
   });
 
+  final IconData icon;
+  final String label;
+  final String value;
+
   @override
-  Widget build(BuildContext context) {
-    return Row(
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
@@ -450,9 +557,7 @@ class DetailRow extends StatelessWidget {
           ),
           child: Icon(icon, size: 21, color: const Color(0xff07856d)),
         ),
-
         const SizedBox(width: 12),
-
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,6 +578,98 @@ class DetailRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
+
+class _MessageState extends StatelessWidget {
+  const _MessageState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 50, color: Colors.black26),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.black54),
+          ),
+          if (onAction != null) ...[
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: onAction,
+              child: Text(actionLabel ?? 'Thử lại'),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+class AppointmentStatusStyle {
+  const AppointmentStatusStyle(this.label, this.color, this.background);
+
+  final String label;
+  final Color color;
+  final Color background;
+
+  factory AppointmentStatusStyle.from(Object? raw) => switch (raw?.toString()) {
+    'DaKham' => const AppointmentStatusStyle(
+      'Đã khám',
+      Color(0xff2e7d4f),
+      Color(0xffe5f5eb),
+    ),
+    'Huy' => const AppointmentStatusStyle(
+      'Hủy',
+      Color(0xff6f767d),
+      Color(0xffeeeeee),
+    ),
+    'DaDoiLich' => const AppointmentStatusStyle(
+      'Đã dời lịch',
+      Color(0xffb56b00),
+      Color(0xfffff0d9),
+    ),
+    _ => const AppointmentStatusStyle(
+      'Chưa đến',
+      Color(0xff2563a7),
+      Color(0xffe5f0ff),
+    ),
+  };
+}
+
+String _text(Object? value) {
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? 'Chưa cập nhật' : text;
+}
+
+String _formatDateTime(Object? raw) {
+  final date = DateTime.tryParse(raw?.toString() ?? '');
+  if (date == null) return 'Chưa cập nhật';
+  return '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year} • '
+      '${date.hour.toString().padLeft(2, '0')}:'
+      '${date.minute.toString().padLeft(2, '0')}';
 }
