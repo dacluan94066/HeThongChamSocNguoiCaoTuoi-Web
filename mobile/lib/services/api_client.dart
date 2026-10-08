@@ -16,21 +16,59 @@ class ApiClient {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          if (!_isPublicAuthPath(options.path)) {
-            final token = await storage.read(key: tokenKey);
-            if (token != null && token.isNotEmpty) {
-              options.headers['Authorization'] = 'Bearer $token';
+          final version = sessionVersion;
+          options.extra['sessionVersion'] = version;
+          try {
+            if (!_isPublicAuthPath(options.path)) {
+              await _storageQueue;
+              final token = await storage.read(key: tokenKey);
+              if (version != sessionVersion) {
+                handler.reject(_staleRequest(options));
+                return;
+              }
+              if (token != null && token.isNotEmpty) {
+                options.headers['Authorization'] = 'Bearer $token';
+              }
             }
+            handler.next(options);
+          } catch (_) {
+            handler.reject(
+              DioException(
+                requestOptions: options,
+                type: DioExceptionType.unknown,
+                error: const ApiException(
+                  'Không thể đọc phiên đăng nhập trên thiết bị. Vui lòng thử lại.',
+                ),
+              ),
+            );
           }
-          handler.next(options);
+        },
+        onResponse: (response, handler) {
+          final options = response.requestOptions;
+          if (!_isPublicAuthPath(options.path) &&
+              options.extra['sessionVersion'] != sessionVersion) {
+            handler.reject(_staleRequest(options));
+            return;
+          }
+          handler.next(response);
         },
         onError: (error, handler) async {
-          if (error.response?.statusCode == 401) {
-            await clearSession();
+          final options = error.requestOptions;
+          final isProtected = !_isPublicAuthPath(options.path);
+          if (isProtected &&
+              options.extra['sessionVersion'] != sessionVersion) {
+            handler.reject(_staleRequest(options));
+            return;
+          }
 
-            // Sai thong tin dang nhap van duoc LoginScreen hien thi tai cho.
-            // Chi request da bao ve moi can day nguoi dung ve trang dang nhap.
-            if (!_isPublicAuthPath(error.requestOptions.path)) {
+          if (isProtected && error.response?.statusCode == 401) {
+            final expiredVersion = sessionVersion;
+            try {
+              await clearSession();
+            } catch (_) {
+              // Phiên trong bộ nhớ vẫn đã bị vô hiệu hóa.
+            }
+            if (sessionVersion == expiredVersion + 1) {
               redirectToLogin();
             }
           }
@@ -46,7 +84,6 @@ class ApiClient {
   );
   static const String tokenKey = 'jwt_token';
   static const String userKey = 'auth_user';
-
   static const FlutterSecureStorage storage = FlutterSecureStorage();
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
@@ -55,33 +92,113 @@ class ApiClient {
   late final Dio dio;
   static bool _redirectScheduled = false;
   static int _sessionVersion = 0;
+  static Future<void> _storageQueue = Future<void>.value();
 
   static int get sessionVersion => _sessionVersion;
 
   static bool _isPublicAuthPath(String path) {
-    return path.endsWith('/auth/login') || path.endsWith('/auth/register');
+    final normalized = Uri.parse(path).path.replaceAll(RegExp(r'/+$'), '');
+    final relative = normalized.startsWith('/api/')
+        ? normalized.substring(4)
+        : normalized;
+    return const {
+      '/auth/login',
+      '/auth/register',
+      '/auth/forgot-password',
+      '/auth/verify-otp',
+      '/auth/reset-password-with-token',
+    }.contains(relative);
   }
 
-  static Future<void> clearSession() async {
-    // Tang version ngay lap tuc de moi request/cache cua phien cu het hieu luc.
+  static DioException _staleRequest(RequestOptions options) {
+    return DioException(
+      requestOptions: options,
+      type: DioExceptionType.cancel,
+      message: 'Phiên đăng nhập đã thay đổi.',
+    );
+  }
+
+  static Future<void> _enqueueStorage(Future<void> Function() action) {
+    final operation = _storageQueue.then((_) => action());
+    _storageQueue = operation.then<void>((_) {}, onError: (Object _) {});
+    return operation;
+  }
+
+  static void _checkVersion(int expectedVersion) {
+    if (sessionVersion != expectedVersion) {
+      throw const ApiException(
+        'Phiên đăng nhập đã thay đổi. Vui lòng đăng nhập lại.',
+        dioType: DioExceptionType.cancel,
+      );
+    }
+  }
+
+  static Future<void> clearSession() {
     _sessionVersion++;
-    await Future.wait([
-      storage.delete(key: tokenKey),
-      storage.delete(key: userKey),
-    ]);
+    return _enqueueStorage(() async {
+      await Future.wait([
+        storage.delete(key: tokenKey),
+        storage.delete(key: userKey),
+      ]);
+    });
+  }
+
+  static Future<void> saveSession({
+    required String token,
+    required String encodedUser,
+    required int expectedVersion,
+  }) {
+    return _enqueueStorage(() async {
+      _checkVersion(expectedVersion);
+      try {
+        await storage.write(key: tokenKey, value: token);
+        await storage.write(key: userKey, value: encodedUser);
+        _checkVersion(expectedVersion);
+      } catch (error) {
+        // Không giữ token khi chỉ lưu được một phần phiên đăng nhập.
+        try {
+          await Future.wait([
+            storage.delete(key: tokenKey),
+            storage.delete(key: userKey),
+          ]);
+        } catch (_) {
+          // Giữ lỗi gốc để giao diện hiển thị đúng nguyên nhân.
+        }
+        if (error is ApiException) rethrow;
+        throw const ApiException(
+          'Không thể lưu phiên đăng nhập trên thiết bị. Vui lòng thử lại.',
+        );
+      }
+    });
+  }
+
+  static Future<void> updateStoredUser({
+    required String encodedUser,
+    required int expectedVersion,
+  }) {
+    return _enqueueStorage(() async {
+      _checkVersion(expectedVersion);
+      await storage.write(key: userKey, value: encodedUser);
+      _checkVersion(expectedVersion);
+    });
   }
 
   static void redirectToLogin() {
     if (_redirectScheduled) return;
     _redirectScheduled = true;
-
+    final scheduledVersion = sessionVersion;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final navigator = navigatorKey.currentState;
-      if (navigator != null) {
-        navigator.pushNamedAndRemoveUntil('/login', (route) => false);
+      try {
+        if (sessionVersion != scheduledVersion) return;
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/login',
+          (route) => false,
+        );
+      } finally {
+        _redirectScheduled = false;
       }
-      _redirectScheduled = false;
     });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 }
 
@@ -99,28 +216,38 @@ class ApiException implements Exception {
       dioType == DioExceptionType.receiveTimeout;
 
   factory ApiException.fromDio(DioException error) {
+    if (error.error is ApiException) {
+      return error.error as ApiException;
+    }
+
     final responseData = error.response?.data;
     final backendMessage = responseData is Map
         ? responseData['message']?.toString().trim()
         : null;
-
-    if (backendMessage != null && backendMessage.isNotEmpty) {
-      return ApiException(
-        backendMessage,
-        statusCode: error.response?.statusCode,
-        dioType: error.type,
-      );
-    }
-
-    final message = switch (error.type) {
-      DioExceptionType.connectionTimeout ||
-      DioExceptionType.sendTimeout ||
-      DioExceptionType.receiveTimeout =>
-        'Kết nối đến máy chủ quá thời gian. Vui lòng thử lại.',
-      DioExceptionType.connectionError =>
-        'Không thể kết nối đến máy chủ. Hãy kiểm tra backend và địa chỉ API.',
-      _ => 'Có lỗi xảy ra khi kết nối đến máy chủ.',
-    };
+    // Không hiển thị message của response cũ cho tài khoản mới.
+    final message = error.type == DioExceptionType.cancel
+        ? 'Yêu cầu đã bị hủy hoặc phiên đăng nhập đã thay đổi.'
+        : backendMessage != null && backendMessage.isNotEmpty
+        ? backendMessage
+        : switch (error.type) {
+            DioExceptionType.connectionTimeout ||
+            DioExceptionType.sendTimeout ||
+            DioExceptionType.receiveTimeout =>
+              'Kết nối đến máy chủ quá thời gian. Vui lòng thử lại.',
+            DioExceptionType.connectionError =>
+              'Không thể kết nối đến máy chủ. Kiểm tra backend và địa chỉ API.',
+            DioExceptionType.badCertificate =>
+              'Không thể xác minh chứng chỉ bảo mật của máy chủ.',
+            _ => switch (error.response?.statusCode) {
+              401 => 'Phiên đăng nhập đã hết hạn hoặc thông tin đăng nhập sai.',
+              403 => 'Bạn không có quyền thực hiện thao tác này.',
+              404 => 'Không tìm thấy dữ liệu yêu cầu.',
+              429 => 'Có quá nhiều yêu cầu. Vui lòng chờ rồi thử lại.',
+              final int status when status >= 500 =>
+                'Máy chủ đang gặp lỗi. Vui lòng thử lại sau.',
+              _ => 'Có lỗi xảy ra khi kết nối đến máy chủ.',
+            },
+          };
 
     return ApiException(
       message,
