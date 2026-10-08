@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/api_client.dart';
+import '../../services/auth_service.dart';
 import '../../services/elderly_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key});
+  const EditProfileScreen({super.key, this.accountOnly = false});
+
+  final bool accountOnly;
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -17,6 +20,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final TextEditingController birthController = TextEditingController();
 
   final TextEditingController phoneController = TextEditingController();
+
+  final TextEditingController emailController = TextEditingController();
 
   final TextEditingController addressController = TextEditingController();
 
@@ -43,9 +48,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       loadError = null;
     });
     try {
-      final data = await ElderlyService.instance.getMyProfile();
+      final data = widget.accountOnly
+          ? await AuthService.instance.getMe()
+          : await ElderlyService.instance.getMyProfile();
       if (!mounted) return;
       nameController.text = data['hoTen']?.toString() ?? '';
+      emailController.text = data['email']?.toString() ?? '';
       birthController.text = ElderlyService.displayBirthDate(data);
       phoneController.text = data['soDienThoai']?.toString() ?? '';
       addressController.text = data['diaChi']?.toString() ?? '';
@@ -76,6 +84,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     nameController.dispose();
     birthController.dispose();
     phoneController.dispose();
+    emailController.dispose();
     addressController.dispose();
     bloodTypeController.dispose();
     benhNenController.dispose();
@@ -108,20 +117,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> saveProfile() async {
+    if (widget.accountOnly) {
+      await _saveAccountProfile();
+      return;
+    }
     final name = nameController.text.trim();
     final birthDate = birthController.text.trim();
     final phone = phoneController.text.trim();
+    final email = emailController.text.trim();
     final address = addressController.text.trim();
     final bloodType = bloodTypeController.text.trim();
     final benhNen = benhNenController.text.trim();
     final diUng = diUngController.text.trim();
 
-    if (name.isEmpty || birthDate.isEmpty) {
+    if (name.isEmpty || birthDate.isEmpty || email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Vui lòng nhập đầy đủ thông tin cá nhân.'),
         ),
       );
+      return;
+    }
+
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Email không hợp lệ.')));
       return;
     }
 
@@ -152,11 +173,54 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'ngaySinh': '${parts[2]}-${parts[1]}-${parts[0]}',
         'gioiTinh': gender,
         'soDienThoai': phone,
+        'email': email,
         'diaChi': address,
         'nhomMau': bloodType,
         'benhNen': benhNen,
         'diUng': diUng,
       });
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể lưu hồ sơ. Vui lòng thử lại.')),
+      );
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _saveAccountProfile() async {
+    final name = nameController.text.trim();
+    final email = emailController.text.trim();
+    final phone = phoneController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Vui lòng nhập họ và tên.')));
+      return;
+    }
+    if (phone.isNotEmpty && (phone.length != 10 || !phone.startsWith('0'))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Số điện thoại phải gồm 10 số và bắt đầu bằng 0.'),
+        ),
+      );
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await AuthService.instance.updateMe(
+        hoTen: name,
+        email: email.isEmpty ? null : email,
+        soDienThoai: phone.isEmpty ? null : phone,
+      );
       if (!mounted) return;
       Navigator.pop(context, true);
     } on ApiException catch (error) {
@@ -230,6 +294,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.accountOnly) return _buildAccountEditor();
     return Scaffold(
       backgroundColor: const Color(0xfff3f3f1),
       appBar: AppBar(
@@ -371,6 +436,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 16),
 
                   buildTextField(
+                    label: 'Email dùng để khôi phục mật khẩu',
+                    controller: emailController,
+                    icon: Icons.email_outlined,
+                    hint: 'Nhập địa chỉ email',
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  buildTextField(
                     label: 'Địa chỉ',
                     controller: addressController,
                     icon: Icons.location_on_outlined,
@@ -445,6 +520,81 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ],
               ),
+            ),
+    );
+  }
+
+  Widget _buildAccountEditor() {
+    return Scaffold(
+      backgroundColor: const Color(0xfff3f3f1),
+      appBar: AppBar(
+        title: const Text(
+          'Chỉnh sửa hồ sơ',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : loadError != null
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(loadError!, textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: loadProfile,
+                    child: const Text('Thử lại'),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(18),
+              children: [
+                buildTextField(
+                  label: 'Họ và tên',
+                  controller: nameController,
+                  icon: Icons.badge_outlined,
+                ),
+                const SizedBox(height: 16),
+                buildTextField(
+                  label: 'Email',
+                  controller: emailController,
+                  icon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                buildTextField(
+                  label: 'Số điện thoại',
+                  controller: phoneController,
+                  icon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                ),
+                const SizedBox(height: 28),
+                FilledButton.icon(
+                  onPressed: saving ? null : saveProfile,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    backgroundColor: const Color(0xff07856d),
+                  ),
+                  icon: saving
+                      ? const SizedBox(
+                          width: 19,
+                          height: 19,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(saving ? 'ĐANG LƯU...' : 'LƯU THAY ĐỔI'),
+                ),
+              ],
             ),
     );
   }

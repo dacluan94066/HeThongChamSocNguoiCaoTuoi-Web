@@ -9,7 +9,9 @@ import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.accountOnly = false});
+
+  final bool accountOnly;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -33,7 +35,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       loadError = null;
     });
     try {
-      final data = await ElderlyService.instance.getMyProfile();
+      final data = widget.accountOnly
+          ? await AuthService.instance.getMe()
+          : await ElderlyService.instance.getMyProfile();
       if (!mounted) return;
       setState(() {
         profile = data;
@@ -57,7 +61,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> openEditProfile() async {
     final changed = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+      MaterialPageRoute(
+        builder: (_) => EditProfileScreen(accountOnly: widget.accountOnly),
+      ),
     );
 
     if (changed == true) {
@@ -100,10 +106,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
+    if (widget.accountOnly) return _buildAccountProfile();
+
     final name = ElderlyService.text(profile, 'hoTen');
     final birthDate = ElderlyService.displayBirthDate(profile);
     final gender = ElderlyService.text(profile, 'gioiTinh');
     final phone = ElderlyService.text(profile, 'soDienThoai');
+    final email = ElderlyService.text(profile, 'email');
     final address = ElderlyService.text(profile, 'diaChi');
     final bloodType = ElderlyService.text(profile, 'nhomMau');
     final benhNen = ElderlyService.text(profile, 'benhNen');
@@ -217,6 +226,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: Icons.phone_outlined,
                     title: 'Số điện thoại',
                     value: phone,
+                  ),
+
+                  const Divider(height: 24),
+
+                  ProfileItem(
+                    icon: Icons.email_outlined,
+                    title: 'Email',
+                    value: email,
                   ),
 
                   const Divider(height: 24),
@@ -490,6 +507,136 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAccountProfile() {
+    final name = profile['hoTen']?.toString() ?? 'Chưa cập nhật';
+    final username = profile['tenDangNhap']?.toString() ?? 'Chưa cập nhật';
+    final email = profile['email']?.toString().trim();
+    final phone = profile['soDienThoai']?.toString().trim();
+    return Scaffold(
+      backgroundColor: const Color(0xfff3f3f1),
+      appBar: AppBar(
+        title: const Text(
+          'Hồ sơ cá nhân',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xffe7fff5), Color(0xffffffe8)],
+              ),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              children: [
+                const CircleAvatar(
+                  radius: 45,
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.support_agent_rounded,
+                    size: 48,
+                    color: Color(0xff07856d),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  name,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text('Người chăm sóc'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 0,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  ProfileItem(
+                    icon: Icons.account_circle_outlined,
+                    title: 'Tên đăng nhập',
+                    value: username,
+                  ),
+                  const Divider(height: 24),
+                  ProfileItem(
+                    icon: Icons.email_outlined,
+                    title: 'Email',
+                    value: email?.isNotEmpty == true ? email! : 'Chưa cập nhật',
+                  ),
+                  const Divider(height: 24),
+                  ProfileItem(
+                    icon: Icons.phone_outlined,
+                    title: 'Số điện thoại',
+                    value: phone?.isNotEmpty == true ? phone! : 'Chưa cập nhật',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Card(
+            elevation: 0,
+            child: Column(
+              children: [
+                MenuItem(
+                  icon: Icons.edit_outlined,
+                  iconColor: const Color(0xff07856d),
+                  iconBackground: const Color(0xffe9f8ef),
+                  title: 'Chỉnh sửa hồ sơ',
+                  subtitle: 'Cập nhật thông tin tài khoản',
+                  onTap: openEditProfile,
+                ),
+                const Divider(height: 1, indent: 72),
+                MenuItem(
+                  icon: Icons.lock_outline_rounded,
+                  iconColor: const Color(0xff4b6edb),
+                  iconBackground: const Color(0xffe9efff),
+                  title: 'Đổi mật khẩu',
+                  subtitle: 'Thay đổi mật khẩu đăng nhập',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ChangePasswordScreen(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              side: const BorderSide(color: Colors.red),
+              minimumSize: const Size.fromHeight(52),
+            ),
+            onPressed: () async {
+              await AuthService.instance.logout();
+              if (!mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/login',
+                (route) => false,
+              );
+            },
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('ĐĂNG XUẤT'),
+          ),
+        ],
       ),
     );
   }
