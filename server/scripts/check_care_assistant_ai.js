@@ -15,10 +15,10 @@ async function checkConnection({ config, client = createAIClient(config) }) {
   const base = { config, client: wrapped, repository, profile: { id: -1 },
     user: { userId: -1, tenVaiTro: 'NguoiCaoTuoi' }, now: new Date('2099-01-01T00:00:00Z') };
   const first = await chat({ ...base, question: 'Lịch khám tiếp theo?' });
-  if (first.mode !== 'ai') return { ok: false, status, code: first.modeReason };
+  if (first.modeReason !== 'grounded_data') return { ok: false, status, code: first.modeReason };
   const second = await chat({ ...base, question: 'Còn mấy ngày nữa?',
     history: [{ role: 'user', content: 'Lịch khám tiếp theo?' }, { role: 'assistant', content: first.text }] });
-  return { ok: second.mode === 'ai', status, code: second.modeReason };
+  return { ok: second.modeReason === 'grounded_data' && second.text.includes('Còn 2 ngày'), status, code: second.modeReason };
 }
 if (require.main === module) {
   require('dotenv').config({ path: require('node:path').resolve(__dirname, '../.env') });

@@ -7,7 +7,7 @@ const getMine = async (req, res, next) => {
     const result = await pool.request().input('userId', sql.Int, req.user.userId).query(`
       SELECT ThongBaoID AS id, TieuDe AS tieuDe, NoiDung AS noiDung,
         LoaiThongBao AS loaiThongBao, LienKetBang AS lienKetBang,
-        LienKetID AS lienKetId, DaDoc AS daDoc, NgayTao AS ngayTao
+        LienKetID AS lienKetId, DaDoc AS daDoc, CONVERT(VARCHAR(19),NgayTao,126) AS ngayTao
       FROM ThongBao
       WHERE UserID = @userId
       ORDER BY NgayTao DESC, ThongBaoID DESC

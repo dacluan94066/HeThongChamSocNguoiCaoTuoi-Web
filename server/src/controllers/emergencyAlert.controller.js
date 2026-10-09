@@ -1,5 +1,15 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const {scopedWhere,isMobileRole}=require('../middlewares/mobile-scope.middleware');
+const getMine=async(req,res,next)=>{
+ try{
+  if(!isMobileRole(req))return fail(res,'Đường dẫn này chỉ dành cho tài khoản mobile.','FORBIDDEN',403);
+  const pool=await poolPromise;
+  const result=await pool.request().query(`SELECT CanhBaoKhanCapID AS id,NguoiCaoTuoiID AS nguoiCaoTuoiId,NoiDung AS noiDung,TrangThai AS trangThai,
+    CONVERT(VARCHAR(19),NgayGui,126) AS ngayGui FROM CanhBaoKhanCap WHERE 1=1 ${scopedWhere(req,'NguoiCaoTuoiID')} ORDER BY NgayGui DESC,CanhBaoKhanCapID DESC`);
+  return ok(res,result.recordset);
+ }catch(error){next(error);}
+};
 
 const create = async (req, res, next) => {
   if (req.user.tenVaiTro !== 'NguoiCaoTuoi') {
@@ -38,7 +48,8 @@ const create = async (req, res, next) => {
       .input('noiDung', sql.NVarChar(500), noiDung || null)
       .query(`
         INSERT INTO CanhBaoKhanCap (NguoiCaoTuoiID, NguoiGuiID, ViDo, KinhDo, NoiDung)
-        OUTPUT INSERTED.CanhBaoKhanCapID AS id
+        OUTPUT INSERTED.CanhBaoKhanCapID AS id,
+          CONVERT(VARCHAR(19),INSERTED.NgayGui,126) AS ngayGui,INSERTED.TrangThai AS trangThai
         VALUES (@elderlyId, @userId, @viDo, @kinhDo, @noiDung)
       `);
     const emergencyId = emergency.recordset[0].id;
@@ -51,9 +62,20 @@ const create = async (req, res, next) => {
         OUTPUT INSERTED.CanhBaoID AS id
         VALUES (@elderlyId, N'KhanCap', @noiDung, N'KhanCap', N'CanhBaoKhanCap', @emergencyId)
       `);
+    const delivery=await new sql.Request(transaction)
+      .input('elderlyId',sql.Int,elderlyId).input('emergencyId',sql.Int,emergencyId)
+      .input('noiDung',sql.NVarChar(500),noiDung||'Người cao tuổi đã gửi SOS.')
+      .query(`INSERT INTO ThongBao(UserID,TieuDe,NoiDung,LoaiThongBao,LienKetBang,LienKetID)
+        OUTPUT INSERTED.ThongBaoID AS id
+        SELECT DISTINCT nd.UserID,N'Cảnh báo SOS',@noiDung,N'KhanCap',N'CanhBaoKhanCap',@emergencyId
+        FROM NguoiCaoTuoi_NguoiChamSoc lk JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID=lk.NguoiChamSocID
+        JOIN NguoiDung nd ON nd.UserID=ncs.UserID
+        WHERE lk.NguoiCaoTuoiID=@elderlyId AND nd.TrangThai=N'HoatDong' AND ncs.TrangThai=N'DangLamViec'
+        AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))`);
     await transaction.commit();
     transaction = null;
-    return ok(res, { id: emergencyId, canhBaoId: alert.recordset[0].id, nguoiCaoTuoiId: elderlyId }, 'Da gui canh bao SOS', 201);
+    return ok(res, { ...emergency.recordset[0], canhBaoId: alert.recordset[0].id, nguoiCaoTuoiId: elderlyId, soNguoiChamSocDaThongBao:delivery.recordset.length }, 'Da gui canh bao SOS', 201);
   } catch (error) {
     if (transaction) {
       try { await transaction.rollback(); } catch (_) { /* SQL da ket thuc transaction */ }
@@ -62,4 +84,4 @@ const create = async (req, res, next) => {
   }
 };
 
-module.exports = { create };
+module.exports = { create, getMine };

@@ -27,6 +27,7 @@ class FakeService extends CareAssistantService {
   Object? failure;
   Completer<AssistantReply>? pending;
   List<AssistantHistoryTurn> receivedHistory = const [];
+  String? receivedConversationToken;
   AssistantReply reply = const AssistantReply(
     text: 'Dữ liệu thật đã lưu',
     intent: 'health',
@@ -48,8 +49,10 @@ class FakeService extends CareAssistantService {
     String question, {
     int? elderlyId,
     List<AssistantHistoryTurn> history = const [],
+    String? conversationToken,
   }) {
     receivedHistory = List.of(history);
+    receivedConversationToken = conversationToken;
     return ask(question, elderlyId: elderlyId);
   }
 }
@@ -60,6 +63,7 @@ class RecordingAdapter implements HttpClientAdapter {
   bool offline = false;
   String mode = 'functional';
   String? modeReason;
+  int? profileIdOverride;
   Completer<ResponseBody>? heldResponse;
   @override
   void close({bool force = false}) {}
@@ -93,6 +97,12 @@ class RecordingAdapter implements HttpClientAdapter {
             'text': 'Hãy tìm hỗ trợ ngay.',
             'actions': ['caregivers', 'sos', 'https://evil.example'],
             'rows': [],
+            'profile': {
+              'id':
+                  profileIdOverride ??
+                  (options.data as Map?)?['elderlyId'] ??
+                  7,
+            },
           };
     return ResponseBody.fromString(
       jsonEncode({'data': data, 'message': 'Không có quyền truy cập'}),
@@ -105,6 +115,62 @@ class RecordingAdapter implements HttpClientAdapter {
 }
 
 void main() {
+  test('Capabilities are deliberate functional routing, not an AI outage', () {
+    final reply = AssistantReply.fromJson({
+      'mode': 'functional',
+      'modeReason': 'capabilities',
+      'intent': 'capabilities',
+      'text': 'Mình có thể giúp xem lịch thuốc và lịch khám.',
+      'rows': <dynamic>[],
+      'actions': <dynamic>[],
+    });
+    expect(reply.modeLabel, 'Trợ lý theo chức năng');
+    expect(reply.modeNotice, 'Giới thiệu chức năng có sẵn trong ứng dụng.');
+    expect(reply.modeNotice, isNot(contains('dự phòng')));
+    expect(reply.aiFailureCode, isNull);
+    expect(reply.actions, isEmpty);
+  });
+  test(
+    'Conversation reference is sent on follow-up and cleared on profile switch',
+    () async {
+      final service = FakeService(
+        role: 'NguoiChamSoc',
+        profiles: const [
+          AssistantProfile(7, 'Demo A'),
+          AssistantProfile(8, 'Demo B'),
+        ],
+      );
+      service.reply = const AssistantReply(
+        text: 'Demo',
+        intent: 'health',
+        conversationToken: 'synthetic-reference',
+      );
+      final controller = CareAssistantController(service: service);
+      await controller.initialize();
+      controller.selectProfile(service.profiles.first);
+      await controller.send('huyết áp gần nhất?');
+      await controller.send('chỉ số đó?');
+      expect(service.receivedConversationToken, 'synthetic-reference');
+      controller.selectProfile(service.profiles.last);
+      await controller.send('huyết áp gần nhất?');
+      expect(service.receivedConversationToken, isNull);
+      expect(service.receivedHistory, isEmpty);
+      controller.dispose();
+    },
+  );
+  test(
+    'Transport rejects another profile in the response before creating actions',
+    () async {
+      final adapter = RecordingAdapter()..profileIdOverride = 8;
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'))
+        ..httpClientAdapter = adapter;
+      final service = CareAssistantService(dio: dio);
+      await expectLater(
+        service.chat('thuốc?', elderlyId: 7),
+        throwsA(isA<ApiException>()),
+      );
+    },
+  );
   test(
     'Fallback diagnostics explain quota and timeout without changing the real mode label',
     () {
@@ -249,7 +315,7 @@ void main() {
         MaterialApp(home: CareAssistantScreen(controller: chat)),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('được gửi tới dịch vụ Groq'), findsOneWidget);
+      expect(find.textContaining('được gửi tới Groq'), findsOneWidget);
       await chat.send('Xin chào');
       await tester.pumpAndSettle();
       expect(find.text('AI'), findsOneWidget);

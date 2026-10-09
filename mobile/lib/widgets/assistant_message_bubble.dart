@@ -82,9 +82,7 @@ class AssistantMessageBubble extends StatelessWidget {
                 ),
               if (message.reply?.truncated == true)
                 Text(
-                  message.reply?.mode == 'ai'
-                      ? 'AI chỉ nhận tối đa 8 mục mỗi nhóm. Mở chức năng để xem thêm.'
-                      : 'Đang hiển thị tối đa 50 mục gần nhất.',
+                  'Còn bản ghi khác. Mở chi tiết để xem thêm.',
                   style: const TextStyle(fontSize: 13),
                 ),
               if (message.reply?.actions.isNotEmpty == true)

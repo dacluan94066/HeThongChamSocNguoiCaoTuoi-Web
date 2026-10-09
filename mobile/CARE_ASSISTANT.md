@@ -6,7 +6,7 @@
 - Người chăm sóc: biểu tượng trợ lý trên thanh tiêu đề **Người tôi chăm sóc**, kể cả khi trang đang báo lỗi tải dữ liệu.
 - Nếu có nhiều người được phân công, chọn hồ sơ trong màn hình chat. Đổi hồ sơ sẽ xóa cuộc trò chuyện và bản nháp cũ.
 - Trợ lý hiểu câu có dấu/không dấu: thuốc hôm nay, lịch khám tiếp theo, sức khỏe gần nhất, người chăm sóc, thông báo chưa đọc, việc hôm nay, nhật ký, SOS và hướng dẫn ứng dụng.
-- Có **AI tiếng Việt qua Groq** khi backend được cấu hình và trả lời thành công. Thiếu cấu hình hoặc AI lỗi sẽ dùng **Trợ lý theo chức năng**, có giải thích rõ trong từng phản hồi. Dữ liệu tra cứu lấy từ SQL Server thông qua backend; không có dữ liệu giả trong ứng dụng.
+- Có **AI tiếng Việt qua Groq** để hiểu câu hỏi và chọn công cụ. Dữ liệu cá nhân được trả lời bằng bộ diễn đạt tại backend từ kết quả đã kiểm tra quyền, hiển thị **Trợ lý theo chức năng**. Chào hỏi/giải thích chung hiển thị **AI** khi model trả lời thành công. Thiếu cấu hình hoặc AI lỗi có lý do dự phòng riêng. Không có dữ liệu giả trong ứng dụng.
 - Bản hiện tại chưa có module kế hoạch chăm sóc riêng. “Việc hôm nay” tổng hợp lịch thuốc, lịch khám và số nhật ký đã ghi, đồng thời thông báo giới hạn này.
 - Các nút chi tiết mở màn hình đọc dữ liệu trong phạm vi chatbot. Thông báo mở màn hình hiện có; SOS mở màn hình Người chăm sóc hiện có và vẫn cần người dùng xác nhận. Trợ lý không tự gửi SOS, gọi điện, đánh dấu uống thuốc hoặc ghi dữ liệu.
 
@@ -54,7 +54,7 @@ Tham số này chỉ cho script, không cấu hình app và không sửa .env. S
 
 ### Dữ liệu gửi tới Groq
 
-Màn hình giới thiệu thông báo câu hỏi, ngữ cảnh gần đây và dữ liệu cần thiết được gửi tới Groq. Chỉ gửi tối đa 8 dòng của nhóm cần tra cứu; không gửi toàn bộ hồ sơ hoặc tên/ID hồ sơ trong system prompt. Lịch sử có thể chứa dữ liệu từ các câu hỏi trước; không lưu lâu dài trong app/backend.
+Với câu hỏi cá nhân, chỉ câu hỏi và tối đa 8 lượt lịch sử có vai trò user được dùng để chọn công cụ; không gửi câu trả lời cũ hoặc kết quả truy vấn thuốc/số đo/người chăm sóc tới Groq. Sau khi chọn công cụ, backend đọc và diễn đạt kết quả ngay tại chỗ, không gọi model để viết lại số liệu. Chào hỏi có thể dùng lịch sử hội thoại chung. Không gửi token ngữ cảnh, tên/ID hồ sơ trong system prompt. Câu hỏi do người dùng nhập vẫn có thể chứa thông tin cá nhân; chat không lưu lâu dài trong app/backend.
 
 Theo [Your Data in GroqCloud](https://console.groq.com/docs/your-data), đầu vào/đầu ra inference không được lưu mặc định, nhưng log phục vụ độ tin cậy/chống lạm dụng có thể lưu tới 30 ngày (hoặc lâu hơn theo yêu cầu pháp luật). Metadata sử dụng vẫn được lưu; dữ liệu được lưu có thể ở Mỹ. ZDR có thể bật trong Data Controls; code này không bật và chưa xác minh cài đặt tài khoản.
 
@@ -88,14 +88,14 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5000/api
 - Tối đa 8 tin lịch sử (4 lượt hỏi/đáp), tổng 6000 ký tự; câu hỏi 500 ký tự; câu trả lời AI tối đa 2200 ký tự. Không đưa tin lỗi vào ngữ cảnh. Retry thay tin lỗi, không thêm bản sao câu hỏi.
 - Đổi hồ sơ được phép khi request còn chờ: xóa chat, lịch sử, bản nháp và bỏ phản hồi cũ. Đăng xuất/đổi phiên thực hiện tương tự. Backend không có ngữ cảnh dùng chung để trộn giữa các phiên/hồ sơ.
 - Backend coi lịch sử do client gửi là ngữ cảnh chưa xác minh, không phải nguồn sự thật. Câu hỏi tiếp nối phải tra lại dữ liệu. Nếu “thuốc đó” không rõ thuốc nào, AI được yêu cầu hỏi lại.
-- Lịch khám có `soNgayConLai` được SQL tính theo ngày lịch của máy chủ, để câu hỏi “Còn mấy ngày nữa?” dùng số mới từ backend thay vì đoán từ tin cũ.
+- Lịch khám có `soNgayConLai` tính theo ngày lịch Việt Nam UTC+7. “Mai”, ngày cụ thể và buổi uống thuốc được xử lý riêng; truy vấn phân biệt sắp tới/đã qua/đã hủy. Chỉ số gần nhất có thứ tự phụ theo ID và loại các số đo trong tương lai.
 - Các công cụ `care_medications`, `care_appointments`, `care_health`, `care_caregivers`, `care_notifications`, `care_today`, `care_notes` chỉ đọc. `care_general_help` không đọc hồ sơ. Giải thích chung như “Huyết áp là gì?” không gửi chỉ số cá nhân.
 - Công cụ không có tham số ID, SQL, URL hoặc code. Danh tính và hồ sơ lấy từ controller đã xác thực. Từng lần đọc kiểm tra tài khoản hoạt động, vai trò trong DB và liên kết/phân công còn hiệu lực. Kiểm tra lại quyền trước khi trả phản hồi AI.
-- Tối đa 8 dòng mỗi nhóm dữ liệu gửi AI; bỏ ID, giới hạn chuỗi 300 ký tự. Không gửi tên/ID hồ sơ trong prompt hệ thống. Nhật ký chỉ gửi khi cần và được đánh dấu dữ liệu không đáng tin. Nếu danh sách bị giới hạn, UI báo và có nút xem thêm.
-- Ngân sách AI 20 giây, tối đa 3 lần gọi Chat Completions, 4 tool calls và 1500 completion tokens mỗi lần (gồm reasoning); GPT-OSS dùng reasoning_effort=low; SDK không retry tự động. Mobile chờ response chat tối đa 45 giây. `/chat` giới hạn payload 26 KB, `/query` 4 KB; cả hai dùng rate limit 30 lượt/phút/tài khoản theo tiến trình hiện có.
+- Kết quả công cụ cá nhân không gửi AI. Câu trả lời hiển thị tối đa 5 mục và báo có thêm bản ghi; màn hình chi tiết đọc tối đa 50 mục. Nhật ký là dữ liệu, không phải chỉ dẫn. `conversationToken` có chữ ký riêng, gắn tài khoản/hồ sơ, hết hạn 30 phút, chỉ nhớ chủ đề/đối tượng và bộ lọc; không nhớ số đo/liều/điện thoại để thay thế lần đọc tiếp theo.
+- Câu hỏi cá nhân cần tối đa một lần chọn công cụ thành công; kết quả được diễn đạt cục bộ. Ngân sách AI 20 giây, giới hạn tuyệt đối 3 vòng model, không chấp nhận nhiều tool call đồng thời, 1500 completion tokens (gồm reasoning); SDK không retry. SQL dùng `Request.cancel()` và giới hạn 10 giây/lần, toàn bộ chuỗi chatbot có deadline 35 giây. Mobile chờ tối đa 45 giây, hủy request khi đổi hồ sơ/phiên; chat hiển thị tối đa 60 tin. Giữ giới hạn payload/rate limit hiện có.
 - Lỗi AI/timeout/HTTP 429 hết hạn mức/response không hợp lệ dùng tra cứu dự phòng; lỗi SQL là 503, mất quyền là 403, thiếu hồ sơ là 400/404, không được giả vờ dữ liệu trống. Dự phòng có thể tra lại chủ đề gần nhất nhưng không diễn đạt tự nhiên như AI.
 - Triệu chứng khẩn cấp, SOS và yêu cầu đổi liều được xử lý bởi hướng dẫn an toàn theo chức năng. AI không có công cụ mutation. Nút điều hướng do backend ánh xạ từ các công cụ đã dùng và Flutter kiểm tra enum cố định.
-- Prompt và kiểm tra đầu ra hạn chế chẩn đoán, đổi liều, xác nhận gửi SOS giả và URL; đây không phải cam kết mọi câu trả lời model đều chính xác. Cần xác minh chất lượng tiếng Việt/câu tiếp nối với model thật trước khi sử dụng thực tế.
+- Số liệu cá nhân không lấy từ phần văn bản model. Chẩn đoán/đổi liều/SOS vẫn dùng luồng an toàn; chỉ điều hướng tới màn hình để người dùng xác nhận. Xem `../MOBILE_COMPLETION.md` cho bằng chứng API thật, Groq thật, kiểm thử mobile và các giới hạn chưa xác minh.
 
 ## Các file thay đổi
 

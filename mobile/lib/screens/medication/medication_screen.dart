@@ -57,6 +57,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
   }
 
   Future<bool> _ensureNotificationPermission() async {
+    if (!LocalNotificationService.supportsNotifications) return false;
     var enabled = await LocalNotificationService.areNotificationsEnabled();
     var exactAlarmAllowed =
         await LocalNotificationService.canScheduleExactNotifications();

@@ -7,6 +7,7 @@ import 'services/auth_storage.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/caregiver/caregiver_home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,11 +35,55 @@ class ElderlyCareApp extends StatelessWidget {
       routes: {
         '/welcome': (_) => const WelcomeScreen(),
         '/login': (_) => const LoginScreen(),
-        '/home': (_) => const HomeScreen(),
+        '/home': (_) => const SessionHomeScreen(),
       },
       home: const SplashScreen(),
     );
   }
+}
+
+Widget homeForRole(String? role) => switch (role) {
+  'NguoiChamSoc' => const CaregiverHomeScreen(),
+  'NguoiCaoTuoi' => const HomeScreen(),
+  _ => const LoginScreen(),
+};
+
+class SessionHomeScreen extends StatefulWidget {
+  const SessionHomeScreen({super.key});
+  @override
+  State<SessionHomeScreen> createState() => _SessionHomeScreenState();
+}
+
+class _SessionHomeScreenState extends State<SessionHomeScreen> {
+  late Future<Map<String, dynamic>?> _user;
+  @override
+  void initState() {
+    super.initState();
+    _user = AuthService.instance.getStoredUser();
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>?>(
+    future: _user,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      if (snapshot.hasError) {
+        return Scaffold(
+          body: Center(
+            child: TextButton(
+              onPressed: () => setState(() {
+                _user = AuthService.instance.getStoredUser();
+              }),
+              child: const Text('Không thể đọc phiên đăng nhập. Thử lại'),
+            ),
+          ),
+        );
+      }
+      return homeForRole(snapshot.data?['tenVaiTro']?.toString());
+    },
+  );
 }
 
 // ======================================================
@@ -677,8 +722,9 @@ class _LoginScreenState extends State<LoginScreen> {
             // ==================================================
             // ĐĂNG KÝ NGAY
             // ==================================================
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text(
                   'Chưa có tài khoản? ',

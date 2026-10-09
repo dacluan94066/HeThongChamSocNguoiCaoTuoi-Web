@@ -26,6 +26,32 @@ function client(responses) {
 }
 function run(overrides={}) {return chat({question:'Lịch khám tiếp theo?',history:[],profile,user,repository:repository(),config,...overrides});}
 
+test('Capabilities override medication history/context without tools or Groq',async()=>{
+  const {resolveQuestion,detectIntent}=require('../src/services/careAssistant.context');
+  const history=[{role:'user',content:'thuốc tối nay?'},{role:'assistant',content:'Thông tin cũ không được dùng.'}];
+  const sessionContext={topic:'medications',entityLabel:'Thuốc cũ',period:'evening'};
+  for(const question of ['bạn có thể hỗ trợ tôi được gì','ban co the ho tro toi duoc gi','Bạn có thể giúp tôi được những gì?','Bạn làm được gì?']) {
+    for(const prior of [[],history]) {
+      for(const cfg of [config,configuration({})]) {
+        const repo=repository();const ai=client([new Error('must not call Groq')]);
+        const context=resolveQuestion(question,prior,sessionContext);
+        assert.equal(context.intent,'capabilities');assert.equal(context.reference,false);assert.equal(context.anchor,'');
+        const reply=await run({question,history:prior,sessionContext,repository:repo,client:ai,config:cfg,profile:null});
+        assert.equal(reply.intent,'capabilities');assert.equal(reply.mode,'functional');
+        assert.equal(reply.modeReason,'capabilities');assert.equal(reply.aiFailureCode,undefined);
+        assert.deepEqual(repo.reads,[]);assert.equal(ai.requests.length,0);
+        assert.deepEqual(reply.rows,[]);assert.deepEqual(reply.actions,[]);
+        assert.ok(reply.text.includes('lịch thuốc')&&reply.text.includes('lịch khám'));
+        assert.ok(!reply.text.includes('Thuốc cũ'));
+      }
+    }
+  }
+  assert.equal(detectIntent('Bạn có thể hỗ trợ tôi xem thuốc tối nay?'),'medications');
+  assert.equal(resolveQuestion('thuốc đó?',history,sessionContext).intent,'medications');
+  assert.equal(resolveQuestion('mai có khám không?',history,sessionContext).intent,'appointments');
+  assert.equal(resolveQuestion('kể chuyện cho tôi',history,sessionContext).intent,'unknown');
+});
+
 test('Configuration checks key AND model; history rejects roles/IDs/oversized entries',()=>{
   assert.equal(configuration({}).configured,false);
   assert.equal(configuration({AI_PROVIDER:'groq',GROQ_API_KEY:'mock'}).configured,false);
@@ -40,27 +66,26 @@ test('No key: functional response without constructing or calling an AI client',
 test('AI reads appointments via a fixed tool and returns fixed actions',async()=>{
   const repo=repository();const ai=client([call('care_appointments'),text('Lịch khám đã lưu là 08:00 ngày 12/10/2026.')]);
   const reply=await run({repository:repo,client:ai});
-  assert.equal(reply.mode,'ai');assert.deepEqual(reply.actions,['appointments']);assert.deepEqual(repo.reads,['appointments']);
+  assert.equal(reply.mode,'functional');assert.equal(reply.modeReason,'grounded_data');assert.deepEqual(reply.actions,['appointments']);assert.deepEqual(repo.reads,['appointments']);
   const first=ai.requests[0].params;assert.equal(first.store,undefined);assert.equal(first.parallel_tool_calls,false);assert.equal(first.max_completion_tokens,1500);
   assert.equal(first.tools.length,1);assert.equal(first.model,'mock-model');assert.ok(!JSON.stringify(first).includes(profile.hoTen));
-  const data=JSON.parse(ai.requests[1].params.messages.at(-1).content);assert.equal(data.untrustedData.rows[0].id,undefined);
+  assert.equal(ai.requests.length,1);assert.ok(!JSON.stringify(ai.requests).includes('Cơ sở đã lưu'));
   assert.equal(ai.requests[0].options.signal.aborted,true);
 });
 test('Follow-up receives history and refreshes appointment facts rather than trusting previous assistant text',async()=>{
   const history=[{role:'user',content:'Lịch khám tiếp theo?'},{role:'assistant',content:'Thông tin cũ có thể sai'}];
-  const repo=repository();const ai=client([call('care_appointments'),params=>{
-    assert.deepEqual(params.messages.slice(1,3),history);assert.match(params.messages[0].content,/Phải tra lại công cụ/);
-    assert.match(JSON.stringify(params.messages),/2026-10-12/);
-    assert.equal(JSON.parse(params.messages.at(-1).content).untrustedData.rows[0].soNgayConLai,3);
-    return text('Còn 3 ngày đến lịch đã lưu.');
+  const repo=repository();const ai=client([params=>{
+    assert.equal(params.messages[1].content,history[0].content);assert.ok(!JSON.stringify(params.messages).includes('Thông tin cũ có thể sai'));assert.match(params.messages[0].content,/Phải tra lại công cụ/);
+    return call('care_appointments');
   }]);
   const reply=await run({question:'Còn mấy ngày nữa?',history,repository:repo,client:ai,now:new Date('2026-10-09T08:00:00+07:00')});
-  assert.equal(reply.mode,'ai');assert.deepEqual(repo.reads,['appointments']);
+  assert.equal(reply.mode,'functional');assert.match(reply.text,/Còn 3 ngày/);assert.deepEqual(repo.reads,['appointments']);
 });
 test('Medication follow-up can ask clarification instead of guessing which medicine',async()=>{
   const history=[{role:'user',content:'thuoc hom nay?'},{role:'assistant',content:'Có nhiều thuốc đã lưu.'}];
-  const ai=client([call('care_medications'),text('Bạn muốn hỏi giờ uống của thuốc nào?')]);
-  const reply=await run({question:'Thuốc đó uống lúc nào?',history,client:ai});assert.equal(reply.mode,'ai');assert.match(reply.text,/thuốc nào/);
+  const ai=client([call('care_medications'),text('Tự chọn thuốc sai')]);
+  const repo=repository();repo.read=async()=>({rows:[{tenThuoc:'Thuốc giả lập A'},{tenThuoc:'Thuốc giả lập B'}],truncated:false});
+  const reply=await run({question:'Thuốc đó uống lúc nào?',history,repository:repo,client:ai});assert.equal(reply.mode,'functional');assert.match(reply.text,/thuốc nào/);assert.doesNotMatch(reply.text,/Tự chọn/);
 });
 test('General Vietnamese health explanation needs no patient data',async()=>{
   const repo=repository();const ai=client([call('care_general_help'),text('Vận động nhẹ có thể giúp duy trì sức khỏe. Hãy hỏi bác sĩ về hoạt động phù hợp với bạn.')]);
@@ -74,7 +99,7 @@ test('General health definitions do not fetch measurements or require a profile'
 });
 test('Missing selection returns a short question with no personal data',async()=>{
   const repo=repository();const ai=client([call('care_general_help'),text('Bạn muốn hỏi về thuốc hay lịch khám? Hãy chọn hồ sơ trước khi tra cứu.')]);
-  const reply=await run({question:'Còn bao lâu?',profile:null,user:{userId:100,tenVaiTro:'NguoiChamSoc'},repository:repo,client:ai});assert.equal(reply.mode,'ai');assert.deepEqual(repo.reads,[]);
+  const reply=await run({question:'Còn bao lâu?',profile:null,user:{userId:100,tenVaiTro:'NguoiChamSoc'},repository:repo,client:ai});assert.equal(reply.mode,'functional');assert.equal(reply.modeReason,'clarification');assert.deepEqual(repo.reads,[]);
 });
 for(const failure of [new Error('SDK unavailable'),{choices:[{finish_reason:'length',message:{role:'assistant',content:'Incomplete'}}]}]) test('AI error/incomplete falls back without exposing SDK details: '+failure.constructor.name,async()=>{
   const reply=await run({client:client([failure])});assert.equal(reply.mode,'functional');assert.equal(reply.modeReason,'ai_unavailable');assert.doesNotMatch(reply.text,/SDK/);
@@ -101,7 +126,7 @@ test('Stored note injection is marked untrusted; cannot select an extra health t
     assert.match(params.messages[0].content,/không đáng tin/);assert.ok(JSON.parse(params.messages.at(-1).content).untrustedData);
     return call('care_health');
   }]);
-  const reply=await run({question:'Mở nhật ký',repository:repo,client:ai});assert.equal(reply.modeReason,'ai_unavailable');assert.deepEqual(reply.actions,['notes']);
+  const reply=await run({question:'Mở nhật ký',repository:repo,client:ai});assert.equal(reply.modeReason,'grounded_data');assert.deepEqual(reply.actions,['notes']);assert.equal(ai.requests.length,1);
 });
 test('Emergency and medication change requests bypass AI; no SOS is executed',async()=>{
   for(const question of ['Tôi khó thở','Gui SOS giup toi','Tôi nên tăng liều thuốc?']){
@@ -110,7 +135,7 @@ test('Emergency and medication change requests bypass AI; no SOS is executed',as
   }
 });
 for(const unsafe of ['Tôi đã gửi SOS cho bạn.','Bạn hoàn toàn an toàn.','Mở https://evil.example']) test('Unsafe AI output falls back: '+unsafe,async()=>{
-  const reply=await run({client:client([call('care_appointments'),text(unsafe)])});assert.equal(reply.modeReason,'ai_unavailable');
+  const ai=client([call('care_appointments'),text(unsafe)]);const reply=await run({client:ai});assert.equal(reply.modeReason,'grounded_data');assert.ok(!reply.text.includes(unsafe));assert.equal(ai.requests.length,1);
 });
 test('Data transmission is capped and excludes row IDs',async()=>{
   const repo=repository();repo.read=async()=>({rows:Array.from({length:20},(_,id)=>({id,hoatDong:'a'.repeat(1000)})),truncated:false});
@@ -152,11 +177,9 @@ test('Official SDK Groq Chat Completions round-trip uses only mocked fetch (no A
     const data=requests.length===1 ? call('care_appointments') : text('Lịch khám đã lưu là ngày 12/10/2026.');
     return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
   }});
-  const reply=await run({client:sdk});assert.equal(reply.mode,'ai');assert.equal(requests.length,2);
+  const reply=await run({client:sdk});assert.equal(reply.mode,'functional');assert.equal(reply.modeReason,'grounded_data');assert.equal(requests.length,1);
   assert.ok(requests.every(r=>r.url==='https://api.groq.com/openai/v1/chat/completions' && r.body.store===undefined));
-  assert.equal(requests[1].body.messages.at(-1).role,'tool');
-  assert.equal(requests[1].body.messages.at(-1).tool_call_id,'call_1');
-  assert.equal(requests[1].body.messages.at(-2).tool_calls[0].id,'call_1');
+  assert.ok(!JSON.stringify(requests).includes('Cơ sở đã lưu'));
 });
 test('Permission revoked while AI generates answer is rechecked before returning it',async()=>{
   const repo=repository();let calls=0;
@@ -166,11 +189,8 @@ test('Permission revoked while AI generates answer is rechecked before returning
 });
 test('Empty tool data stays explicitly empty instead of fabricated appointment facts',async()=>{
   const repo=repository();repo.read=async()=>({rows:[],truncated:false});
-  const ai=client([call('care_appointments'),params=>{
-    assert.deepEqual(JSON.parse(params.messages.at(-1).content).untrustedData.rows,[]);
-    return text('Chưa có lịch khám sắp tới được lưu.');
-  }]);
-  const reply=await run({repository:repo,client:ai});assert.equal(reply.mode,'ai');assert.match(reply.text,/Chưa có/);
+  const ai=client([call('care_appointments'),text('Lịch không tồn tại: 2099-01-01')]);
+  const reply=await run({repository:repo,client:ai});assert.equal(reply.mode,'functional');assert.match(reply.text,/Chưa có/);
 });
 test('AI urgent guidance adds only fixed SOS/contact navigation, never a mutation',async()=>{
   const repo=repository();const ai=client([call('care_general_help'),text('Hãy tìm hỗ trợ y tế ngay, đừng chờ trong chat.')]);
@@ -225,11 +245,10 @@ for (const broken of [
 });
 test('Connectivity script checks synthetic tool calling and follow-up using mock SDK', async () => {
   const { checkConnection } = require('../scripts/check_care_assistant_ai');
-  const ai = client([call('care_appointments'), text('Lịch giả lập còn 2 ngày.'),
-    call('care_appointments'), text('Còn 2 ngày theo dữ liệu giả lập.')]);
+  const ai = client([call('care_appointments'),call('care_appointments')]);
   assert.equal((await checkConnection({ config, client: ai })).ok, true);
-  assert.equal(ai.requests.length, 4);
-  assert.ok(JSON.stringify(ai.requests[1].params.messages).includes('CO SO GIA LAP'));
+  assert.equal(ai.requests.length, 2);
+  assert.ok(!JSON.stringify(ai.requests).includes('CO SO GIA LAP'));
   assert.ok(!JSON.stringify(ai.requests).includes(profile.hoTen));
 });
 test('Greeting and capabilities follow-up answer directly without forcing Groq tools or reading profiles', async () => {
@@ -240,13 +259,13 @@ test('Greeting and capabilities follow-up answer directly without forcing Groq t
   const first = await run({ question: 'Xin chào', client: ai, repository: repo });
   const second = await run({ question: 'Bạn có thể giúp tôi những gì?', client: ai, repository: repo,
     history: [{ role: 'user', content: 'Xin chào' }, { role: 'assistant', content: first.text }] });
-  assert.equal(first.mode, 'ai'); assert.equal(second.mode, 'ai');
+  assert.equal(first.mode, 'ai'); assert.equal(second.mode, 'functional');
+  assert.equal(second.modeReason, 'capabilities');
   assert.deepEqual(checks, [false, false]); assert.deepEqual(repo.reads, []);
-  assert.deepEqual(first.actions, []); assert.equal(ai.requests.length, 2);
+  assert.deepEqual(first.actions, []); assert.equal(ai.requests.length, 1);
   for (const { params } of ai.requests) {
     assert.equal(params.tools, undefined); assert.equal(params.tool_choice, undefined);
   }
-  assert.equal(ai.requests[1].params.messages[1].content, 'Xin chào');
 });
 test('No-accent greeting and general follow-up stay conversational', async () => {
   const ai = client([text('Xin chào!')]);
@@ -257,7 +276,7 @@ test('No-accent greeting and general follow-up stay conversational', async () =>
 test('A data request phrased as help still requires a fresh scoped tool', async () => {
   const repo = repository(); const ai = client([call('care_appointments'), text('Lịch khám đã lưu.')]);
   const reply = await run({ question: 'Bạn có thể giúp tôi xem lịch khám tiếp theo?', repository: repo, client: ai });
-  assert.equal(reply.mode, 'ai'); assert.deepEqual(repo.reads, ['appointments']);
+  assert.equal(reply.mode, 'functional'); assert.deepEqual(repo.reads, ['appointments']);
   assert.equal(ai.requests[0].params.tool_choice, 'required');
 });
 test('Personal-data answers without a tool remain rejected', async () => {

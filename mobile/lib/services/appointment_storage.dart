@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'api_client.dart';
+import 'appointment_service.dart';
 
 class AppointmentStorage {
   static Future<List<Map<String, dynamic>>> loadAppointments() async {
@@ -25,9 +26,7 @@ class AppointmentStorage {
     }
   }
 
-  static Map<String, dynamic> _mapAppointment(
-    Map<String, dynamic> data,
-  ) {
+  static Map<String, dynamic> _mapAppointment(Map<String, dynamic> data) {
     return {
       'id': data['id']?.toString() ?? '',
       'doctor': data['bacSiTen']?.toString() ?? 'Chưa xác định',
@@ -53,17 +52,26 @@ class AppointmentStorage {
   }
 
   static Future<Map<String, dynamic>?> getNextAppointment() async {
-    final appointments = await loadAppointments();
-
-    final upcoming = appointments
-        .where((appointment) => appointment['status'] == 'Chưa đến')
-        .toList();
+    final upcoming = await AppointmentService.instance.getUpcomingAppointments(
+      refresh: true,
+    );
 
     if (upcoming.isEmpty) {
       return null;
     }
 
-    return upcoming.first;
+    final next = upcoming.first;
+    final date = next['thoiGianKham']?.toString() ?? '';
+    return _mapAppointment({
+      'id': next['id'],
+      'bacSiTen': next['bacSiPhuTrach'],
+      'ghiChu': next['chuyenKhoa'],
+      'ngayKham': date,
+      'gioKham': date.length >= 16 ? date.substring(11, 16) : '',
+      'noiKham': next['tenBenhVien'],
+      'trangThaiLabel': 'Chưa đến',
+      'lyDoKham': next['lyDoKham'],
+    });
   }
 
   static Future<void> addAppointment({
@@ -73,9 +81,7 @@ class AppointmentStorage {
     required String time,
     required String hospital,
   }) async {
-    throw UnsupportedError(
-      'Mobile người cao tuổi không được tạo lịch khám.',
-    );
+    throw UnsupportedError('Mobile người cao tuổi không được tạo lịch khám.');
   }
 
   static Future<void> updateStatus({
@@ -88,8 +94,6 @@ class AppointmentStorage {
   }
 
   static Future<void> deleteAppointment(String id) async {
-    throw UnsupportedError(
-      'Mobile người cao tuổi không được xóa lịch khám.',
-    );
+    throw UnsupportedError('Mobile người cao tuổi không được xóa lịch khám.');
   }
 }

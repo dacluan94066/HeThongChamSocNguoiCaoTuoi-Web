@@ -5,9 +5,12 @@ const { detectIntent, answer } = require('../services/careAssistant.service');
 const { createRepository } = require('../services/careAssistant.repository');
 const { chat, configuration, validateHistory } = require('../services/careAssistant.ai');
 const { createScopedRepository, AssistantAccessError } = require('../services/careAssistant.tools');
+const { boundedQuery } = require('../utils/boundedQuery');
+const { encodeContext,decodeContext } = require('../services/careAssistant.session');
 const roles = new Set(['NguoiCaoTuoi','NguoiChamSoc']);
 const buckets = new Map();
 const protect = async (req,res,next) => {
+  req.assistantDeadline = Date.now() + 35000;
   if (!roles.has(req.user?.tenVaiTro)) return fail(res,'Trợ lý chỉ hỗ trợ tài khoản Mobile.','FORBIDDEN',403);
   const key = req.user.userId; const now=Date.now();
   // Bounded, per-process rate limit. No questions or medical data are retained.
@@ -20,9 +23,10 @@ const protect = async (req,res,next) => {
   try {
     const pool = await poolPromise;
     const request = pool.request(); request.timeout=10000;
-    const account = await request.input('userId',sql.Int,key).query(`
+    request.input('userId',sql.Int,key);
+    const account = await boundedQuery(request, `
       SELECT nd.TrangThai AS trangThai,vt.TenVaiTro AS tenVaiTro FROM NguoiDung nd
-      JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID WHERE nd.UserID=@userId`);
+      JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID WHERE nd.UserID=@userId`,req.assistantDeadline);
     const row=account.recordset[0];
     if (!row || row.trangThai !== 'HoatDong' || row.tenVaiTro !== req.user.tenVaiTro)
       return fail(res,'Tài khoản đã khóa hoặc vai trò đã thay đổi. Vui lòng đăng nhập lại.','ACCOUNT_UNAVAILABLE',403);
@@ -35,8 +39,8 @@ const profiles = async (req,res) => {
     if (!ids.length) return ok(res,[]);
     const pool=await poolPromise; const request=pool.request(); request.timeout=10000;
     const parameters=ids.map((id,i) => {request.input('id'+i,sql.Int,id); return '@id'+i;});
-    const result=await request.query(`SELECT NguoiCaoTuoiID AS id,HoTen AS hoTen FROM HoSoNguoiCaoTuoi
-      WHERE NguoiCaoTuoiID IN (${parameters.join(',')}) ORDER BY HoTen,NguoiCaoTuoiID`);
+    const result=await boundedQuery(request,`SELECT NguoiCaoTuoiID AS id,HoTen AS hoTen FROM HoSoNguoiCaoTuoi
+      WHERE NguoiCaoTuoiID IN (${parameters.join(',')}) ORDER BY HoTen,NguoiCaoTuoiID`,req.assistantDeadline);
     return ok(res,result.recordset);
   } catch (_) {return fail(res,'Không tải được danh sách hồ sơ.','DATA_UNAVAILABLE',503);}
 };
@@ -44,14 +48,14 @@ const query = async (req,res) => {
   const body=req.body;
   const aiEnabled=req.route?.path === '/chat';
   if (!body || typeof body !== 'object' || Array.isArray(body) ||
-      Object.keys(body).some(k => !(aiEnabled ? ['question','elderlyId','history'] : ['question','elderlyId']).includes(k)) ||
+      Object.keys(body).some(k => !(aiEnabled ? ['question','elderlyId','history','conversationToken'] : ['question','elderlyId']).includes(k)) ||
       typeof body.question !== 'string' || !body.question.trim() || body.question.length > 500)
     return fail(res,'Câu hỏi cần từ 1 đến 500 ký tự.','INVALID_QUESTION',400);
   if (aiEnabled && !validateHistory(body.history)) return fail(res,'Lịch sử hội thoại không hợp lệ.','INVALID_HISTORY',400);
   if (body.elderlyId != null && (!Number.isInteger(body.elderlyId) || body.elderlyId<1 || body.elderlyId>2147483647))
     return fail(res,'Hồ sơ không hợp lệ.','INVALID_PROFILE',400);
   const intent=detectIntent(body.question);
-  const needsProfile=!['help','unknown','notifications','sos','emergency','medical'].includes(intent);
+  const needsProfile=!['clarification','capabilities','help','unknown','notifications','sos','emergency','medical'].includes(intent);
   let id=body.elderlyId;
   if (req.user.tenVaiTro==='NguoiCaoTuoi') {
     const ownId=req.mobileElderlyIds?.[0];
@@ -66,15 +70,18 @@ const query = async (req,res) => {
     const pool=await poolPromise; let profile=null;
     if (id != null) {
       const request=pool.request();request.timeout=10000;
-      const result=await request.input('id',sql.Int,id).query('SELECT NguoiCaoTuoiID AS id,HoTen AS hoTen FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID=@id');
+      request.input('id',sql.Int,id);
+      const result=await boundedQuery(request,'SELECT NguoiCaoTuoiID AS id,HoTen AS hoTen FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID=@id',req.assistantDeadline);
       if (!result.recordset.length) return fail(res,'Không tìm thấy hồ sơ.','PROFILE_NOT_FOUND',404);
       profile=result.recordset[0];
     }
+    const sessionContext=aiEnabled ? decodeContext(body.conversationToken,req.user,profile) : null;
     const data=aiEnabled
-      ? await chat({question:body.question,history:body.history,profile,user:req.user,
-        repository:createScopedRepository(pool,sql,req.user,profile)})
-      : await answer({question:body.question,profile,user:req.user,repository:createRepository(pool,sql)});
-    return ok(res,data);
+      ? await chat({question:body.question,history:body.history,profile,user:req.user,sessionContext,
+        repository:createScopedRepository(pool,sql,req.user,profile,req.assistantDeadline)})
+      : await answer({question:body.question,profile,user:req.user,repository:createScopedRepository(pool,sql,req.user,profile,req.assistantDeadline)});
+    const {conversationContext,...reply}=data;
+    return ok(res,{...reply,conversationToken:aiEnabled ? encodeContext(conversationContext,req.user,profile) : null});
   } catch (error) {
     if (error instanceof AssistantAccessError) return fail(res,error.message,error.code,error.status);
     return fail(res,'Không tải được dữ liệu. Vui lòng thử lại; đây không phải kết quả chưa có dữ liệu.','DATA_UNAVAILABLE',503);
@@ -91,8 +98,15 @@ const ownCaregivers = async (req,res) => {
   const id=req.mobileElderlyIds?.[0];
   if (!id) return fail(res,'Tài khoản chưa có hồ sơ liên kết.','PROFILE_NOT_FOUND',404);
   try {
-    const result=await createRepository(await poolPromise,sql).read('caregivers',id,req.user.userId);
-    return ok(res,result.rows);
+    const request=(await poolPromise).request();request.timeout=10000;
+    const result=await request.input('id',sql.Int,id).query(`
+      SELECT DISTINCT ncs.NguoiChamSocID AS id,ncs.HoTen AS hoTen,ncs.SoDienThoai AS soDienThoai,
+        lk.LaChinh AS laChinh,lk.MoiQuanHe AS moiQuanHe
+      FROM NguoiCaoTuoi_NguoiChamSoc lk JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID=lk.NguoiChamSocID
+      WHERE lk.NguoiCaoTuoiID=@id AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
+      ORDER BY laChinh DESC,hoTen,id`);
+    return ok(res,result.recordset);
   } catch (_) { return fail(res,'Không tải được người chăm sóc.','DATA_UNAVAILABLE',503); }
 };
 const assignedProfiles = async (req,res) => {
@@ -103,15 +117,15 @@ const assignedProfiles = async (req,res) => {
       SELECT nct.NguoiCaoTuoiID AS id,nct.HoTen AS hoTen,nct.NgaySinh AS ngaySinh,
         nct.GioiTinh AS gioiTinh,nct.TrangThai AS trangThai,lk.LaChinh AS laChinh,lk.MoiQuanHe AS moiQuanHe,
         DATEDIFF(YEAR,nct.NgaySinh,GETDATE()) - CASE WHEN DATEADD(YEAR,DATEDIFF(YEAR,nct.NgaySinh,GETDATE()),nct.NgaySinh)>GETDATE() THEN 1 ELSE 0 END AS tuoi,
-        pending.CanhBaoKhanCapID AS canhBaoKhanCapId,pending.NoiDung AS noiDungCanhBao,pending.NgayGui AS ngayGuiCanhBao,
+        pending.CanhBaoKhanCapID AS canhBaoKhanCapId,pending.NoiDung AS noiDungCanhBao,CONVERT(VARCHAR(19),pending.NgayGui,126) AS ngayGuiCanhBao,
         CAST(CASE WHEN pending.CanhBaoKhanCapID IS NULL THEN 0 ELSE 1 END AS BIT) AS coCanhBaoKhanCap
       FROM NguoiChamSoc ncs JOIN NguoiCaoTuoi_NguoiChamSoc lk ON lk.NguoiChamSocID=ncs.NguoiChamSocID
       JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID=lk.NguoiCaoTuoiID
       OUTER APPLY (SELECT TOP 1 kc.CanhBaoKhanCapID,kc.NoiDung,kc.NgayGui FROM CanhBaoKhanCap kc
         WHERE kc.NguoiCaoTuoiID=nct.NguoiCaoTuoiID AND kc.TrangThai IN (N'DangGui',N'DaTiepNhan')
         ORDER BY kc.NgayGui DESC,kc.CanhBaoKhanCapID DESC) pending
-      WHERE ncs.UserID=@userId AND lk.NgayBatDau<=CAST(GETDATE() AS DATE)
-        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(GETDATE() AS DATE)) ORDER BY coCanhBaoKhanCap DESC,nct.HoTen`);
+      WHERE ncs.UserID=@userId AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)) ORDER BY coCanhBaoKhanCap DESC,nct.HoTen`);
     return ok(res,result.recordset);
   } catch (_) { return fail(res,'Không tải được hồ sơ được phân công.','DATA_UNAVAILABLE',503); }
 };

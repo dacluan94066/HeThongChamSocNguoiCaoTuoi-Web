@@ -39,6 +39,7 @@ class AssistantReply {
     this.mode = 'functional',
     this.modeReason,
     this.aiFailureCode,
+    this.conversationToken,
   });
   final String text;
   final String intent;
@@ -49,8 +50,11 @@ class AssistantReply {
   final String mode;
   final String? modeReason;
   final String? aiFailureCode;
+  final String? conversationToken;
   String get modeLabel => mode == 'ai' ? 'AI' : 'Trợ lý theo chức năng';
   String? get modeNotice => switch (modeReason) {
+    'capabilities' => 'Giới thiệu chức năng có sẵn trong ứng dụng.',
+    'grounded_data' => null,
     'missing_config' => 'AI chưa được cấu hình. Đang tra cứu theo chức năng.',
     'ai_unavailable' => switch (aiFailureCode) {
       'AI_RATE_LIMITED' =>
@@ -84,6 +88,7 @@ class AssistantReply {
     mode: data['mode'] == 'ai' ? 'ai' : 'functional',
     modeReason: data['modeReason']?.toString(),
     aiFailureCode: data['aiFailureCode']?.toString(),
+    conversationToken: data['conversationToken']?.toString(),
   );
 }
 

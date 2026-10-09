@@ -278,7 +278,7 @@ class _CareAssistantScreenState extends State<CareAssistantScreen> {
                           ),
                           const SizedBox(height: 18),
                           const Text(
-                            'Khi dùng AI, câu hỏi, ngữ cảnh gần đây và dữ liệu cần thiết được gửi tới dịch vụ Groq. Chat chỉ lưu trong bộ nhớ của phiên này.',
+                            'Khi dùng AI, câu hỏi và ngữ cảnh gần đây được gửi tới Groq để hiểu yêu cầu. Dữ liệu tra cứu được xử lý tại máy chủ ứng dụng. Chat chỉ lưu trong phiên này.',
                             textAlign: TextAlign.center,
                             style: TextStyle(fontSize: 14, height: 1.4),
                           ),

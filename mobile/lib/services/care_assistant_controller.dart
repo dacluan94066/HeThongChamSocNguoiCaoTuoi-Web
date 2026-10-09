@@ -15,6 +15,7 @@ class CareAssistantController extends ChangeNotifier {
   final ValueListenable<int> _session;
   final List<AssistantMessage> _messages = [];
   final List<AssistantHistoryTurn> _history = [];
+  String? _conversationToken;
   bool aiConfigured = false;
   AssistantReply? latestReply;
   String get modeLabel =>
@@ -34,9 +35,11 @@ class CareAssistantController extends ChangeNotifier {
   int _generation = 0;
   bool get caregiver => role == 'NguoiChamSoc';
   void _sessionChanged() {
+    _service.cancelPending();
     _generation++;
     _messages.clear();
     _history.clear();
+    _conversationToken = null;
     latestReply = null;
     aiConfigured = false;
     profiles = const [];
@@ -85,10 +88,12 @@ class CareAssistantController extends ChangeNotifier {
       return;
     }
     _generation++;
+    _service.cancelPending();
     selected = profile;
     busy = false;
     _messages.clear();
     _history.clear();
+    _conversationToken = null;
     latestReply = null;
     error = null;
     notifyListeners();
@@ -99,6 +104,7 @@ class CareAssistantController extends ChangeNotifier {
     _generation++;
     _messages.clear();
     _history.clear();
+    _conversationToken = null;
     latestReply = null;
     notifyListeners();
   }
@@ -126,6 +132,7 @@ class CareAssistantController extends ChangeNotifier {
         question,
         elderlyId: selected?.id,
         history: List.unmodifiable(_history),
+        conversationToken: _conversationToken,
       );
       if (_disposed || generation != _generation || version != _session.value) {
         return;
@@ -134,6 +141,11 @@ class CareAssistantController extends ChangeNotifier {
         AssistantMessage(text: reply.text, fromUser: false, reply: reply),
       );
       latestReply = reply;
+      _conversationToken = reply.conversationToken ?? _conversationToken;
+      // Keep the visible conversation bounded as well as the model history.
+      if (_messages.length > 60) {
+        _messages.removeRange(0, _messages.length - 60);
+      }
       _history.addAll([
         AssistantHistoryTurn('user', question.trim()),
         AssistantHistoryTurn(
@@ -183,10 +195,12 @@ class CareAssistantController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _service.cancelPending();
     _disposed = true;
     _generation++;
     _messages.clear();
     _history.clear();
+    _conversationToken = null;
     latestReply = null;
     profiles = const [];
     selected = null;

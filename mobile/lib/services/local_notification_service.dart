@@ -11,6 +11,7 @@ class LocalNotificationService {
 
   static bool get _supportsNotifications =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static bool get supportsNotifications => _supportsNotifications;
 
   static String? takePendingPayload() {
     final payload = pendingPayload.value;

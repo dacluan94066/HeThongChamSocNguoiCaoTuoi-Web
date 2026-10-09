@@ -1,11 +1,11 @@
 // Opt-in end-to-end check: demo login + real HTTP chat, no personal-data questions.
 // All credentials, token and response text remain only in memory.
 require('dotenv').config({ path: require('node:path').resolve(__dirname, '../.env') });
-async function main() {
+async function main(baseOverride) {
   if (!process.env.SEED_PASSWORD) {
     console.log('DEMO_API_CHECK: SKIPPED_NO_DEMO_PASSWORD'); process.exitCode = 2; return;
   }
-  const base = 'http://localhost:' + (process.env.PORT || '5000') + '/api';
+  const base = baseOverride || 'http://localhost:' + (process.env.PORT || '5000') + '/api';
   const send = async (path, body, token) => {
     const response = await fetch(base + path, { method: body ? 'POST' : 'GET',
       headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:63002',
@@ -37,5 +37,14 @@ async function main() {
   console.log('DEMO_API_CHECK: OK_GREETING_AND_FOLLOWUP');
 }
 if (require.main === module) {
-  main().catch(() => { console.log('DEMO_API_CHECK: FAILED_TRANSPORT'); process.exitCode = 1; });
+  const run = async () => {
+    if (!process.argv.includes('--local-app')) return main();
+    const {poolPromise}=require('../src/config/db');
+    const pool=await poolPromise;
+    const server=require('../src/app').listen(0,'127.0.0.1');
+    await new Promise(resolve=>server.once('listening',resolve));
+    try { await main('http://127.0.0.1:'+server.address().port+'/api'); }
+    finally { server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await pool.close(); }
+  };
+  run().catch(() => { console.log('DEMO_API_CHECK: FAILED_TRANSPORT'); process.exitCode = 1; });
 }

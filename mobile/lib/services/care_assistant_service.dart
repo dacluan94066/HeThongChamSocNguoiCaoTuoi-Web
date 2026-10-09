@@ -12,6 +12,12 @@ class AssistantContext {
 class CareAssistantService {
   CareAssistantService({Dio? dio}) : _dio = dio ?? ApiClient.instance.dio;
   final Dio _dio;
+  CancelToken? _pendingChat;
+  void cancelPending() {
+    _pendingChat?.cancel('Conversation changed');
+    _pendingChat = null;
+  }
+
   Future<AssistantContext> loadContext() async {
     try {
       final auth = await _dio.get<Map<String, dynamic>>('/auth/me');
@@ -53,12 +59,19 @@ class CareAssistantService {
     String question, {
     int? elderlyId,
     List<AssistantHistoryTurn> history = const [],
-  }) async => _request(question, elderlyId: elderlyId, history: history);
+    String? conversationToken,
+  }) async => _request(
+    question,
+    elderlyId: elderlyId,
+    history: history,
+    conversationToken: conversationToken,
+  );
 
   Future<AssistantReply> _request(
     String question, {
     int? elderlyId,
     List<AssistantHistoryTurn>? history,
+    String? conversationToken,
   }) async {
     if (question.trim().isEmpty || question.length > 500) {
       throw const ApiException(
@@ -67,6 +80,11 @@ class CareAssistantService {
       );
     }
     try {
+      final cancellation = history == null ? null : CancelToken();
+      if (cancellation != null) {
+        cancelPending();
+        _pendingChat = cancellation;
+      }
       final response = await _dio.post<Map<String, dynamic>>(
         history == null ? '/care-assistant/query' : '/care-assistant/chat',
         data: {
@@ -74,16 +92,23 @@ class CareAssistantService {
           'elderlyId': ?elderlyId,
           if (history != null)
             'history': history.map((turn) => turn.toJson()).toList(),
+          'conversationToken': ?conversationToken,
         },
         options: history == null
             ? null
             : Options(receiveTimeout: const Duration(seconds: 45)),
+        cancelToken: cancellation,
       );
       final data = response.data?['data'];
       if (data is! Map ||
           !['functional', 'ai'].contains(data['mode']) ||
           data['text'] is! String) {
         throw const ApiException('Phản hồi trợ lý không hợp lệ.');
+      }
+      if (elderlyId != null && (data['profile'] as Map?)?['id'] != elderlyId) {
+        throw const ApiException(
+          'Hồ sơ của câu trả lời đã thay đổi. Vui lòng hỏi lại.',
+        );
       }
       return AssistantReply.fromJson(Map<String, dynamic>.from(data));
     } on DioException catch (error) {

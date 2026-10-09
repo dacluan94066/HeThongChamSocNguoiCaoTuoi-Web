@@ -14,10 +14,11 @@ const getMe = async (req, res, next) => {
         nct.HoTen AS hoTen, nct.NgaySinh AS ngaySinh, nct.GioiTinh AS gioiTinh,
         nct.CCCD AS cccd, nct.DiaChi AS diaChi, nct.SoDienThoai AS soDienThoai,
         nct.NhomMau AS nhomMau, nct.BenhNen AS benhNen, nct.DiUng AS diUng,
-        nct.TrangThai AS trangThai, nct.NgayTao AS ngayTao,
+        nct.TrangThai AS trangThai, nct.NgayTao AS ngayTao, nd.Email AS email,
         ncsMain.NguoiChamSocID AS nguoiChamSocId,
         ncsMain.HoTen AS nguoiChamSocTen
       FROM HoSoNguoiCaoTuoi nct
+      JOIN NguoiDung nd ON nd.UserID=nct.UserID
       OUTER APPLY (
         SELECT TOP 1 ncs.NguoiChamSocID, ncs.HoTen
         FROM NguoiCaoTuoi_NguoiChamSoc lk
@@ -38,18 +39,24 @@ const getMe = async (req, res, next) => {
 
 // PUT /api/elderly/me - chi cap nhat ho so gan voi JWT cua NguoiCaoTuoi.
 const updateMe = async (req, res, next) => {
+  let transaction;
   try {
     if (req.user.tenVaiTro !== 'NguoiCaoTuoi') {
       return fail(res, 'Chi nguoi cao tuoi duoc sua ho so cua minh', 'FORBIDDEN', 403);
     }
 
-    const allowed = ['hoTen', 'ngaySinh', 'gioiTinh', 'soDienThoai', 'diaChi', 'nhomMau', 'benhNen', 'diUng'];
+    const allowed = ['hoTen', 'ngaySinh', 'gioiTinh', 'soDienThoai', 'diaChi', 'nhomMau', 'benhNen', 'diUng', 'email'];
     const fields = Object.keys(req.body || {});
     if (!fields.length || fields.some((field) => !allowed.includes(field))) {
       return fail(res, 'Du lieu cap nhat khong hop le; khong duoc sua CCCD', 'INVALID_FIELDS', 400);
     }
 
     const { hoTen, ngaySinh, gioiTinh } = req.body;
+    const email = req.body.email;
+    if (email !== undefined && (typeof email !== 'string' || email.trim().length > 100
+      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))) {
+      return fail(res, 'Email không hợp lệ.', 'INVALID_EMAIL', 400);
+    }
     if (hoTen !== undefined && (typeof hoTen !== 'string' || !hoTen.trim())) {
       return fail(res, 'Ho ten khong duoc de trong', 'INVALID_NAME', 400);
     }
@@ -77,19 +84,49 @@ const updateMe = async (req, res, next) => {
       benhNen: 'BenhNen', diUng: 'DiUng',
     };
     const pool = await poolPromise;
-    const request = pool.request().input('userId', sql.Int, req.user.userId);
-    for (const field of fields) {
+    if (email !== undefined) {
+      // Email belongs to the authenticated account; commit it with its own profile.
+      transaction = new sql.Transaction(pool);
+      await transaction.begin();
+      const duplicate = await new sql.Request(transaction)
+        .input('userId', sql.Int, req.user.userId).input('email', sql.VarChar(100), email.trim())
+        .query('SELECT UserID FROM NguoiDung WITH (UPDLOCK,HOLDLOCK) WHERE Email=@email AND UserID<>@userId');
+      if (duplicate.recordset.length) {
+        await transaction.rollback();
+        transaction = null;
+        return fail(res, 'Email đã được tài khoản khác sử dụng.', 'EMAIL_TAKEN', 409);
+      }
+    }
+    const request = (transaction ? new sql.Request(transaction) : pool.request()).input('userId', sql.Int, req.user.userId);
+    const profileFields = fields.filter(field => field !== 'email');
+    for (const field of profileFields) {
       const value = req.body[field];
       request.input(field, field === 'ngaySinh' ? sql.Date : sql.NVarChar,
         typeof value === 'string' ? value.trim() || null : value);
     }
-    const setters = fields.map((field) => `${columns[field]} = @${field}`).join(', ');
-    const result = await request.query(`UPDATE HoSoNguoiCaoTuoi SET ${setters} WHERE UserID = @userId`);
-    if (!result.rowsAffected[0]) {
+    const setters = profileFields.map((field) => `${columns[field]} = @${field}`).join(', ');
+    const result = await request.query(profileFields.length
+      ? `UPDATE HoSoNguoiCaoTuoi SET ${setters} WHERE UserID = @userId`
+      : 'SELECT NguoiCaoTuoiID FROM HoSoNguoiCaoTuoi WHERE UserID=@userId');
+    if (profileFields.length ? !result.rowsAffected[0] : !result.recordset.length) {
+      if (transaction) { await transaction.rollback(); transaction = null; }
       return fail(res, 'Tai khoan chua co ho so nguoi cao tuoi lien ket', 'ELDERLY_PROFILE_NOT_FOUND', 404);
     }
+    if (transaction) {
+      await new sql.Request(transaction)
+        .input('userId', sql.Int, req.user.userId).input('email', sql.VarChar(100), email.trim())
+        .query('UPDATE NguoiDung SET Email=@email WHERE UserID=@userId');
+      await transaction.commit();
+      transaction = null;
+    }
     return getMe(req, res, next);
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (transaction) { try { await transaction.rollback(); } catch (_) {} }
+    if ([2601, 2627].includes(error.number)) {
+      return fail(res, 'Email đã được tài khoản khác sử dụng.', 'EMAIL_TAKEN', 409);
+    }
+    next(error);
+  }
 };
 
 // ─── LAY DANH SACH ────────────────────────────────────────────────────────────

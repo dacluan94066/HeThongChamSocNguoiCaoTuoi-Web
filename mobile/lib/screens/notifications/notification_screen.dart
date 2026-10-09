@@ -331,11 +331,13 @@ class _NotificationScreenState extends State<NotificationScreen>
                           size: 32,
                         ),
                         const SizedBox(width: 12),
-                        Text(
-                          '$_unreadCount thông báo chưa đọc',
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Text(
+                            '$_unreadCount thông báo chưa đọc',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],

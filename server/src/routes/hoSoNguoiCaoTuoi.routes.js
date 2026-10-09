@@ -10,6 +10,7 @@ const authMiddleware = require('../middlewares/auth.middleware');
 const { checkPermission } = require('../middlewares/permission.middleware');
 const scope = require('../middlewares/mobile-scope.middleware');
 const careAssistant = require('../controllers/careAssistant.controller');
+const mobileProfile = require('../controllers/mobileProfile.controller');
 
 // Tat ca route duoi day deu can xac thuc JWT truoc
 router.use(authMiddleware);
@@ -17,10 +18,16 @@ router.use(scope.loadMobileScope);
 
 router.get('/me', controller.getMe);
 router.get('/me/caregivers', careAssistant.protect, careAssistant.ownCaregivers);
+router.get('/me/alerts', mobileProfile.read('alerts'));
+router.get('/me/appointments', mobileProfile.read('allAppointments'));
+router.get('/me/appointments/upcoming', mobileProfile.read('appointments'));
 router.put('/me', controller.updateMe);
 router.get('/me/health-metrics', healthMetricController.getMine);
 router.post('/me/health-metrics', healthMetricController.createMine);
 router.get('/me/medication-schedule', medicationScheduleController.getMine);
+for(const [suffix,section] of [['medication-schedule','medications'],['health-metrics','health'],['appointments/upcoming','appointments'],['alerts','alerts']]){
+ router.get('/:id/'+suffix,scope.guardResource('HoSoNguoiCaoTuoi','NguoiCaoTuoiID'),mobileProfile.read(section));
+}
 router.get(
   '/:id/prescriptions',
   scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),

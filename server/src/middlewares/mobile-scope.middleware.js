@@ -1,5 +1,6 @@
 const { poolPromise, sql } = require('../config/db');
 const { fail } = require('../utils/response');
+const { boundedQuery } = require('../utils/boundedQuery');
 
 const isMobileRole = (req) => ['NguoiCaoTuoi', 'NguoiChamSoc'].includes(req.user?.tenVaiTro);
 
@@ -9,18 +10,18 @@ const loadMobileScope = async (req, res, next) => {
 
   try {
     const pool = await poolPromise;
-    const result = req.user.tenVaiTro === 'NguoiCaoTuoi'
-      ? await pool.request().input('userId', sql.Int, req.user.userId)
-        .query('SELECT NguoiCaoTuoiID AS id FROM HoSoNguoiCaoTuoi WHERE UserID = @userId')
-      : await pool.request().input('userId', sql.Int, req.user.userId)
-        .query(`
+    const request = pool.request().input('userId', sql.Int, req.user.userId);
+    const statement = req.user.tenVaiTro === 'NguoiCaoTuoi'
+      ? 'SELECT NguoiCaoTuoiID AS id FROM HoSoNguoiCaoTuoi WHERE UserID = @userId'
+      : `
           SELECT DISTINCT lk.NguoiCaoTuoiID AS id
           FROM NguoiChamSoc ncs
           JOIN NguoiCaoTuoi_NguoiChamSoc lk ON lk.NguoiChamSocID = ncs.NguoiChamSocID
           WHERE ncs.UserID = @userId
-            AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
-            AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
-        `);
+            AND lk.NgayBatDau <= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+            AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
+        `;
+    const result = await boundedQuery(request, statement, req.assistantDeadline);
 
     req.mobileElderlyIds = result.recordset.map((row) => Number(row.id));
     next();

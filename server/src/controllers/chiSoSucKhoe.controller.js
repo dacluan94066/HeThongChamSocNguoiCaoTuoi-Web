@@ -49,6 +49,7 @@ const mapMetric = (row) => {
   const giaTri = row.giaTriPhu != null
     ? `${row.giaTri}/${row.giaTriPhu}`
     : String(row.giaTri);
+  const wallTime = row.thoiGianDo instanceof Date ? row.thoiGianDo.toISOString() : row.thoiGianDo;
 
   return {
     id:              row.id,
@@ -58,8 +59,8 @@ const mapMetric = (row) => {
     loaiChiSoLabel:  row.tenChiSo,
     giaTri,
     donVi:           row.donVi || loaiInfo.donVi,
-    ngayDo:          row.thoiGianDo ? new Date(row.thoiGianDo).toISOString().slice(0, 10) : '',
-    gioDo:           row.thoiGianDo ? new Date(row.thoiGianDo).toTimeString().slice(0, 5) : '',
+    ngayDo:          wallTime?.slice(0, 10) || '',
+    gioDo:           wallTime?.slice(11, 16) || '',
     binhThuong:      !row.laBatThuong,
     ghiChu:          row.ghiChu,
   };
@@ -84,7 +85,7 @@ const mapMobileMetric = (row) => ({
   donVi: row.donVi,
   giaTri: Number(row.giaTri),
   giaTriPhu: row.giaTriPhu == null ? null : Number(row.giaTriPhu),
-  thoiGianDo: row.thoiGianDo,
+  thoiGianDo: row.thoiGianDo instanceof Date ? row.thoiGianDo.toISOString().slice(0,19) : row.thoiGianDo,
   laBatThuong: Boolean(row.laBatThuong),
   ghiChu: row.ghiChu,
 });
@@ -136,7 +137,7 @@ const getMine = async (req, res, next) => {
       SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
         c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
-        c.ThoiGianDo AS thoiGianDo, c.LaBatThuong AS laBatThuong,
+        CONVERT(VARCHAR(19),c.ThoiGianDo,126) AS thoiGianDo, c.LaBatThuong AS laBatThuong,
         c.GhiChu AS ghiChu
       FROM ChiSoSucKhoe c
       JOIN LoaiChiSoSucKhoe l ON l.LoaiChiSoID = c.LoaiChiSoID
@@ -239,7 +240,7 @@ const createMine = async (req, res, next) => {
              ThoiGianDo, NguoiDoID, LaBatThuong, GhiChu)
           VALUES
             (@elderlyId, @typeId, @primaryValue, @secondaryValue,
-             SYSDATETIME(), @measuredBy, @isAbnormal, @note);
+              DATEADD(HOUR,7,SYSUTCDATETIME()), @measuredBy, @isAbnormal, @note);
           SET @metricId = SCOPE_IDENTITY();
 
           IF @isAbnormal = 1
@@ -305,7 +306,7 @@ const getAll = async (req, res, next) => {
       if (tenChiSo) { query += ` AND l.TenChiSo=@tenChiSo`; req2.input('tenChiSo', sql.NVarChar, tenChiSo); }
     }
     query += scopedWhere(req, 'c.NguoiCaoTuoiID');
-    query += ` ORDER BY c.ThoiGianDo DESC`;
+    query += ` ORDER BY c.ThoiGianDo DESC,c.ChiSoID DESC`;
     const result = await req2.query(query);
     return ok(res, result.recordset.map(mapMetric));
   } catch (err) { next(err); }
@@ -359,7 +360,8 @@ const create = async (req, res, next) => {
       manuallyAbnormal: binhThuong === false,
     });
 
-    const thoiGianDo = ngayDo && gioDo ? new Date(`${ngayDo}T${gioDo}:00`) : new Date();
+    // mssql transports UTC fields; keep user-entered DATETIME2 wall time unchanged.
+    const thoiGianDo = ngayDo && gioDo ? new Date(`${ngayDo}T${gioDo}:00Z`) : new Date(Date.now()+7*3600000);
     const r = await pool.request()
       .input('nctId', sql.Int, nguoiCaoTuoiId)
       .input('loaiId', sql.Int, loaiChiSoId)

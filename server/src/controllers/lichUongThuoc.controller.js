@@ -73,7 +73,7 @@ const getMine = async (req, res, next) => {
       .input('userId', sql.Int, req.user.userId)
       .query(`SELECT NguoiCaoTuoiID AS id
               FROM HoSoNguoiCaoTuoi
-              WHERE UserID=@userId AND TrangThai=N'DangTheoDoi'`);
+              WHERE UserID=@userId AND TrangThai IN (N'DangTheoDoi',N'CanChamSocDacBiet')`);
     if (!profile.recordset.length) {
       return fail(res, 'Tai khoan chua co ho so nguoi cao tuoi lien ket', 'ELDERLY_PROFILE_NOT_FOUND', 404);
     }
@@ -83,8 +83,8 @@ const getMine = async (req, res, next) => {
       .input('tuNgay', sql.VarChar(10), tuNgay)
       .input('denNgay', sql.VarChar(10), denNgay)
       .query(`
-        DECLARE @tu DATE = COALESCE(CONVERT(DATE, @tuNgay, 23), CONVERT(DATE, @denNgay, 23), CONVERT(DATE, GETDATE()));
-        DECLARE @den DATE = COALESCE(CONVERT(DATE, @denNgay, 23), CONVERT(DATE, @tuNgay, 23), CONVERT(DATE, GETDATE()));
+        DECLARE @tu DATE = COALESCE(CONVERT(DATE, @tuNgay, 23), CONVERT(DATE, @denNgay, 23), CONVERT(DATE, DATEADD(HOUR,7,SYSUTCDATETIME())));
+        DECLARE @den DATE = COALESCE(CONVERT(DATE, @denNgay, 23), CONVERT(DATE, @tuNgay, 23), CONVERT(DATE, DATEADD(HOUR,7,SYSUTCDATETIME())));
 
         SELECT l.LichUongThuocID AS id,
           l.NguoiCaoTuoiID AS nguoiCaoTuoiId,
@@ -99,6 +99,7 @@ const getMine = async (req, res, next) => {
           l.GhiChu AS ghiChu
         FROM LichUongThuoc l
         JOIN DonThuocChiTiet ct ON ct.DonThuocChiTietID=l.DonThuocChiTietID
+        JOIN DonThuoc don ON don.DonThuocID=ct.DonThuocID AND don.NguoiCaoTuoiID=l.NguoiCaoTuoiID
         JOIN DanhMucThuoc dm ON dm.ThuocID=ct.ThuocID
         WHERE l.NguoiCaoTuoiID=@nctId
           AND l.ThoiGianDuKien >= @tu
@@ -128,7 +129,7 @@ const confirmMine = async (req, res, next) => {
       .query(`SELECT l.LichUongThuocID AS id, nct.UserID AS ownerUserId
               FROM LichUongThuoc l
               JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID=l.NguoiCaoTuoiID
-              WHERE l.LichUongThuocID=@id AND nct.TrangThai=N'DangTheoDoi'`);
+              WHERE l.LichUongThuocID=@id AND nct.TrangThai IN (N'DangTheoDoi',N'CanChamSocDacBiet')`);
     if (!ownership.recordset.length) {
       return fail(res, 'Khong tim thay lich uong thuoc', 'MEDICATION_SCHEDULE_NOT_FOUND', 404);
     }
@@ -143,7 +144,7 @@ const confirmMine = async (req, res, next) => {
       .query(`
         UPDATE LichUongThuoc
         SET TrangThai=@trangThai,
-            ThoiGianThucTe=CASE WHEN @trangThai=N'DaUong' THEN SYSDATETIME() ELSE NULL END,
+            ThoiGianThucTe=CASE WHEN @trangThai=N'DaUong' THEN DATEADD(HOUR,7,SYSUTCDATETIME()) ELSE NULL END,
             NguoiXacNhanID=@nguoiXacNhanId
         WHERE LichUongThuocID=@id;
 
@@ -214,7 +215,7 @@ const updateStatus = async (req, res, next) => {
     await pool.request()
       .input('id', sql.Int, req.params.id)
       .input('trangThai', sql.NVarChar, dbVal)
-      .input('thoiGianThucTe', sql.DateTime2, trangThai === 'DA_UONG' ? new Date() : null)
+      .input('thoiGianThucTe', sql.DateTime2, trangThai === 'DA_UONG' ? new Date(Date.now()+7*3600000) : null)
       .input('nguoiXacNhan', sql.Int, req.user.userId)
       .query(`UPDATE LichUongThuoc SET TrangThai=@trangThai,
               ThoiGianThucTe=@thoiGianThucTe, NguoiXacNhanID=@nguoiXacNhan

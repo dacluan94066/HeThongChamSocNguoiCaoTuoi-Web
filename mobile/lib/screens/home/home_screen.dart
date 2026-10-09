@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Map<String, dynamic> profile = {};
   String? profileError;
+  final Set<String> failedSections = {};
   Map<String, String> healthData = {};
   List<Map<String, dynamic>> medicationSchedule = [];
 
@@ -121,12 +122,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         healthData = data;
+        failedSections.remove('sức khỏe');
         loadingHealth = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         healthData = {};
+        failedSections.add('sức khỏe');
         loadingHealth = false;
       });
     }
@@ -168,12 +171,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         medicationSchedule = data;
+        failedSections.remove('thuốc');
         loadingMedication = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         medicationSchedule = [];
+        failedSections.add('thuốc');
         loadingMedication = false;
       });
     }
@@ -184,15 +189,23 @@ class _HomeScreenState extends State<HomeScreen> {
   // =====================================================
 
   Future<void> loadUnreadNotificationCount() async {
-    final count = await NotificationStorage.getUnreadCount();
+    try {
+      final count = await NotificationStorage.getUnreadCount();
 
-    if (!mounted) {
-      return;
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        unreadNotificationCount = count;
+        failedSections.remove('thông báo');
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        failedSections.add('thông báo');
+      });
     }
-
-    setState(() {
-      unreadNotificationCount = count;
-    });
   }
 
   // =====================================================
@@ -200,16 +213,26 @@ class _HomeScreenState extends State<HomeScreen> {
   // =====================================================
 
   Future<void> loadNextAppointment() async {
-    final appointment = await AppointmentStorage.getNextAppointment();
+    try {
+      final appointment = await AppointmentStorage.getNextAppointment();
 
-    if (!mounted) {
-      return;
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        nextAppointment = appointment;
+        failedSections.remove('lịch khám');
+        loadingAppointment = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        nextAppointment = null;
+        failedSections.add('lịch khám');
+        loadingAppointment = false;
+      });
     }
-
-    setState(() {
-      nextAppointment = appointment;
-      loadingAppointment = false;
-    });
   }
 
   // =====================================================
@@ -442,6 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             shape: BoxShape.circle,
                           ),
                           child: IconButton(
+                            tooltip: 'Thông báo',
                             onPressed: openNotifications,
                             icon: const Icon(
                               Icons.notifications_none_rounded,
@@ -494,6 +518,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 // =========================================
                 // HEALTH CARD
                 // =========================================
+                if (failedSections.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Không thể tải ${failedSections.join(', ')}. Kiểm tra kết nối rồi thử lại.',
+                        ),
+                        TextButton(
+                          onPressed: () => loadAllData(refreshProfile: true),
+                          child: const Text('Thử lại'),
+                        ),
+                      ],
+                    ),
+                  ),
                 InkWell(
                   onTap: openHealth,
                   borderRadius: BorderRadius.circular(28),
@@ -590,8 +630,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 8),
 
                         Container(
-                          width: 82,
-                          height: 82,
+                          width:
+                              82 *
+                              MediaQuery.textScalerOf(
+                                context,
+                              ).scale(1).clamp(1.0, 1.2),
+                          height:
+                              82 * MediaQuery.textScalerOf(context).scale(1),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             shape: BoxShape.circle,
@@ -701,11 +746,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Việc hôm nay',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    const Flexible(
+                      child: Text(
+                        'Việc hôm nay',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
 
@@ -789,11 +836,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Lịch khám sắp tới',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    const Flexible(
+                      child: Text(
+                        'Lịch khám sắp tới',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
 
@@ -1210,9 +1259,11 @@ class HealthChip extends StatelessWidget {
 
           const SizedBox(width: 4),
 
-          Text(
-            text,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+          Flexible(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+            ),
           ),
         ],
       ),
@@ -1247,7 +1298,9 @@ class QuickAction extends StatelessWidget {
       borderRadius: BorderRadius.circular(30),
       child: Container(
         width: 78,
-        height: 116,
+        constraints: BoxConstraints(
+          minHeight: 116 * MediaQuery.textScalerOf(context).scale(1),
+        ),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(30),
@@ -1342,6 +1395,7 @@ class TaskItem extends StatelessWidget {
         const SizedBox(width: 8),
 
         Container(
+          constraints: const BoxConstraints(maxWidth: 110),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: statusColor.withValues(alpha: 0.12),

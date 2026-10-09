@@ -14,13 +14,13 @@ const STATUS = {
 
 const mapAppt = (row) => {
   const s = STATUS[row.trangThai] || { ma: row.trangThai, label: row.trangThai };
-  const dt = row.thoiGianKham ? new Date(row.thoiGianKham) : null;
+  const wallTime = row.thoiGianKham instanceof Date ? row.thoiGianKham.toISOString() : row.thoiGianKham;
   return {
     id:              row.id,
     nguoiCaoTuoiId:  row.nguoiCaoTuoiId,
     nguoiCaoTuoiTen: row.nguoiCaoTuoiTen,
-    ngayKham:        dt ? dt.toISOString().slice(0, 10) : '',
-    gioKham:         dt ? dt.toTimeString().slice(0, 5) : '',
+    ngayKham:        wallTime?.slice(0, 10) || '',
+    gioKham:         wallTime?.slice(11, 16) || '',
     noiKham:         row.tenBenhVien,
     lyDoKham:        row.lyDoKham,
     bacSiTen:        row.bacSiPhuTrach,
@@ -41,7 +41,7 @@ const getAll = async (req, res, next) => {
       SELECT l.LichKhamID AS id, l.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         nct.HoTen AS nguoiCaoTuoiTen, l.TenBenhVien AS tenBenhVien,
         l.BacSiPhuTrach AS bacSiPhuTrach, l.ChuyenKhoa AS chuyenKhoa,
-        l.ThoiGianKham AS thoiGianKham, l.LyDoKham AS lyDoKham,
+        CONVERT(VARCHAR(19),l.ThoiGianKham,126) AS thoiGianKham, l.LyDoKham AS lyDoKham,
         l.TrangThai AS trangThai, l.KetQuaKham AS ketQuaKham
       FROM LichKhamBenh l
       JOIN HoSoNguoiCaoTuoi nct ON l.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
@@ -75,7 +75,8 @@ const create = async (req, res, next) => {
       return fail(res, 'Thieu truong bat buoc', 'MISSING_FIELDS', 400);
 
     // Gop ngay + gio thanh DATETIME2
-    const thoiGianKham = new Date(`${ngayKham}T${gioKham}:00`);
+    // Preserve the entered Vietnam wall time in SQL DATETIME2 (UTC transport fields).
+    const thoiGianKham = new Date(`${ngayKham}T${gioKham}:00Z`);
 
     const pool = await poolPromise;
     const r = await pool.request()
@@ -102,7 +103,7 @@ const update = async (req, res, next) => {
     if (!nguoiCaoTuoiId || !ngayKham || !gioKham || !noiKham)
       return fail(res, 'Thieu truong bat buoc', 'MISSING_FIELDS', 400);
 
-    const thoiGianKham = new Date(`${ngayKham}T${gioKham}:00`);
+    const thoiGianKham = new Date(`${ngayKham}T${gioKham}:00Z`);
     const pool = await poolPromise;
     const result = await pool.request()
       .input('id', sql.Int, req.params.id)
