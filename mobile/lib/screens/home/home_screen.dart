@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../assistant/care_assistant_screen.dart';
 
 import '../../services/appointment_storage.dart';
 import '../../services/health_metric_service.dart';
@@ -358,6 +359,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 // =========================================
                 // HEADER
                 // =========================================
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const CareAssistantScreen(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.support_agent_rounded),
+                    label: const Text('Trợ lý chăm sóc'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(48, 52),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     GestureDetector(

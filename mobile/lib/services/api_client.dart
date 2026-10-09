@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -80,7 +81,9 @@ class ApiClient {
 
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:5000/api',
+    defaultValue: kIsWeb
+        ? 'http://localhost:5000/api'
+        : 'http://10.0.2.2:5000/api',
   );
   static const String tokenKey = 'jwt_token';
   static const String userKey = 'auth_user';
@@ -95,6 +98,8 @@ class ApiClient {
   static Future<void> _storageQueue = Future<void>.value();
 
   static int get sessionVersion => _sessionVersion;
+  // Chat lives only in memory and is erased immediately when a session changes.
+  static final ValueNotifier<int> sessionChanges = ValueNotifier<int>(0);
 
   static bool _isPublicAuthPath(String path) {
     final normalized = Uri.parse(path).path.replaceAll(RegExp(r'/+$'), '');
@@ -135,6 +140,7 @@ class ApiClient {
 
   static Future<void> clearSession() {
     _sessionVersion++;
+    sessionChanges.value = _sessionVersion;
     return _enqueueStorage(() async {
       await Future.wait([
         storage.delete(key: tokenKey),
@@ -239,9 +245,11 @@ class ApiException implements Exception {
             DioExceptionType.badCertificate =>
               'Không thể xác minh chứng chỉ bảo mật của máy chủ.',
             _ => switch (error.response?.statusCode) {
+              400 => 'Dữ liệu gửi lên chưa hợp lệ. Vui lòng kiểm tra lại.',
               401 => 'Phiên đăng nhập đã hết hạn hoặc thông tin đăng nhập sai.',
               403 => 'Bạn không có quyền thực hiện thao tác này.',
               404 => 'Không tìm thấy dữ liệu yêu cầu.',
+              409 => 'Dữ liệu bị trùng hoặc xung đột. Vui lòng kiểm tra lại.',
               429 => 'Có quá nhiều yêu cầu. Vui lòng chờ rồi thử lại.',
               final int status when status >= 500 =>
                 'Máy chủ đang gặp lỗi. Vui lòng thử lại sau.',

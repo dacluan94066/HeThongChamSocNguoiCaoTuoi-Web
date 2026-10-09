@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../assistant/care_assistant_screen.dart';
 
 import '../../services/api_client.dart';
 import '../../widgets/foreground_refresh.dart';
@@ -133,6 +134,14 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen>
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Trợ lý chăm sóc',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CareAssistantScreen()),
+            ),
+            icon: const Icon(Icons.support_agent_rounded),
+          ),
           IconButton(
             tooltip: 'Hồ sơ cá nhân',
             onPressed: () => Navigator.push(

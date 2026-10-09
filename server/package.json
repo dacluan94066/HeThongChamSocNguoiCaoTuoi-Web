@@ -14,7 +14,8 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "mssql": "^11.0.1"
+    "mssql": "^11.0.1",
+    "openai": "^7.31.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

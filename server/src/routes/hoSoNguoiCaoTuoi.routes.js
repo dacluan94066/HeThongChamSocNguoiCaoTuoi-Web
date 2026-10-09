@@ -9,12 +9,14 @@ const prescriptionController = require('../controllers/donThuoc.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const { checkPermission } = require('../middlewares/permission.middleware');
 const scope = require('../middlewares/mobile-scope.middleware');
+const careAssistant = require('../controllers/careAssistant.controller');
 
 // Tat ca route duoi day deu can xac thuc JWT truoc
 router.use(authMiddleware);
 router.use(scope.loadMobileScope);
 
 router.get('/me', controller.getMe);
+router.get('/me/caregivers', careAssistant.protect, careAssistant.ownCaregivers);
 router.put('/me', controller.updateMe);
 router.get('/me/health-metrics', healthMetricController.getMine);
 router.post('/me/health-metrics', healthMetricController.createMine);

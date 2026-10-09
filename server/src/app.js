@@ -1,6 +1,6 @@
 // app.js - Cau hinh Express app: middleware, cors, routes, xu ly loi
 const express = require('express');
-const cors = require('cors');
+const { createCorsMiddleware } = require('./middlewares/cors.middleware');
 const morgan = require('morgan');
 
 const apiRoutes = require('./routes/index');
@@ -11,14 +11,17 @@ const app = express();
 
 // ─── MIDDLEWARES ─────────────────────────────────────────────────────────────
 
-// Cho phep CORS tu moi origin (moi truong dev - co the thu hep trong production)
-app.use(cors());
+// Development localhost ports; production explicit origin allowlist only.
+app.use(createCorsMiddleware());
 
 // Parse JSON body cho tat ca request
 app.use(express.json());
 
 // Log request HTTP ra console (dev format: method, url, status, time)
-app.use(morgan('dev'));
+app.use(morgan('dev', {
+  // Never log assistant URLs/query strings, which could contain personal text.
+  skip: (req) => /^\/api\/care-assistant(?:\/|$)/i.test(req.path),
+}));
 
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
 

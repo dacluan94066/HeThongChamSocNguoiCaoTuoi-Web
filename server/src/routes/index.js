@@ -19,6 +19,7 @@ const nhatKyChamSocRoutes  = require('./nhatKyChamSoc.routes');
 const permissionRoutes     = require('./permission.routes');
 const emergencyAlertRoutes = require('./emergencyAlert.routes');
 const notificationRoutes = require('./notification.routes');
+const careAssistantRoutes = require('./careAssistant.routes');
 
 // Mount cac nhom route (phai khop voi axiosClient goi ben frontend)
 router.use('/auth',                  authRoutes);
@@ -37,5 +38,6 @@ router.use('/care-notes',            nhatKyChamSocRoutes);
 router.use('/permissions',           permissionRoutes);
 router.use('/emergency-alerts',      emergencyAlertRoutes);
 router.use('/notifications',         notificationRoutes);
+router.use('/care-assistant',        careAssistantRoutes);
 
 module.exports = router;
