@@ -152,36 +152,7 @@ const getAll = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// PATCH /api/alerts/:id/seen
-const markSeen = async (req, res, next) => {
-  try {
-    const pool = await poolPromise;
-    await pool.request().input('id', sql.Int, req.params.id).input('uid', sql.Int, req.user.userId)
-      .query(`UPDATE CanhBao SET TrangThai=N'DaXem', NguoiXuLyID=@uid WHERE CanhBaoID=@id AND TrangThai=N'ChuaXuLy'`);
-    return ok(res, { id: parseInt(req.params.id) }, 'Da danh dau da xem');
-  } catch (err) { next(err); }
-};
-
-// PATCH /api/alerts/:id/resolve
-const resolve = async (req, res, next) => {
-  try {
-    const ghiChu = String(req.body.ghiChu || '').trim();
-    if (!ghiChu) return fail(res, 'Vui long nhap ghi chu xu ly', 'VALIDATION_ERROR', 400);
-
-    const pool = await poolPromise;
-    const result = await pool.request()
-      .input('id', sql.Int, req.params.id)
-      .input('uid', sql.Int, req.user.userId)
-      .input('ghiChu', sql.NVarChar(500), ghiChu)
-      .query(`
-        UPDATE CanhBao
-        SET TrangThai=N'DaXuLy', NguoiXuLyID=@uid,
-            NgayXuLy=SYSDATETIME(), GhiChuXuLy=@ghiChu
-        WHERE CanhBaoID=@id AND TrangThai <> N'DaXuLy'
-      `);
-    if (!result.rowsAffected[0]) return fail(res, 'Canh bao khong ton tai hoac da duoc xu ly', 'ALERT_NOT_FOUND', 404);
-    return ok(res, { id: parseInt(req.params.id) }, 'Da xu ly canh bao');
-  } catch (err) { next(err); }
-};
-
-module.exports = { getAll, markSeen, resolve };
+const {endpoint}=require('../services/alertWorkflow.service');
+const markSeen=endpoint(req=>({alertId:req.params.id,action:'seen'}));
+const resolve=endpoint(req=>({alertId:req.params.id,action:'resolve',note:req.body.ghiChu}));
+module.exports={getAll,markSeen,resolve};

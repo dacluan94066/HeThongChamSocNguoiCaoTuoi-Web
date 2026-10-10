@@ -16,7 +16,7 @@ function createRepository(pool, sql, deadline = Date.now() + 30000) {
       DECLARE @targetDay DATE = COALESCE(CONVERT(DATE,@targetDate,23),DATEADD(DAY,@dayOffset,CAST(@localNow AS DATE)));\n` + statement, deadline)).recordset;
   };
   const notes = (today) => `SELECT TOP (51) NhatKyID AS id, HoatDong AS hoatDong, MoTaChiTiet AS moTaChiTiet,
-    CONVERT(VARCHAR(19),NgayGhi,126) AS ngayGhi FROM NhatKyChamSoc WHERE NguoiCaoTuoiID=@elderlyId
+    CONVERT(VARCHAR(19),NgayGhi,126) AS ngayGhi FROM NhatKyChamSoc WHERE NguoiCaoTuoiID=@elderlyId AND TrangThai<>N'HUY'
     ${today ? 'AND NgayGhi >= @targetDay AND NgayGhi < DATEADD(DAY,1,@targetDay)' : ''}
     ORDER BY NgayGhi DESC,NhatKyID DESC`;
   const appointments = (today) => `SELECT TOP (51) LichKhamID AS id, TenBenhVien AS tenBenhVien,

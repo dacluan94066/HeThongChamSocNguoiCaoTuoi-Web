@@ -6,7 +6,8 @@ const getMine=async(req,res,next)=>{
   if(!isMobileRole(req))return fail(res,'Đường dẫn này chỉ dành cho tài khoản mobile.','FORBIDDEN',403);
   const pool=await poolPromise;
   const result=await pool.request().query(`SELECT CanhBaoKhanCapID AS id,NguoiCaoTuoiID AS nguoiCaoTuoiId,NoiDung AS noiDung,TrangThai AS trangThai,
-    CONVERT(VARCHAR(19),NgayGui,126) AS ngayGui FROM CanhBaoKhanCap WHERE 1=1 ${scopedWhere(req,'NguoiCaoTuoiID')} ORDER BY NgayGui DESC,CanhBaoKhanCapID DESC`);
+    CONVERT(VARCHAR(19),NgayGui,126) AS ngayGui,NguoiXuLyID AS nguoiXuLyId,
+    CONVERT(VARCHAR(19),NgayXuLy,126) AS ngayXuLy FROM CanhBaoKhanCap WHERE 1=1 ${scopedWhere(req,'NguoiCaoTuoiID')} ORDER BY NgayGui DESC,CanhBaoKhanCapID DESC`);
   return ok(res,result.recordset);
  }catch(error){next(error);}
 };
@@ -84,4 +85,7 @@ const create = async (req, res, next) => {
   }
 };
 
-module.exports = { create, getMine };
+const {endpoint}=require('../services/alertWorkflow.service');
+const markSeen=endpoint(req=>({emergencyId:req.params.id,action:'seen'}));
+const resolve=endpoint(req=>({emergencyId:req.params.id,action:'resolve',note:req.body.ghiChu}));
+module.exports = { create, getMine, markSeen, resolve };

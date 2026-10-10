@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../models/care_assistant.dart';
 
 class AssistantMessageBubble extends StatelessWidget {
@@ -59,14 +60,49 @@ class AssistantMessageBubble extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
               ],
-              SelectableText(
-                message.text,
-                style: TextStyle(
-                  fontSize: 17,
-                  height: 1.45,
-                  color: user ? Colors.white : const Color(0xff1a3029),
+              if (user)
+                SelectableText(
+                  message.text,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    height: 1.45,
+                    color: Colors.white,
+                  ),
+                )
+              else
+                MarkdownBody(
+                  data: message.text,
+                  selectable: true,
+                  softLineBreak: true,
+                  // Model-generated links/images never navigate or load resources.
+                  onTapLink: (_, _, _) {},
+                  imageBuilder: (_, _, _) => const SizedBox.shrink(),
+                  styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
+                      .copyWith(
+                        p: const TextStyle(
+                          fontSize: 17,
+                          height: 1.45,
+                          color: Color(0xff1a3029),
+                        ),
+                        h1: const TextStyle(
+                          fontSize: 20,
+                          height: 1.35,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        h2: const TextStyle(
+                          fontSize: 19,
+                          height: 1.35,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        h3: const TextStyle(
+                          fontSize: 18,
+                          height: 1.35,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        blockSpacing: 8,
+                        listBullet: const TextStyle(fontSize: 17),
+                      ),
                 ),
-              ),
               const SizedBox(height: 8),
               Text(
                 '${two(message.time.hour)}:${two(message.time.minute)}',

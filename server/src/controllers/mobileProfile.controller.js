@@ -16,7 +16,15 @@ const statements={
  appointments:`SELECT LichKhamID AS id,NguoiCaoTuoiID AS nguoiCaoTuoiId,TenBenhVien AS tenBenhVien,BacSiPhuTrach AS bacSiPhuTrach,ChuyenKhoa AS chuyenKhoa,
  CONVERT(VARCHAR(19),ThoiGianKham,126) AS thoiGianKham,TrangThai AS trangThai FROM LichKhamBenh WHERE NguoiCaoTuoiID=@id AND TrangThai=N'ChuaDen' AND ThoiGianKham>=DATEADD(HOUR,7,SYSUTCDATETIME()) ORDER BY ThoiGianKham,LichKhamID`,
  alerts:`SELECT CanhBaoID AS id,NguoiCaoTuoiID AS nguoiCaoTuoiId,LoaiCanhBao AS loaiCanhBao,NoiDung AS noiDung,MucDo AS mucDo,TrangThai AS trangThai,
- CONVERT(VARCHAR(19),NgayTao,126) AS ngayTao FROM CanhBao WHERE NguoiCaoTuoiID=@id ORDER BY NgayTao DESC,CanhBaoID DESC`,
+   CONVERT(VARCHAR(19),NgayTao,126) AS ngayTao,NguonBang AS nguonBang,NguonID AS nguonId,
+   NguoiXuLyID AS nguoiXuLyId,CONVERT(VARCHAR(19),NgayXuLy,126) AS ngayXuLy,GhiChuXuLy AS ghiChuXuLy
+   FROM CanhBao WHERE NguoiCaoTuoiID=@id
+   UNION ALL
+   SELECT NULL,NguoiCaoTuoiID,N'KhanCap',NoiDung,N'KhanCap',
+    CASE TrangThai WHEN N'DangGui' THEN N'ChuaXuLy' WHEN N'DaTiepNhan' THEN N'DaXem' WHEN N'DaXuLy' THEN N'DaXuLy' ELSE N'BoQua' END,
+    CONVERT(VARCHAR(19),NgayGui,126),N'CanhBaoKhanCap',CanhBaoKhanCapID,NguoiXuLyID,CONVERT(VARCHAR(19),NgayXuLy,126),NULL
+   FROM CanhBaoKhanCap s WHERE NguoiCaoTuoiID=@id AND NOT EXISTS(SELECT 1 FROM CanhBao c WHERE c.NguonBang=N'CanhBaoKhanCap' AND c.NguonID=s.CanhBaoKhanCapID)
+   ORDER BY ngayTao DESC,id DESC`,
 };
 const read=section=>async(req,res,next)=>{
  try{

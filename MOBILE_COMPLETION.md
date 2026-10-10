@@ -1,5 +1,148 @@
 # Hoàn thiện mobile và chatbot
 
+## Chatbot hướng dẫn trước khám — bản cập nhật mới nhất 10/10/2026
+
+Nguyên nhân: detectIntent bắt mọi câu chứa “khám” thành appointments; Groq bị ép gọi công cụ. Nếu tool generation lỗi, fallback vẫn tra lịch nên trả “Chưa có lịch khám” cho một câu hỏi hướng dẫn. Đã tách visit_preparation/visit_fasting, trả lời trực tiếp không cần công cụ/lịch cá nhân; thêm hướng dẫn cục bộ an toàn và thông báo dự phòng đúng loại câu hỏi.
+
+Kết quả API thật cổng 5000 qua Dio trong app Android: trước sửa tái hiện AI_TOOL_GENERATION_FAILED và lịch rỗng ở chat mới, lịch rỗng sau chủ đề lịch khám. Sau sửa, chat mới/sau chủ đề lịch khám trả AI hướng dẫn chuẩn bị có BHYT, không trả lịch rỗng. Câu nhịn ăn từng đạt AI hỏi lại; lượt cuối Groq HTTP 200 bị chặn ở output_validation với AI_UNSAFE_OUTPUT và trả đúng hướng dẫn chung hỏi loại khám/xét nghiệm. Một lỗi provider tạm thời trước đó cũng fallback đúng hướng dẫn. HTTP Groq của lỗi cũ không được lưu; không suy đoán mã 400. Response mới ghi mã HTTP/provider/bước/loại lỗi an toàn, không log raw message hay dữ liệu riêng tư.
+
+Regression: **143/143 backend**, **62/62 Flutter**, analyze **No issues found**. Có dấu/không dấu, có/không lịch, không hồ sơ, sau lịch/context cũ, timeout, thiếu cấu hình, quota không retry, hướng dẫn nhịn ăn sai và giữ nhãn thật. Các test này dùng mock; API/Groq thật là lượt xác minh riêng.
+
+Đã build/cài/chạy lại với Flutter trên **23129RAA4G / 51330c42**, Android 15, API 127.0.0.1:5000/api. Phiên debug kết nối, tiến trình còn chạy, không thấy fatal/unhandled trong log kiểm tra. APK giữ riêng **mobile/build/app/outputs/flutter-apk/app-visit-preparation-debug.apk**, 157.171.009 byte, SHA256 **2E642A7A7151F711407E5F8D86E52E2D10B093B066AD27D431CB6BAC92C891E4**. APK trước giữ nguyên. Điện thoại có lúc khóa màn hình; kiểm tra câu trả lời qua API trong isolate thật, không tuyên bố đã gõ toàn bộ kịch bản qua UI.
+
+File bước này: server/src/services/careAssistant.context.js, careAssistant.service.js, careAssistant.ai.js; server/src/controllers/careAssistant.controller.js; server/test/visit-preparation.test.js; mobile/lib/models/care_assistant.dart; mobile/test/visit_preparation_test.dart; mobile/CARE_ASSISTANT.md và báo cáo này. Script probe/log trong mobile/build bị Git ignore, không chứa khóa/token/raw hồ sơ. Không sửa .env, không ghi database app, không reset/commit/push. Lệnh chạy lại USB từ gốc repository: `powershell -ExecutionPolicy Bypass -File mobile/tools/run_android_usb.ps1 -DeviceId 51330c42`.
+
+## Kiểm tra điện thoại USB — mới nhất 10/10/2026
+
+- Thiết bị thật **23129RAA4G**, ID **51330c42**, Android 15/API 35, android-arm64 đã được Flutter/adb nhận diện. Các ghi chú “chưa có Android” bên dưới phản ánh các lượt kiểm tra trước.
+- Xác minh lỗi aapt 36.1.0: APK gốc tồn tại nhưng không đọc được khi đường dẫn Windows có dấu. Cùng file chép sang đường dẫn ASCII đọc manifest thành công. Không thiếu Manifest; không chạy flutter create, không thay SDK/Gradle/dependency.
+- Đồng bộ source chưa commit sang bản sao ASCII có sẵn `C:\Users\MINH\AppData\Local\Temp\elderly-defense-20261010`, chạy `flutter run -d 51330c42 --dart-define=API_BASE_URL=http://127.0.0.1:5000/api`. Build/cài/mở app thành công và có phiên debug Dart VM Service, không phải phương án chỉ adb install.
+- Backend hiện có cổng 5000 trả HTTP 200; thiết lập reverse riêng cho thiết bị. Xác minh URL compile trong isolate Flutter và thực hiện GET không xác thực, chỉ đọc từ Dio của tiến trình Flutter: HTTP 200. Không đọc token, không gửi mật khẩu hoặc dữ liệu hồ sơ.
+- Sau mở khóa, UI hiển thị app và nội dung màn hình đăng nhập. Tiến trình giữ nguyên, không thấy FATAL EXCEPTION, Unhandled Exception hoặc ERROR:flutter trong cửa sổ log kiểm tra. Có cảnh báo GPU/vendor và chậm frame lúc khởi động, không gây crash trong lượt này.
+- APK lưu riêng **mobile/build/app/outputs/flutter-apk/app-usb-device-debug.apk**, 157.171.009 byte, Android arm64, API 127.0.0.1:5000/api. Không ghi đè các APK app-backend, app-sql-test hay app-defense.
+- Chưa kiểm tra đăng nhập tài khoản thật, nhật ký/cảnh báo/chatbot sau đăng nhập trên điện thoại; không SOS, sửa hồ sơ hoặc ghi database app. Không gỡ app, không xóa dữ liệu điện thoại; không reset/commit/push.
+- File bổ sung trong bước này: `mobile/tools/run_android_usb.ps1`; cập nhật RUN_GUIDE.md và báo cáo này. Script đã kiểm tra cú pháp PowerShell; phiên chạy thực tế sử dụng lệnh trực tiếp trên bản sao ASCII nêu trên, không tuyên bố đã chạy toàn bộ script mới.
+
+## Bổ sung khoảng trống — kết quả mới nhất 10/10/2026
+
+Phần này thay thế các giới hạn về sửa/xóa nhật ký, xử lý SOS và kiểm tra Groq trong báo cáo cũ bên dưới. Giữ nguyên thay đổi chưa commit trên nhánh minh; không sửa .env, không migration/schema hoặc ghi dữ liệu vào database app, không reset/commit/push.
+
+### Các luồng vừa hoàn thiện
+
+- SOS: `PATCH /api/emergency-alerts/:id/seen` và `/resolve`; dùng chung transaction với các API `/alerts/:id/seen|resolve`. Hai bảng CanhBao và CanhBaoKhanCap cùng chuyển trạng thái, cùng lưu tài khoản/thời điểm xử lý. Thứ tự là tiếp nhận rồi xử lý; thao tác lặp hoặc chuyển sai trả 409. Transaction khóa bản ghi và kiểm tra lại tài khoản, quyền, phân công đang hiệu lực; caregiver ngoài phạm vi trả 403. BIT false/0 không cấp quyền.
+- SOS cũ chưa có CanhBao vẫn xuất hiện trên mobile từ dữ liệu SOS thật. Khi người có quyền tiếp nhận, backend tạo bản ghi liên quan trong cùng transaction, giữ nguyên ID và lịch sử SOS. Thao tác bị từ chối không để lại bản ghi mới; không backfill database app. Kiểm tra chỉ đọc database app thấy một SOS chưa liên kết, không sửa bản ghi đó.
+- Nhật ký: `PATCH /api/care-notes/:id` sửa nội dung; `DELETE /api/care-notes/:id` xóa mềm bằng TrangThai=HUY đã có trong schema. Chỉ người tạo đang được phân công hoặc Admin được sửa/xóa. Version tính từ dữ liệu hiện có ngăn ghi đè thay đổi đồng thời; không thêm cột. Danh sách mobile và công cụ chatbot loại bỏ nhật ký đã hủy.
+- Mobile: có nút sửa/xóa theo quyền từ backend, xác nhận trước xóa, khóa thao tác lặp, giữ nháp/hộp thoại khi lỗi và bỏ phản hồi phiên cũ. Khi 409, giữ nháp; cần đọc lại bản ghi mới trước khi lưu lại, không gửi lặp version cũ. Banner SOS cập nhật theo trạng thái vừa tải thay vì dữ liệu đầu vào cũ.
+
+### Bằng chứng và môi trường
+
+| Kiểm tra | Kết quả | Phạm vi |
+|---|---|---|
+| Backend tests | 132/132 pass | Mock; không gọi AI thật |
+| Flutter tests | 60/60 pass | Widget/service mock, có sửa/xóa và giữ nháp khi lỗi |
+| Flutter analyze | No issues found | Source mobile hiện tại |
+| API ghi và đối chiếu SQL | PASS_SQL_EDIT_SOFT_DELETE_SOS_SYNC_ROLLBACK_RACE | Express và SQL Server thật, database riêng chỉ chứa dữ liệu giả |
+| Flutter Web + SQL | SQL_CONFIRMED_EDIT_SOFT_DELETE_SOS_RESOLVE | UI thật trong Chrome; tạo/sửa/xóa nhật ký, gửi/tiếp nhận/xử lý SOS và các thao tác ghi cũ |
+| Groq SDK thật | OK_SYNTHETIC_TOOLS_AND_FOLLOWUP | Một lượt script, hai request cho dữ liệu lịch khám giả lập; không đọc hồ sơ app |
+| Backend app | HTTP 200, pool SQL kết nối; OPTIONS auth 204 | Cổng 5000, chỉ kiểm tra kết nối; không thao tác ghi hồ sơ thật |
+| Android | Build hai APK thành công | Không có điện thoại/emulator; chưa kiểm tra chạy trên Android |
+
+Database kiểm thử hiện tại: **CareAssistant_Test_1791618532545_240159**. Script kiểm tra tên/đặc điểm fixture trước khi ghi. Kiểm thử gồm phân công thu hồi, sai vai trò/khác tác giả, version cũ, chuyển trạng thái sai, hai request đồng thời, SOS cũ thiếu bản ghi liên quan và lỗi SQL buộc rollback. Trigger gây lỗi chỉ được tạo rồi gỡ trong database kiểm thử; không tạo trên app. Không cần migration vì schema hiện có đủ trạng thái và cột người/thời điểm xử lý.
+
+Kiểm tra Groq thật khác với test mock và khác với thao tác UI: đã xác minh SDK/tool calling/câu tiếp nối bằng dữ liệu giả, chưa xác minh chatbot trên điện thoại. Không retry quota liên tục, không đổi provider/billing. Các công cụ AI vẫn chỉ đọc; AI không tự gửi SOS hay sửa nhật ký.
+
+### APK hiện tại
+
+| APK trong mobile/build/app/outputs/flutter-apk | API compile | Mục đích |
+|---|---|---|
+| app-backend-debug.apk | http://127.0.0.1:5000/api | Backend app dùng SQL thật; USB cần adb reverse cổng 5000 |
+| app-sql-test-debug.apk | http://127.0.0.1:5059/api | Source mới với backend SQL kiểm thử; chỉ dữ liệu giả |
+| app-defense-debug.apk | http://127.0.0.1:5059/api | APK kiểm thử cũ, giữ nguyên; chưa có sửa/xóa nhật ký mới |
+
+SHA256 bản backend: **907994E19B6B0320937844D93424B9D5BC18EDFE5F544EF2E33E30FFD4076CD6**, 180.020.775 byte.
+
+SHA256 bản SQL kiểm thử mới: **218C9F358168CC068ECDEA9C26662FF95F2816D83EB0EC42B294AA752968BB37**, 180.019.462 byte.
+
+SHA256 bản kiểm thử cũ giữ nguyên: **D7579AC49901CC7E203D34FBACEDC0C95F63E124F4933D4972CC261C34BB6BC3**. Ba bản có cùng applicationId; cài bản khác thay thế ứng dụng, cần đăng xuất khi đổi backend. Build dùng bản sao source đường dẫn ASCII và thư mục build riêng; không ghi đè APK cũ.
+
+### File liên quan trong bước bổ sung
+
+- Backend: controllers canhBao, emergencyAlert, mobileProfile, nhatKyChamSoc; routes emergencyAlert và nhatKyChamSoc; services mới alertWorkflow và careNoteMutation; careAssistant.repository lọc nhật ký hủy.
+- Mobile: caregiver_elderly_detail_screen, caregiver_dashboard_service, care_notes_screen, care_notes_service; widget mới delete_care_note_dialog.
+- Kiểm thử: mobile-write-workflows.test.js, care_notes_test.dart; scripts verify_mobile_flows.js và verify_mobile_ui_flow.js.
+- Bàn giao: RUN_GUIDE.md, DEMO_GUIDE.md, MOBILE_COMPLETION.md, mobile/CARE_ASSISTANT.md. Các thay đổi của bước trước được giữ nguyên.
+
+Chạy demo hai vai trò với database kiểm thử và APK app-sql-test-debug.apk theo [DEMO_GUIDE.md](DEMO_GUIDE.md). Bản app-backend-debug.apk kết nối dữ liệu app: không dùng tài khoản/hồ sơ người thật để thử SOS. Lệnh và thư mục chạy nằm trong [RUN_GUIDE.md](RUN_GUIDE.md). Chưa xác minh USB/Wi-Fi, bàn phím/back hoặc notification nền trên Android; không có bằng chứng FCM/SMS. Groq có thể bị quota và sẽ dự phòng rõ chế độ.
+
+## Lịch sử: kiểm tra trước bước bổ sung, 10/10/2026
+
+Phần này là kết quả chạy lại trên source hiện tại của nhánh minh; báo cáo 09/10 bên dưới được giữ như lịch sử, không dùng thay bằng chứng mới. Không tìm thấy AGENTS.md trong project. Đã đọc CARE_ASSISTANT.md và đối chiếu code/API/schema. Không sửa .env, schema/database app, không reset/clean/merge/commit/push.
+
+### Lỗi sửa và chức năng hoàn thiện
+
+- Splash: đọc token nằm trong khối xử lý lỗi; lỗi đọc phiên không còn làm khôi phục phiên treo mà không có phản hồi. Lỗi mạng giữ phiên và cho thử lại.
+- Caregiver: thêm màn hình nhật ký đọc/tạo từ API care-notes đã có, gắn đúng hồ sơ đang mở; không thêm API sửa/xóa. Form giữ nháp khi lỗi, khóa gửi trùng/back khi đang lưu, chặn phản hồi của phiên/hồ sơ cũ.
+- Nhật ký backend: kiểm tra phạm vi hồ sơ, loại/độ dài nội dung; lấy caregiver từ tài khoản xác thực. Ngày/giờ SQL xuất dạng wall time Việt Nam, không phụ thuộc timezone máy Node; ghi giờ UTC+7.
+- Cảnh báo: bỏ lần tải lại không được bắt lỗi trong nhánh lỗi mạng; giữ nháp kết quả xử lý khi mở lại hộp thoại. Hộp thoại cuộn với chữ lớn/bàn phím. Trạng thái được cập nhật khi API ghi thành công; lỗi tải lại sau đó được báo riêng, không giả báo thao tác ghi thất bại.
+- Backend xử lý cảnh báo: từ chối ghi chú sai kiểu/quá 500 ký tự thay vì chuyển object thành chuỗi hoặc bị cắt nội dung; ghi thời gian xử lý UTC+7.
+- Fixture: --fixture-only tạo database mới theo ngày hiện tại, chỉ DDL và dữ liệu giả; không truy cập database app. Script kiểm tra thêm danh tính caregiver/người nhận, journal/alerts/token/context và đối chiếu SQL.
+
+### Môi trường và bằng chứng mới
+
+- Node 24; Flutter 3.38.5, Dart 3.10.4; Android SDK 36.1, Java 21. flutter devices chỉ có Windows/Chrome/Edge, không có Android/emulator. Một số Android licenses chưa chấp nhận, nhưng build với SDK đã cài chạy được.
+- Database mới: **CareAssistant_Test_1791616066840_ccaf36**, giữ lại để kiểm tra. Hai hồ sơ TEST ONLY A/B, một caregiver giả số 0000000000, ba tài khoản test.elder.a/b và test.caregiver. Mật khẩu/JWT sinh trong bộ nhớ, không in ra hoặc lưu tài liệu.
+- API thật: Express/JWT/SQL Server tại 127.0.0.1:5059; không mock SQL, không gửi SOS tới người thật, không gọi điện/SMS/AI.
+- UI thật: Flutter Web biên dịch, Chrome headless, cổng 5039 proxy API 5059; không giả lập response. Chụp màn hình trong mobile/build/; chỉ dữ liệu giả. Đây không phải kiểm tra Android.
+- Mock: **backend 121/121**, **Flutter 57/57**; flutter analyze toàn bộ project **No issues found**. Test AI không gọi dịch vụ thật.
+
+| Luồng | Kết quả trong lượt này | Loại bằng chứng |
+|---|---|---|
+| Đăng nhập hai vai trò, đăng xuất, đổi tài khoản | Đạt; vào đúng trang và dữ liệu đúng vai trò | HTTP/SQL và UI Web thật |
+| Khôi phục phiên đúng vai trò | Đạt test caregiver từ phiên lưu; hardening lỗi đọc token | Widget mock và đọc code; chưa cold start Android |
+| Token hết hạn và phản hồi phiên cũ | API trả 401; client xóa token/user; 200/401 cũ không ảnh hưởng tài khoản mới | HTTP thật và interceptor test mock |
+| Trang chủ, thuốc, lịch khám, sức khỏe, người chăm sóc, hồ sơ | Đọc đúng phạm vi; UI mở/quay lại được | API SQL và UI Web thật |
+| Xác nhận thuốc, đọc thông báo, sửa hồ sơ | Đạt, đối chiếu trực tiếp SQL; đầu vào lỗi không ghi địa chỉ mới | API, UI Web, SQL |
+| Caregiver A/B và assignment hết hạn | Chuyển đúng A/B; assignment bị thu hồi trả 403 | API thật và UI Web thật |
+| Nhật ký tạo/đọc | Ghi đúng A + caregiver, thời gian khớp SQL; B không thấy nhật ký A | API/SQL, UI Web, mock lỗi/nháp/gửi trùng |
+| Cảnh báo thường tiếp nhận/xử lý | Trạng thái/handler/ghi chú lưu SQL; xử lý lại bị từ chối; lỗi mạng không mất nháp | API SQL thật, UI widget mock |
+| SOS và thông báo người nhận | Ghi SOS A, notification tới UserID caregiver giả, B không thấy SOS A | API/SQL và UI Web gửi SOS thật trong DB giả |
+| Chatbot tiếp nối/đổi chủ đề/đổi hồ sơ | Lịch khám → còn mấy ngày → thuốc khớp hàng dữ liệu nguồn; context A sang B bị 400 | API thật ở mode functional và test mock AI |
+| Chữ lớn, nhỏ, bàn phím, back, offline | Đạt test liên quan; sửa lỗi overflow ở nhật ký | Widget mock; UI Web có thao tác quay lại và giả lập viewport |
+
+### APK và cách chạy
+
+- APK cuối: **mobile/build/app/outputs/flutter-apk/app-defense-debug.apk** (debug, ignored bởi Git).
+- Dung lượng 180.013.578 byte; SHA256: D7579AC49901CC7E203D34FBACEDC0C95F63E124F4933D4972CC261C34BB6BC3. Build lại sau bản sửa cuối, không dùng APK của báo cáo 09/10.
+- URL compile: **http://127.0.0.1:5059/api**. Dùng server database giả lập và adb reverse tcp:5059 tcp:5059. Wi-Fi cần build/run lại bằng IP LAN; không dùng APK localhost trực tiếp.
+- Source được copy sang đường dẫn ASCII trong TEMP để tránh lỗi Gradle đường dẫn có dấu; thư mục build junction sang ổ D của project. Không đổi source hoặc xóa build cũ.
+- Xem [RUN_GUIDE.md](RUN_GUIDE.md) cho lệnh, thư mục chạy, cấu hình .env riêng và cách USB/Wi-Fi/Web; [DEMO_GUIDE.md](DEMO_GUIDE.md) cho kịch bản hai vai trò khoảng 7 phút.
+
+### Chưa xác minh / giới hạn
+
+- Không có điện thoại/emulator: chưa xác minh thao tác trên Android, USB/Wi-Fi thực tế, bàn phím/back Android, cuộc gọi, notification nền/permission nhắc thuốc. Build thành công chỉ chứng minh biên dịch.
+- Không gọi Groq thật trong lượt này; quota/chất lượng kết nối AI hiện tại chưa xác minh. Lỗi/timeout/quota/injection/an toàn không ghi dữ liệu được kiểm tra bằng mock; API giả lập dùng fallback rõ chế độ.
+- CanhBaoKhanCap chưa có endpoint thay đổi trạng thái SOS. Cảnh báo thường trong CanhBao có API xử lý; không coi việc xử lý cảnh báo thường là đã xử lý trạng thái SOS riêng.
+- Nhật ký chưa có endpoint sửa/xóa; hoàn thiện tạo/đọc và không tự mở rộng schema/API ngoài chức năng sẵn có.
+- Thông báo SOS hiện là in-app SQL/API; không có bằng chứng SMS/FCM hoặc push khi app bị đóng. Không tuyên bố đây là hệ thống cứu hộ thực tế.
+
+### File thay đổi trong lượt này
+
+- mobile/lib/main.dart
+- mobile/lib/screens/caregiver/caregiver_elderly_detail_screen.dart
+- mobile/lib/screens/caregiver/care_notes_screen.dart (mới)
+- mobile/lib/services/care_notes_service.dart (mới)
+- mobile/test/care_notes_test.dart (mới)
+- mobile/test/session_lifecycle_test.dart (mới)
+- mobile/test/caregiver_alert_test.dart (mới)
+- server/src/controllers/nhatKyChamSoc.controller.js
+- server/src/controllers/canhBao.controller.js
+- server/scripts/verify_assistant_positive_api.js
+- server/scripts/verify_mobile_flows.js
+- server/scripts/verify_mobile_ui_flow.js
+- MOBILE_COMPLETION.md, RUN_GUIDE.md (mới), DEMO_GUIDE.md (mới), mobile/CARE_ASSISTANT.md
+
+---
+
 ## Bổ sung 09/10/2026: mobile ngoài chatbot, ưu tiên Android
 
 ### Thiết bị và APK
@@ -279,3 +422,10 @@ Flutter: 27/27 test đạt; analyzer không có vấn đề. Web build cần out
 - Bản ghi lịch sử đã lưu lệch giờ từ trước không thể tự suy luận giờ đúng; không rewrite dữ liệu cũ. Đã sửa cách đọc/ghi cho luồng hiện tại, kiểm thử giờ nhập không bị dịch theo timezone máy.
 - Hiểu câu tự nhiên vẫn có giới hạn; câu chưa rõ trả lời/hỏi lại ngắn, không tự tạo dữ liệu.
 - Cần khởi động lại backend đang chạy để nạp code mới. Không có thay đổi cấu hình bí mật hoặc nhà cung cấp.
+# Kiểm tra bổ sung chatbot Android — 10/10/2026
+
+Đã sửa bố cục tiêu đề/hồ sơ → danh sách tin nhắn Expanded → ô nhập SafeArea đáy; hỗ trợ nhiều dòng có giới hạn, Markdown an toàn và giữ vị trí đọc tin cũ. Thay đổi prompt ưu tiên câu trả lời ngắn, giữ quy tắc sức khỏe và chế độ dự phòng.
+
+Kết quả: backend 143/143; Flutter 65/65; chạy lại test bố cục sau chỉnh cuối 3/3; Flutter analyze cuối: No issues found. Build APK ARM64 thành công, bản riêng `mobile/build/app/outputs/flutter-apk/app-chat-layout-debug.apk`, API USB `http://127.0.0.1:5000/api`. Mock không phải bằng chứng AI thật.
+
+Thiết bị 51330c42 có kết nối adb. Integration test Android chạy tới kiểm tra giữ vị trí đọc tin cũ, nhưng kiểm tra IME thất bại (inset 0); bản test bổ sung mở bàn phím chưa chạy xong vì cài đặt bị Android chặn. Cài app thường bằng `adb install -r` cũng trả `INSTALL_FAILED_USER_RESTRICTED`. Package/activity hiện không tìm thấy; không khẳng định app mới đã mở hoặc dữ liệu app đã được giữ. Chưa xác minh trọn vẹn bàn phím thật, chữ lớn và thanh điều hướng với APK cuối. Cần bật/chấp nhận cài đặt USB trên điện thoại; không tiếp tục cơ chế cài Flutter tự thử gỡ app khi lỗi.

@@ -52,24 +52,39 @@ class AssistantReply {
   final String? aiFailureCode;
   final String? conversationToken;
   String get modeLabel => mode == 'ai' ? 'AI' : 'Trợ lý theo chức năng';
-  String? get modeNotice => switch (modeReason) {
-    'capabilities' => 'Giới thiệu chức năng có sẵn trong ứng dụng.',
-    'grounded_data' => null,
-    'missing_config' => 'AI chưa được cấu hình. Đang tra cứu theo chức năng.',
-    'ai_unavailable' => switch (aiFailureCode) {
-      'AI_RATE_LIMITED' =>
-        'Dịch vụ AI đã đạt hạn mức. Đang dùng tra cứu dự phòng.',
-      'AI_TIMEOUT' =>
-        'AI trả lời quá thời gian chờ. Đang dùng tra cứu dự phòng.',
-      'AI_TOOL_GENERATION_FAILED' =>
-        'AI chưa xử lý được câu hỏi này. Đang dùng tra cứu dự phòng.',
-      'AI_HTTP_401' || 'AI_HTTP_403' =>
-        'Dịch vụ AI từ chối truy cập. Cần kiểm tra cấu hình backend. Đang dùng tra cứu dự phòng.',
-      _ => 'AI tạm thời không khả dụng. Đang dùng tra cứu dự phòng.',
-    },
-    'safety' => 'Hướng dẫn an toàn theo chức năng.',
-    _ => null,
-  };
+  String? get modeNotice {
+    if (mode != 'ai' &&
+        (intent == 'visit_preparation' || intent == 'visit_fasting') &&
+        (modeReason == 'missing_config' || modeReason == 'ai_unavailable')) {
+      final reason = modeReason == 'missing_config'
+          ? 'AI chưa được cấu hình.'
+          : aiFailureCode == 'AI_RATE_LIMITED'
+          ? 'Dịch vụ AI đã đạt hạn mức.'
+          : aiFailureCode == 'AI_TIMEOUT'
+          ? 'AI trả lời quá thời gian chờ.'
+          : 'AI tạm thời không khả dụng.';
+      return '$reason Đang dùng hướng dẫn chung theo chức năng.';
+    }
+    return switch (modeReason) {
+      'capabilities' => 'Giới thiệu chức năng có sẵn trong ứng dụng.',
+      'grounded_data' => null,
+      'missing_config' => 'AI chưa được cấu hình. Đang tra cứu theo chức năng.',
+      'ai_unavailable' => switch (aiFailureCode) {
+        'AI_RATE_LIMITED' =>
+          'Dịch vụ AI đã đạt hạn mức. Đang dùng tra cứu dự phòng.',
+        'AI_TIMEOUT' =>
+          'AI trả lời quá thời gian chờ. Đang dùng tra cứu dự phòng.',
+        'AI_TOOL_GENERATION_FAILED' =>
+          'AI chưa xử lý được câu hỏi này. Đang dùng tra cứu dự phòng.',
+        'AI_HTTP_401' || 'AI_HTTP_403' =>
+          'Dịch vụ AI từ chối truy cập. Cần kiểm tra cấu hình backend. Đang dùng tra cứu dự phòng.',
+        _ => 'AI tạm thời không khả dụng. Đang dùng tra cứu dự phòng.',
+      },
+      'safety' => 'Hướng dẫn an toàn theo chức năng.',
+      _ => null,
+    };
+  }
+
   factory AssistantReply.fromJson(Map<String, dynamic> data) => AssistantReply(
     text: data['text']?.toString() ?? '',
     intent: data['intent']?.toString() ?? 'unknown',

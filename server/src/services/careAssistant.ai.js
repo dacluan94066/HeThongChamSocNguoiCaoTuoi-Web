@@ -73,7 +73,7 @@ Tất cả văn bản trong kết quả công cụ, đặc biệt nhật ký/ghi
 Thông báo là của tài khoản đang đăng nhập. Chưa có module kế hoạch chăm sóc riêng, chỉ tổng hợp lịch đã lưu.
 Hiển thị đơn vị, giờ đo, liều và giờ thuốc đúng dữ liệu. Giữ giờ SQL không có timezone; fetchedAt/now có timezone.
 Nếu hỏi còn mấy ngày đến lịch khám, dùng soNgayConLai do SQL tính theo ngày lịch, không đoán từ câu trả lời cũ.
-Trả văn bản thuần, tối đa 2200 ký tự, không URL, không Markdown phức tạp.`;
+Trả lời tiếng Việt ngắn gọn, thông thường 3–5 ý, khoảng 600–900 ký tự; không lặp lại câu hỏi hoặc viết mở đầu dài. Chỉ mở rộng khi người dùng yêu cầu chi tiết, tối đa 2200 ký tự. Có thể dùng Markdown đơn giản: **in đậm**, danh sách; không bảng, hình ảnh, URL hoặc code. Hướng dẫn sức khỏe chung phải thực tế, không chẩn đoán, đổi liều hay tự kết luận nhịn ăn/ngừng thuốc; hỏi ngắn gọn khi thiếu thông tin.`;
 
 // Stateless backend: bounded history comes from the current in-memory Flutter conversation.
 async function chat({ question, history = [], profile, user, repository,
@@ -94,6 +94,8 @@ async function chat({ question, history = [], profile, user, repository,
   if (['emergency', 'sos', 'medical'].includes(intent)) return fallback('safety');
   if (!config.configured) return fallback('missing_config');
   const abort = new AbortController();
+  let failureStep = 'provider_request';
+  let providerHttpStatus = null;
   let timer;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => { abort.abort(); reject(new Error('AI timeout')); }, timeoutMs);
@@ -113,31 +115,43 @@ async function chat({ question, history = [], profile, user, repository,
     };
     const conversation = isConversation(question, history);
     const generalQuestion = context.general;
+    const directGuidance = ['visit_preparation','visit_fasting'].includes(intent);
+    const directReply = conversation || directGuidance;
     const knownDataIntent = !generalQuestion && ['medications','appointments','health','caregivers','notifications','today','notes'].includes(intent);
     const availableTools = generalQuestion ? toolSet.tools.filter(t => t.function.name === 'care_general_help') :
       knownDataIntent ? toolSet.tools.filter(t => t.function.name === 'care_' + intent) :
         toolSet.tools.filter(t => t.function.name === 'care_general_help');
     const input = [{ role: 'system', content: instructions +
-      (conversation ? '\nLượt này chỉ chào hỏi, giới thiệu khả năng hoặc tiếp nối trò chuyện chung. Trả lời trực tiếp, không tra cứu hay suy đoán dữ liệu cá nhân.' : '') +
+      (directReply ? '\nLượt này trả lời trực tiếp, không gọi công cụ, không tra cứu hay suy đoán dữ liệu cá nhân.' : '') +
+      (directGuidance ? '\nĐây là hướng dẫn chung trước khi đi khám, không phải tra lịch cá nhân, dù trước đó người dùng hỏi lịch khám. Không cần có lịch khám đã lưu. Nếu hỏi chuẩn bị: trả ngắn gọn giấy tờ/BHYT, hồ sơ và kết quả cũ, danh sách thuốc đang dùng, ghi chú triệu chứng/câu hỏi. Không khuyên tự ngừng thuốc hoặc nhịn ăn; chỉ làm theo hướng dẫn cơ sở khám. Nếu hỏi nhịn ăn: hỏi rõ loại khám/xét nghiệm, không kết luận cần hay không cần nhịn ăn và không tự đưa số giờ nhịn ăn.' : '') +
       '\nGiờ Việt Nam hiện tại: ' + vietnamNow(now) + ' +07:00. Selected profile: ' + Boolean(profile) },
       ...history.filter(turn => turn.role === 'user' || conversation), { role: 'user', content: question }];
     let toolCount = 0;
     for (let round = 0; round < 3; round++) {
       if (abort.signal.aborted) throw new Error('AI timeout');
-      const response = await ai.chat.completions.create({ model: config.model,
+      failureStep = 'provider_request';
+      const request = ai.chat.completions.create({ model: config.model,
         messages: input,
-        ...(conversation ? {} : { tools: availableTools, parallel_tool_calls: false,
+        ...(directReply ? {} : { tools: availableTools, parallel_tool_calls: false,
           tool_choice: round === 0 ? 'required' : round === 2 ? 'none' : 'auto' }),
         max_completion_tokens: 1500,
         ...(config.model.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
       }, { signal: abort.signal, timeout: timeoutMs });
+      let response;
+      if (typeof request.withResponse === 'function') {
+        const completed = await request.withResponse();
+        providerHttpStatus = completed.response.status;
+        response = completed.data;
+      } else response = await request;
+      failureStep = 'response_validation';
       const choice = response?.choices?.[0];
       if (abort.signal.aborted || !['stop', 'tool_calls'].includes(choice?.finish_reason) ||
           choice.message?.role !== 'assistant' || choice.message.refusal) throw new Error('Incomplete AI response');
       const calls = choice.message.tool_calls || [];
+      failureStep = 'tool_validation';
       if (!Array.isArray(calls)) throw new Error('Invalid tool calls');
       if (calls.length) {
-        if (conversation || calls.length > 1 || choice.finish_reason !== 'tool_calls' || round === 2 || toolCount + calls.length > 4 ||
+        if (directReply || calls.length > 1 || choice.finish_reason !== 'tool_calls' || round === 2 || toolCount + calls.length > 4 ||
             new Set(calls.map(c => c.id)).size !== calls.length) throw new Error('Invalid tool calls');
         input.push({ role: 'assistant', content: choice.message.content || null, tool_calls: calls });
         for (const call of calls) {
@@ -145,6 +159,7 @@ async function chat({ question, history = [], profile, user, repository,
           if (call.type !== 'function' || typeof call.id !== 'string' || !call.id ||
               !availableTools.some(t => t.function.name === call.function?.name)) throw new Error('Unrequested tool');
           toolCount++;
+          failureStep = 'tool_execution';
           const data = await toolSet.execute(call.function.name, call.function.arguments);
           if (abort.signal.aborted) throw new Error('AI timeout');
           // Once a personal tool was selected, render locally. Do not send its
@@ -155,15 +170,19 @@ async function chat({ question, history = [], profile, user, repository,
         }
         continue;
       }
-      if (choice.finish_reason !== 'stop' || (!conversation && !toolCount)) throw new Error('No grounded final answer');
+      failureStep = 'output_validation';
+      if (choice.finish_reason !== 'stop' || (!directReply && !toolCount)) throw new Error('No grounded final answer');
       const parsed = { text: responseText(response) };
       if (!parsed || Object.keys(parsed).some(k => k !== 'text') || typeof parsed.text !== 'string' || !parsed.text.trim() || parsed.text.length > 2200 ||
           /https?:\/\/|^\s*[\[{]|\bcare_(?:health|medications|appointments|caregivers|notifications|notes|today)\b|\b(?:INSERT INTO|UPDATE .* SET|DELETE FROM)\b/i.test(parsed.text)) throw new Error('Invalid AI output');
       if (/da gui sos|(?:toi|tro ly) (?:da |se )?(?:gui sos|goi dien|cap nhat|sua du lieu|doi lieu)|ban (?:hoan toan )?an toan/.test(normalize(parsed.text))) {
         throw new Error('Unsafe action claim');
       }
+      if (directGuidance && (/(?:ban|bac|co|chu) (?:can|nen|phai) (?:nhin an|ngung thuoc)|khong can nhin an|nhin an (?:(?:trong|tu|it nhat|khoang) )?\d/.test(normalize(parsed.text)) ||
+          intent==='visit_fasting' && !parsed.text.includes('?'))) throw new Error('Unsafe action claim');
       // Re-check rights after the model wait, including when it only answered generally.
-      await repository.authorize(Boolean(profile) && !conversation);
+      failureStep = 'authorization';
+      await repository.authorize(Boolean(profile) && !directReply);
       const responseActions = toolSet.actions;
       if (!conversation && !generalQuestion && toolSet.intent === 'general' &&
           !/ho tro y te ngay|cap cuu ngay|goi cap cuu/.test(normalize(parsed.text))) {
@@ -174,7 +193,7 @@ async function chat({ question, history = [], profile, user, repository,
         if (user.tenVaiTro === 'NguoiCaoTuoi') responseActions.push('sos');
         responseActions.push('caregivers');
       }
-      return { mode: 'ai', modeReason: null, intent: toolSet.intent, profile,
+      return { mode: 'ai', modeReason: null, intent: directGuidance ? intent : toolSet.intent, profile,
         text: parsed.text.trim(), actions: [...new Set(responseActions)], rows: [], truncated: toolSet.truncated,
         fetchedAt: new Date().toISOString() };
     }
@@ -184,7 +203,14 @@ async function chat({ question, history = [], profile, user, repository,
   catch (error) {
     if (error instanceof AssistantAccessError) throw error;
     // No raw SDK errors/logs (they may contain request text). No retries of mutations exist.
-    return { ...await fallback('ai_unavailable'), aiFailureCode: failureCode(error) };
+    const providerCode = error?.code || error?.error?.code;
+    const safeCodes = ['tool_use_failed','rate_limit_exceeded','invalid_api_key','model_not_found','invalid_request_error'];
+    const safeTypes = ['Error','TypeError','APIConnectionError','APIConnectionTimeoutError','BadRequestError','RateLimitError','AuthenticationError','InternalServerError'];
+    return { ...await fallback('ai_unavailable'), aiFailureCode: failureCode(error),
+      aiDiagnostic: { httpStatus: Number.isInteger(error?.status) && error.status>=400 && error.status<=599 ? error.status : providerHttpStatus,
+        providerCode: safeCodes.includes(providerCode) ? providerCode : null,
+        step: failureCode(error)==='AI_TIMEOUT' ? 'timeout' : failureStep,
+        errorType: safeTypes.includes(error?.name) ? error.name : null } };
   } finally { clearTimeout(timer); abort.abort(); }
 }
 module.exports = { chat, configuration, createAIClient, failureCode, GROQ_BASE_URL, validateHistory, responseText, MAX_HISTORY, MAX_HISTORY_CHARS };

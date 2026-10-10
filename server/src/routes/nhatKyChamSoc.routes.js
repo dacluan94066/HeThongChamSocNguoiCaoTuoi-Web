@@ -7,4 +7,6 @@ router.use(auth);
 router.use(loadMobileScope);
 router.get('/',  ctrl.getAll);
 router.post('/', caregiverOnlyWrite, ctrl.create);
+router.patch('/:id', caregiverOnlyWrite,ctrl.update);
+router.delete('/:id', caregiverOnlyWrite,ctrl.remove);
 module.exports = router;

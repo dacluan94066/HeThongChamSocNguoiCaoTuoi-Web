@@ -1,5 +1,23 @@
 # Trợ lý chăm sóc
 
+## Sửa hướng dẫn trước khi đi khám — 10/10/2026
+
+- `visit_preparation` và `visit_fasting` là hướng dẫn chung, được nhận diện trước từ khóa lịch khám; không gọi công cụ hoặc cần lịch khám đã lưu. Chat mới và sau chủ đề lịch khám đều dùng cùng quy tắc. Câu có dấu/không dấu đều được kiểm thử; tra lịch cá nhân vẫn dùng công cụ như trước.
+- AI trả trực tiếp checklist giấy tờ/BHYT, hồ sơ/kết quả cũ, thuốc đang dùng, triệu chứng/câu hỏi. Câu nhịn ăn hỏi rõ loại khám/xét nghiệm; không tự kết luận, đưa thời gian nhịn ăn hoặc khuyên ngừng thuốc. Nếu cấu hình thiếu, timeout, quota, lỗi dịch vụ hoặc đầu ra không an toàn, dự phòng cục bộ trả đúng hướng dẫn chung và giữ nhãn **Trợ lý theo chức năng**.
+- Chẩn đoán thất bại trong response: `aiFailureCode` và `aiDiagnostic` chỉ chứa HTTP status, mã provider trong danh sách cho phép, bước thất bại và loại lỗi cho phép. Không chứa raw SDK message, request, headers, khóa, token hoặc dữ liệu hồ sơ. Có thể phân biệt Groq HTTP 200 nhưng bị chặn ở `output_validation` với lỗi HTTP/provider/timeout.
+- Tái hiện trước sửa qua API cổng 5000 từ isolate Android: chat mới `AI_TOOL_GENERATION_FAILED` rồi lịch khám rỗng; sau chủ đề lịch khám cũng trả lịch rỗng. HTTP endpoint chat đều 200; HTTP của lỗi Groq cũ chưa được ghi nên không suy đoán là 400. Một request SDK riêng mô phỏng cách ép công cụ cũ, chỉ câu hỏi giả lập, trả HTTP 200/tool_calls; không tái hiện được lỗi provider trong lượt đó.
+- Xác minh sau sửa trên API đang phục vụ điện thoại, Groq thật: chat mới và sau câu hỏi `xem lịch khám` trả **AI**, intent `visit_preparation`, có checklist/BHYT, không trả lịch rỗng. Câu tiếp nối nhịn ăn từng trả AI có hỏi lại; lượt cuối Groq trả HTTP 200 nhưng đầu ra bị kiểm tra an toàn chặn, nên trả hướng dẫn hỏi loại xét nghiệm theo chức năng. Dự phòng đúng nội dung, không ép nhãn AI. Không tuyên bố AI luôn thành công.
+- Các probe chỉ dùng câu hỏi cố định và lịch sử user; không chuyển kết quả lịch cá nhân sang Groq. Đã kiểm tra thêm tra lịch qua `/query` (cục bộ) rồi hỏi chuẩn bị qua `/chat`; không đưa nội dung lịch vào lịch sử AI.
+- Backend **143/143**, Flutter **62/62**, analyze sạch. Đây là tests mock; khác với API/Groq thật nêu trên. Đã build/cài/chạy lại trên Android **51330c42** bằng Flutter; APK mới `mobile/build/app/outputs/flutter-apk/app-visit-preparation-debug.apk`, API 127.0.0.1:5000/api. Không thực hiện thao tác ghi app DB, không sửa .env, không commit/push.
+
+## Xác minh mới nhất 10/10/2026
+
+- Backend 132/132 tests; Flutter 60/60 tests; analyze không có lỗi. Test tự động dùng mock, không gọi Groq thật.
+- Đã chạy riêng một lượt `node scripts/check_care_assistant_ai.js`: **OK_SYNTHETIC_TOOLS_AND_FOLLOWUP** qua Groq thật, hai request với lịch khám giả lập, không đọc database hoặc gửi dữ liệu sức khỏe cá nhân. Đây là kiểm tra SDK/tool calling/câu tiếp nối, chưa phải kiểm tra chatbot trên điện thoại.
+- API và Flutter Web đã kiểm tra bằng Express + SQL Server thật trong database riêng **CareAssistant_Test_1791618532545_240159**, chỉ dữ liệu giả. Các câu tiếp nối/đổi chủ đề/phạm vi hồ sơ trong script ghi dùng chế độ chức năng; kết quả đó không được gọi là kiểm tra AI thật.
+- Công cụ nhật ký không trả bản ghi TrangThai=HUY. AI vẫn chỉ đọc dữ liệu/mở màn hình cố định, không được gọi các API mới sửa/xóa nhật ký hoặc tiếp nhận/xử lý SOS.
+- Hai APK mới: `app-backend-debug.apk` dùng API 127.0.0.1:5000 (database app); `app-sql-test-debug.apk` dùng 127.0.0.1:5059 (database kiểm thử). APK `app-defense-debug.apk` cũ giữ nguyên. Chưa có Android để chạy thử. Xem [RUN_GUIDE.md](../RUN_GUIDE.md) và [MOBILE_COMPLETION.md](../MOBILE_COMPLETION.md) cho cấu hình, bằng chứng và giới hạn mới nhất; các báo cáo cũ bên dưới là lịch sử.
+
 ## Sử dụng
 
 - Người cao tuổi: nút **Trợ lý chăm sóc** ở đầu trang chủ.
@@ -241,3 +259,21 @@ File sửa trong lượt này:
 - mobile/CARE_ASSISTANT.md
 
 Giữ thay đổi chưa commit trên nhánh minh; không reset/clean/commit/push.
+
+## Xác minh mobile phục vụ bảo vệ 10/10/2026
+
+- Không thay provider/model, không gọi Groq thật và không thay khóa/.env trong lượt này. Các bằng chứng AI thật ở các mục trước là lịch sử, không chứng minh quota hoặc kết nối hôm nay.
+- Chạy lại backend 121 test và Flutter 57 test; AI dùng mock. API thật với SQL Server trên database giả lập riêng xác minh lịch khám/câu tiếp nối/đổi sang thuốc, đối chiếu ID nguồn; caregiver đổi A/B, context A dùng cho B bị từ chối 400. Test client xác minh phản hồi 200/401 từ tài khoản cũ không ảnh hưởng phiên mới.
+- Trợ lý ở server demo mặc định theo chức năng; UI giữ nhãn dự phòng. Chỉ opt-in --serve --live-ai mới dùng cấu hình Groq cục bộ, với dữ liệu giả lập. Không gọi AI tự động trong kiểm tra, không gửi dữ liệu người thật.
+- Nhật ký đã có màn hình tạo/đọc riêng từ hồ sơ caregiver. AI vẫn chỉ tra cứu/mở chức năng cố định; không gọi API ghi nhật ký, SOS, xử lý cảnh báo hay đổi liều.
+- Đã kiểm tra UI Web các luồng nghiệp vụ và SQL sau ghi; chưa có thiết bị Android để kiểm tra thực tế. Xem MOBILE_COMPLETION.md ở thư mục gốc, RUN_GUIDE.md và DEMO_GUIDE.md để chạy APK USB hoặc Wi-Fi và trình bày giới hạn.
+# Bổ sung bố cục chatbot Android — 10/10/2026
+
+- Bố cục hiện tại: tiêu đề/hồ sơ có giới hạn chiều cao và cuộn riêng → `Expanded` danh sách tin nhắn → ô nhập trong `SafeArea` đáy. `resizeToAvoidBottomInset=true`; không thêm `viewInsets` vào padding và không đặt ô nhập bằng `Stack/Positioned`.
+- Ô nhập 1–4 dòng, chiều cao tối đa 160 logical pixels (thu nhỏ theo vùng khả dụng), nút gửi luôn nằm cạnh ô nhập. Quan sát thay đổi kích thước khi bàn phím mở/đóng để theo cuối hội thoại nếu người dùng đang ở cuối; giữ vị trí khi đọc tin cũ.
+- Câu trả lời trợ lý hiển thị Markdown bằng `flutter_markdown_plus`; tin người dùng vẫn là văn bản. Không tải ảnh hoặc mở liên kết từ Markdown. Các nút nghiệp vụ tiếp tục dùng danh sách hành động cố định.
+- Prompt yêu cầu câu trả lời thông thường 3–5 ý, khoảng 600–900 ký tự; không chẩn đoán, đổi liều, tự yêu cầu nhịn ăn hoặc ngừng thuốc. Đây là yêu cầu hướng dẫn mô hình, không bảo đảm mọi câu trả lời sẽ có đúng độ dài này. Quyền công cụ và nhãn chế độ không đổi.
+- Backend 143/143 test; Flutter toàn bộ 65/65 test; sau chỉnh cuộn tin đầu tiên, chạy lại 3/3 test bố cục; Flutter analyze cuối: No issues found. Các test tự động dùng mock, không gọi Groq thật.
+- APK build thành công: `mobile/build/app/outputs/flutter-apk/app-chat-layout-debug.apk`, ARM64, API `http://127.0.0.1:5000/api` qua USB reverse. Không ghi đè các APK đã đặt tên trước đó.
+- Android thật 51330c42: integration test đã chạy phần giao diện giả lập và giữ vị trí đọc tin cũ; lượt kiểm tra bàn phím thất bại vì inset bằng 0. Phiên bản test đã bổ sung yêu cầu mở IME, nhưng chưa hoàn tất kiểm tra lại: Android chặn cài bằng `INSTALL_FAILED_USER_RESTRICTED`. Lượt `adb install -r` app thường cũng bị chặn. Không coi đây là pass bàn phím thật hoặc app mới đã cài thành công. Kiểm tra package/activity hiện không tìm thấy app; chưa xác minh trạng thái dữ liệu ứng dụng trên điện thoại.
+- Không chạy thêm lệnh gỡ app; cần chủ điện thoại cho phép cài qua USB và chấp nhận hộp thoại. Không sửa `.env`, không ghi database app, không reset/commit/push.

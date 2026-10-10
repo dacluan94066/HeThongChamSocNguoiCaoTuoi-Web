@@ -55,7 +55,7 @@ const query = async (req,res) => {
   if (body.elderlyId != null && (!Number.isInteger(body.elderlyId) || body.elderlyId<1 || body.elderlyId>2147483647))
     return fail(res,'Hồ sơ không hợp lệ.','INVALID_PROFILE',400);
   const intent=detectIntent(body.question);
-  const needsProfile=!['clarification','capabilities','help','unknown','notifications','sos','emergency','medical'].includes(intent);
+  const needsProfile=!['clarification','capabilities','help','unknown','notifications','sos','emergency','medical','visit_preparation','visit_fasting'].includes(intent);
   let id=body.elderlyId;
   if (req.user.tenVaiTro==='NguoiCaoTuoi') {
     const ownId=req.mobileElderlyIds?.[0];

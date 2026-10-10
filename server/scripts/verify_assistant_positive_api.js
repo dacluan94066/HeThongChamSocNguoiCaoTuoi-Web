@@ -10,6 +10,7 @@ let stage='scan',testDatabase;
 const check=(condition,label)=>{assert.ok(condition,label);console.log(JSON.stringify({stage:label,result:'PASS'}));};
 async function main(){
  const sourceDatabase=process.env.DB_DATABASE||'QLSucKhoeNguoiCaoTuoi';
+ if(!process.argv.includes('--fixture-only')){
  const source=await new sql.ConnectionPool(config(sourceDatabase)).connect();
  try{
   const scan=await source.request().query(`DECLARE @d DATE=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE);
@@ -23,6 +24,7 @@ async function main(){
   if(process.argv.includes('--scan-only'))return;
   assert.ok(!scan.recordset.some(r=>r.evening&&r.morning&&r.appointments),'USE_EXISTING_DEMO_INSTEAD');
  }finally{await source.close();}
+ }
  stage='create_isolated_database';
  testDatabase='CareAssistant_Test_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex');
  assert.match(testDatabase,/^CareAssistant_Test_[0-9]+_[a-f0-9]+$/);assert.notEqual(testDatabase,sourceDatabase);
@@ -68,6 +70,10 @@ async function main(){
       (1,N'TEST CLINIC PAST',DATEADD(HOUR,8,DATEADD(DAY,-1,@d)),N'DaKham'),
       (2,N'TEST CLINIC B',DATEADD(HOUR,9,DATEADD(DAY,3,@d)),N'ChuaDen');
   `);
+  if(process.argv.includes('--fixture-only')){
+    console.log('SYNTHETIC_FIXTURE: READY; no application database accessed');
+    return;
+  }
   process.env.DB_DATABASE=testDatabase;
   process.env.JWT_SECRET=crypto.randomBytes(32).toString('hex'); // Separate test authentication domain.
   if(!process.argv.includes('--live-ai'))process.env.AI_PROVIDER='isolated-functional-test';

@@ -64,6 +64,12 @@ async function answer({ question, history = [], profile, user, repository, resol
   };
   if (context.general) {
     if (repository.authorize) await repository.authorize(false);
+    if (intent === 'visit_preparation' || intent === 'visit_fasting') {
+      const guidance = intent === 'visit_preparation'
+        ? 'Trước khi đi khám, bạn nên chuẩn bị:\n• Giấy tờ tùy thân, thẻ BHYT và giấy hẹn/giấy chuyển tuyến nếu có.\n• Hồ sơ khám và kết quả xét nghiệm, phim chụp cũ.\n• Danh sách thuốc đang dùng, gồm liều theo đơn; ghi lại dị ứng nếu có.\n• Ghi chú triệu chứng, thời điểm xuất hiện và câu hỏi muốn hỏi bác sĩ.\nKhông tự ngừng thuốc hoặc nhịn ăn; chỉ làm theo hướng dẫn của cơ sở khám.'
+        : 'Bạn đi khám chuyên khoa nào hoặc làm xét nghiệm gì? Việc cần nhịn ăn phụ thuộc loại khám/xét nghiệm và hướng dẫn của cơ sở khám. Không tự nhịn ăn hay ngừng thuốc; hãy hỏi cơ sở khám trước khi thực hiện.';
+      return {mode:'functional',intent,profile,text:guidance,actions:[],rows:[],truncated:false,fetchedAt:new Date().toISOString()};
+    }
     return { mode:'functional', intent:'help', profile, text:'Mình chưa trả lời được phần giải thích chung này. Bạn có thể hỏi lại cụ thể hơn hoặc tra dữ liệu đã lưu.', actions:[], rows:[], truncated:false, fetchedAt:new Date().toISOString() };
   }
   switch (intent) {

@@ -15,11 +15,14 @@ class CareAssistantScreen extends StatefulWidget {
   State<CareAssistantScreen> createState() => _CareAssistantScreenState();
 }
 
-class _CareAssistantScreenState extends State<CareAssistantScreen> {
+class _CareAssistantScreenState extends State<CareAssistantScreen>
+    with WidgetsBindingObserver {
   late final CareAssistantController _chat;
   final _input = TextEditingController();
   final _scroll = ScrollController();
   bool _nearBottom = true;
+  bool _scrollScheduled = false;
+  int _messageCount = 0;
   int? _draftProfileId;
   static const suggestions = [
     'Hôm nay tôi uống thuốc gì?',
@@ -35,10 +38,37 @@ class _CareAssistantScreenState extends State<CareAssistantScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _chat = widget.controller ?? CareAssistantController();
     _chat.addListener(_changed);
-    _scroll.addListener(() => _nearBottom = _scroll.position.extentAfter < 100);
     _chat.initialize();
+  }
+
+  @override
+  void didChangeMetrics() => _followLatest();
+
+  void _followLatest() {
+    if (!_nearBottom || _scrollScheduled) return;
+    _scrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollScheduled = false;
+      if (mounted && _scroll.hasClients && _nearBottom) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    if (notification.depth == 0 &&
+        _scroll.hasClients &&
+        (notification is ScrollEndNotification ||
+            notification is ScrollUpdateNotification &&
+                notification.dragDetails != null ||
+            notification is OverscrollNotification &&
+                notification.dragDetails != null)) {
+      _nearBottom = _scroll.position.extentAfter < 100;
+    }
+    return false;
   }
 
   void _changed() {
@@ -48,22 +78,17 @@ class _CareAssistantScreenState extends State<CareAssistantScreen> {
       _draftProfileId = _chat.selected?.id;
     }
     if (_chat.messages.isEmpty) {
+      _messageCount = 0;
       _nearBottom = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _scroll.hasClients) _scroll.jumpTo(0);
       });
       return;
     }
-    if (!_nearBottom) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scroll.hasClients && _nearBottom) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    // Scrolling the welcome suggestions is not reading earlier conversation.
+    if (_messageCount == 0) _nearBottom = true;
+    _messageCount = _chat.messages.length;
+    _followLatest();
   }
 
   Future<void> _send() async {
@@ -129,6 +154,7 @@ class _CareAssistantScreenState extends State<CareAssistantScreen> {
   @override
   void dispose() {
     _chat.removeListener(_changed);
+    WidgetsBinding.instance.removeObserver(this);
     if (widget.controller == null) _chat.dispose();
     _input.dispose();
     _scroll.dispose();
@@ -139,6 +165,7 @@ class _CareAssistantScreenState extends State<CareAssistantScreen> {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: _chat,
     builder: (context, _) => Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xfff3f6f4),
       appBar: AppBar(
         title: const Text('Trợ lý chăm sóc'),
@@ -151,237 +178,264 @@ class _CareAssistantScreenState extends State<CareAssistantScreen> {
         ],
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Flexible(
-              child: SingleChildScrollView(
-                child: Container(
-                  width: double.infinity,
-                  color: const Color(0xffe5f3ec),
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _chat.modeLabel,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xff075944),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      if (_chat.caregiver && _chat.profiles.isNotEmpty)
-                        DropdownButtonFormField<int>(
-                          initialValue: _chat.selected?.id,
-                          key: ValueKey(
-                            'profile-${_chat.selected?.id}-${_chat.profiles.length}',
-                          ),
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Hồ sơ đang hỏi',
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.all(12),
-                          ),
-                          items: _chat.profiles
-                              .map(
-                                (p) => DropdownMenuItem(
-                                  value: p.id,
-                                  child: Text(
-                                    p.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: _chat.sessionExpired
-                              ? null
-                              : (id) {
-                                  for (final p in _chat.profiles) {
-                                    if (p.id == id) {
-                                      _chat.selectProfile(p);
-                                      break;
-                                    }
-                                  }
-                                },
-                        )
-                      else
+        bottom: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) => Column(
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: constraints.maxHeight * .28,
+                ),
+                child: SingleChildScrollView(
+                  child: Container(
+                    width: double.infinity,
+                    color: const Color(0xffe5f3ec),
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          'Hồ sơ: ${_chat.selected?.name ?? (_chat.caregiver ? 'Chưa được phân công' : 'Chưa có hồ sơ liên kết')}',
+                          _chat.modeLabel,
                           style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                            fontSize: 13,
+                            color: Color(0xff075944),
                           ),
                         ),
-                      if (_chat.caregiver &&
-                          _chat.profiles.length > 1 &&
-                          _chat.selected == null)
+                        const SizedBox(height: 6),
+                        if (_chat.caregiver && _chat.profiles.isNotEmpty)
+                          DropdownButtonFormField<int>(
+                            initialValue: _chat.selected?.id,
+                            key: ValueKey(
+                              'profile-${_chat.selected?.id}-${_chat.profiles.length}',
+                            ),
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Hồ sơ đang hỏi',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.all(12),
+                            ),
+                            items: _chat.profiles
+                                .map(
+                                  (p) => DropdownMenuItem(
+                                    value: p.id,
+                                    child: Text(
+                                      p.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: _chat.sessionExpired
+                                ? null
+                                : (id) {
+                                    for (final p in _chat.profiles) {
+                                      if (p.id == id) {
+                                        _chat.selectProfile(p);
+                                        break;
+                                      }
+                                    }
+                                  },
+                          )
+                        else
+                          Text(
+                            'Hồ sơ: ${_chat.selected?.name ?? (_chat.caregiver ? 'Chưa được phân công' : 'Chưa có hồ sơ liên kết')}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        if (_chat.caregiver &&
+                            _chat.profiles.length > 1 &&
+                            _chat.selected == null)
+                          const Text(
+                            'Hãy chọn người cao tuổi trước khi hỏi dữ liệu hồ sơ.',
+                            style: TextStyle(fontSize: 14),
+                          ),
                         const Text(
-                          'Hãy chọn người cao tuổi trước khi hỏi dữ liệu hồ sơ.',
-                          style: TextStyle(fontSize: 14),
+                          'Thông báo là của tài khoản đang đăng nhập.',
+                          style: TextStyle(fontSize: 12, color: Colors.black54),
                         ),
-                      const Text(
-                        'Thông báo là của tài khoản đang đăng nhập.',
-                        style: TextStyle(fontSize: 12, color: Colors.black54),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            Expanded(
-              flex: 2,
-              child: _chat.initializing
-                  ? const Center(child: CircularProgressIndicator())
-                  : _chat.error != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+              Expanded(
+                child: _chat.initializing
+                    ? const Center(child: CircularProgressIndicator())
+                    : _chat.error != null
+                    ? Center(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_chat.error!, textAlign: TextAlign.center),
+                              if (!_chat.sessionExpired)
+                                FilledButton(
+                                  onPressed: _chat.initialize,
+                                  child: const Text('Thử lại tải hồ sơ'),
+                                ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : NotificationListener<ScrollNotification>(
+                        onNotification: _onScroll,
+                        child: ListView(
+                          key: const ValueKey('assistant-messages'),
+                          controller: _scroll,
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
                           children: [
-                            Text(_chat.error!, textAlign: TextAlign.center),
-                            if (!_chat.sessionExpired)
-                              FilledButton(
-                                onPressed: _chat.initialize,
-                                child: const Text('Thử lại tải hồ sơ'),
+                            if (_chat.messages.isEmpty) ...[
+                              const Icon(
+                                Icons.support_agent_rounded,
+                                size: 64,
+                                color: Color(0xff07856d),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Xin chào! Bạn có thể hỏi về chăm sóc, lịch và dữ liệu đã lưu, hoặc hỏi tiếp câu vừa trao đổi.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.4,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Không tự chẩn đoán, kê thuốc hoặc gửi SOS. Bạn luôn xác nhận thao tác trong màn hình chức năng.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 15, height: 1.4),
+                              ),
+                              const SizedBox(height: 18),
+                              const Text(
+                                'Khi dùng AI, câu hỏi và ngữ cảnh gần đây được gửi tới Groq để hiểu yêu cầu. Dữ liệu tra cứu được xử lý tại máy chủ ứng dụng. Chat chỉ lưu trong phiên này.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 14, height: 1.4),
+                              ),
+                              const SizedBox(height: 18),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: suggestions
+                                    .map(
+                                      (q) => OutlinedButton(
+                                        onPressed: _chat.busy
+                                            ? null
+                                            : () => _chat.send(q),
+                                        style: OutlinedButton.styleFrom(
+                                          minimumSize: const Size(48, 48),
+                                          backgroundColor: Colors.white,
+                                        ),
+                                        child: Text(
+                                          q,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ],
+                            ..._chat.messages.map(
+                              (m) => AssistantMessageBubble(
+                                message: m,
+                                onAction: _navigate,
+                                onRetry: () => _chat.send(m.retryQuestion!),
+                                enabled: !_chat.busy && !_chat.sessionExpired,
+                              ),
+                            ),
+                            if (_chat.busy)
+                              const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        'Đang trả lời…',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                           ],
                         ),
                       ),
-                    )
-                  : ListView(
-                      controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
+              ),
+              if (!_chat.sessionExpired)
+                SafeArea(
+                  top: false,
+                  left: false,
+                  right: false,
+                  child: Padding(
+                    key: const ValueKey('assistant-composer'),
+                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        if (_chat.messages.isEmpty) ...[
-                          const Icon(
-                            Icons.support_agent_rounded,
-                            size: 64,
-                            color: Color(0xff07856d),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Xin chào! Bạn có thể hỏi về chăm sóc, lịch và dữ liệu đã lưu, hoặc hỏi tiếp câu vừa trao đổi.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w600,
-                              height: 1.4,
+                        Expanded(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: (constraints.maxHeight * .32).clamp(
+                                64.0,
+                                160.0,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Không tự chẩn đoán, kê thuốc hoặc gửi SOS. Bạn luôn xác nhận thao tác trong màn hình chức năng.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 15, height: 1.4),
-                          ),
-                          const SizedBox(height: 18),
-                          const Text(
-                            'Khi dùng AI, câu hỏi và ngữ cảnh gần đây được gửi tới Groq để hiểu yêu cầu. Dữ liệu tra cứu được xử lý tại máy chủ ứng dụng. Chat chỉ lưu trong phiên này.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 14, height: 1.4),
-                          ),
-                          const SizedBox(height: 18),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: suggestions
-                                .map(
-                                  (q) => OutlinedButton(
-                                    onPressed: _chat.busy
-                                        ? null
-                                        : () => _chat.send(q),
-                                    style: OutlinedButton.styleFrom(
-                                      minimumSize: const Size(48, 48),
-                                      backgroundColor: Colors.white,
-                                    ),
-                                    child: Text(q, textAlign: TextAlign.center),
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ],
-                        ..._chat.messages.map(
-                          (m) => AssistantMessageBubble(
-                            message: m,
-                            onAction: _navigate,
-                            onRetry: () => _chat.send(m.retryQuestion!),
-                            enabled: !_chat.busy && !_chat.sessionExpired,
+                            child: TextField(
+                              key: const ValueKey('assistant-input'),
+                              controller: _input,
+                              enabled:
+                                  !_chat.busy &&
+                                  !_chat.initializing &&
+                                  _chat.error == null,
+                              minLines: 1,
+                              maxLines: 4,
+                              maxLength: 500,
+                              textInputAction: TextInputAction.newline,
+                              decoration: InputDecoration(
+                                hintText: 'Hỏi trợ lý chăm sóc…',
+                                filled: true,
+                                fillColor: Colors.white,
+                                counterText: '',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                        if (_chat.busy)
-                          const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    'Đang trả lời…',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                                ),
-                              ],
-                            ),
+                        const SizedBox(width: 8),
+                        IconButton.filled(
+                          tooltip: 'Gửi câu hỏi',
+                          onPressed:
+                              _chat.busy ||
+                                  _chat.initializing ||
+                                  _chat.error != null
+                              ? null
+                              : _send,
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size(52, 52),
+                            backgroundColor: const Color(0xff07856d),
                           ),
+                          icon: const Icon(Icons.send_rounded),
+                        ),
                       ],
                     ),
-            ),
-            if (!_chat.sessionExpired)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _input,
-                        enabled:
-                            !_chat.busy &&
-                            !_chat.initializing &&
-                            _chat.error == null,
-                        minLines: 1,
-                        maxLines: 4,
-                        maxLength: 500,
-                        textInputAction: TextInputAction.newline,
-                        decoration: InputDecoration(
-                          hintText: 'Hỏi trợ lý chăm sóc…',
-                          filled: true,
-                          fillColor: Colors.white,
-                          counterText: '',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      tooltip: 'Gửi câu hỏi',
-                      onPressed:
-                          _chat.busy ||
-                              _chat.initializing ||
-                              _chat.error != null
-                          ? null
-                          : _send,
-                      style: IconButton.styleFrom(
-                        minimumSize: const Size(52, 52),
-                        backgroundColor: const Color(0xff07856d),
-                      ),
-                      icon: const Icon(Icons.send_rounded),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     ),

@@ -82,6 +82,13 @@ class CaregiverDashboardService {
 
   Future<Map<String, dynamic>> resolveAlert(int id, String note) =>
       _updateAlert('/alerts/$id/resolve', data: {'ghiChu': note.trim()});
+  Future<Map<String, dynamic>> markEmergencySeen(int id) =>
+      _updateAlert('/emergency-alerts/$id/seen');
+  Future<Map<String, dynamic>> resolveEmergency(int id, String note) =>
+      _updateAlert(
+        '/emergency-alerts/$id/resolve',
+        data: {'ghiChu': note.trim()},
+      );
 
   Future<Map<String, dynamic>> _updateAlert(
     String path, {

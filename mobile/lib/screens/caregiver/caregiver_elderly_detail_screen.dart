@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'care_notes_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/api_client.dart';
@@ -29,6 +30,8 @@ class _CaregiverElderlyDetailScreenState
   List<Map<String, dynamic>> _contacts = const [];
   List<Map<String, dynamic>> _alerts = const [];
   final Set<int> _savingAlertIds = <int>{};
+  final Map<int, String> _alertDrafts = {};
+  bool _alertDialogOpen = false;
   bool _loading = true;
   String? _error;
 
@@ -41,6 +44,29 @@ class _CaregiverElderlyDetailScreenState
   }
 
   bool _truthy(dynamic value) => value == true || value == 1 || value == '1';
+  int? _alertKey(Map<String, dynamic> alert) {
+    final id = int.tryParse(alert['id']?.toString() ?? '');
+    if (id != null) return id;
+    final sosId = int.tryParse(alert['nguonId']?.toString() ?? '');
+    return alert['nguonBang'] == 'CanhBaoKhanCap' && sosId != null
+        ? -sosId
+        : null;
+  }
+
+  Map<String, dynamic>? get _activeSos {
+    for (final alert in _alerts) {
+      if (alert['nguonBang'] == 'CanhBaoKhanCap' &&
+          [
+            'ChuaXuLy',
+            'DaXem',
+            'CHUA_XU_LY',
+            'DA_XEM',
+          ].contains(alert['trangThai'])) {
+        return alert;
+      }
+    }
+    return null;
+  }
 
   Future<void> _load({bool refresh = false, bool silent = false}) async {
     final sequence = ++_loadSequence;
@@ -133,22 +159,42 @@ class _CaregiverElderlyDetailScreenState
   }
 
   Future<void> _reloadAlerts() async {
+    final version = ApiClient.sessionVersion;
     final alerts = await CaregiverDashboardService.instance.getElderlyAlerts(
       _elderlyId,
       refresh: true,
     );
-    if (!mounted) return;
+    if (!mounted || version != ApiClient.sessionVersion) return;
     setState(() => _alerts = alerts);
   }
 
   Future<void> _acceptAlert(Map<String, dynamic> alert) async {
-    final id = int.tryParse(alert['id']?.toString() ?? '');
+    final version = ApiClient.sessionVersion;
+    final id = _alertKey(alert);
     if (id == null || _savingAlertIds.contains(id)) return;
     setState(() => _savingAlertIds.add(id));
+    var saved = false;
     try {
-      await CaregiverDashboardService.instance.markAlertSeen(id);
+      if (alert['nguonBang'] == 'CanhBaoKhanCap') {
+        await CaregiverDashboardService.instance.markEmergencySeen(
+          int.parse(alert['nguonId'].toString()),
+        );
+      } else {
+        await CaregiverDashboardService.instance.markAlertSeen(id);
+      }
+      saved = true;
+      if (!mounted || version != ApiClient.sessionVersion) return;
+      setState(
+        () => _alerts = [
+          for (final item in _alerts)
+            if (_alertKey(item) == id)
+              {...item, 'trangThai': 'DA_XEM', 'trangThaiLabel': 'Đã xem'}
+            else
+              item,
+        ],
+      );
       await _reloadAlerts();
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Đã tiếp nhận cảnh báo.'),
@@ -156,32 +202,57 @@ class _CaregiverElderlyDetailScreenState
         ),
       );
     } on ApiException catch (error) {
-      await _reloadAlerts();
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(
+            saved
+                ? 'Đã tiếp nhận cảnh báo, nhưng chưa tải lại được danh sách. Kéo xuống để thử lại.'
+                : error.message,
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
+    } catch (_) {
+      if (mounted && version == ApiClient.sessionVersion) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              saved
+                  ? 'Đã tiếp nhận cảnh báo. Hãy tải lại danh sách.'
+                  : 'Không cập nhật được cảnh báo. Hãy thử lại.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _savingAlertIds.remove(id));
     }
   }
 
   Future<void> _resolveAlert(Map<String, dynamic> alert) async {
-    final id = int.tryParse(alert['id']?.toString() ?? '');
-    if (id == null || _savingAlertIds.contains(id)) return;
+    final version = ApiClient.sessionVersion;
+    final id = _alertKey(alert);
+    if (id == null || _savingAlertIds.contains(id) || _alertDialogOpen) return;
+    _alertDialogOpen = true;
     final formKey = GlobalKey<FormState>();
-    var noteInput = '';
+    var noteInput = _alertDrafts[id] ?? '';
     final note = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        scrollable: true,
         title: const Text('Hoàn tất xử lý cảnh báo'),
         content: Form(
           key: formKey,
           child: TextFormField(
+            initialValue: noteInput,
             maxLength: 500,
             maxLines: 4,
             autofocus: true,
-            onChanged: (value) => noteInput = value,
+            onChanged: (value) {
+              noteInput = value;
+              _alertDrafts[id] = value;
+            },
             decoration: const InputDecoration(
               labelText: 'Kết quả xử lý',
               hintText: 'Ví dụ: Đã gọi điện và xác nhận người bệnh ổn định.',
@@ -207,13 +278,44 @@ class _CaregiverElderlyDetailScreenState
         ],
       ),
     );
-    if (note == null || note.isEmpty || !mounted) return;
+    _alertDialogOpen = false;
+    if (note == null ||
+        note.isEmpty ||
+        !mounted ||
+        version != ApiClient.sessionVersion) {
+      return;
+    }
 
     setState(() => _savingAlertIds.add(id));
+    var saved = false;
     try {
-      await CaregiverDashboardService.instance.resolveAlert(id, note);
+      if (alert['nguonBang'] == 'CanhBaoKhanCap') {
+        await CaregiverDashboardService.instance.resolveEmergency(
+          int.parse(alert['nguonId'].toString()),
+          note,
+        );
+      } else {
+        await CaregiverDashboardService.instance.resolveAlert(id, note);
+      }
+      saved = true;
+      _alertDrafts.remove(id);
+      if (!mounted || version != ApiClient.sessionVersion) return;
+      setState(
+        () => _alerts = [
+          for (final item in _alerts)
+            if (_alertKey(item) == id)
+              {
+                ...item,
+                'trangThai': 'DA_XU_LY',
+                'trangThaiLabel': 'Đã xử lý',
+                'ghiChuXuLy': note,
+              }
+            else
+              item,
+        ],
+      );
       await _reloadAlerts();
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cảnh báo đã được xử lý.'),
@@ -221,18 +323,36 @@ class _CaregiverElderlyDetailScreenState
         ),
       );
     } on ApiException catch (error) {
-      await _reloadAlerts();
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(
+            saved
+                ? 'Đã xử lý cảnh báo, nhưng chưa tải lại được danh sách. Kéo xuống để thử lại.'
+                : error.message,
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
+    } catch (_) {
+      if (mounted && version == ApiClient.sessionVersion) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              saved
+                  ? 'Đã xử lý cảnh báo. Hãy tải lại danh sách.'
+                  : 'Không cập nhật được cảnh báo. Hãy thử lại.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _savingAlertIds.remove(id));
     }
   }
 
   Widget? _alertAction(Map<String, dynamic> alert) {
-    final id = int.tryParse(alert['id']?.toString() ?? '');
+    final id = _alertKey(alert);
     final status = alert['trangThai']?.toString();
     final saving = id != null && _savingAlertIds.contains(id);
     if (saving) {
@@ -276,6 +396,21 @@ class _CaregiverElderlyDetailScreenState
     return Scaffold(
       backgroundColor: const Color(0xfff4f6f5),
       appBar: AppBar(
+        actions: [
+          IconButton(
+            tooltip: 'Nhật ký chăm sóc',
+            icon: const Icon(Icons.edit_note),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CareNotesScreen(
+                  elderlyId: _elderlyId,
+                  elderlyName: widget.elderly['hoTen']?.toString() ?? 'Hồ sơ',
+                ),
+              ),
+            ),
+          ),
+        ],
         title: Text(
           widget.elderly['hoTen']?.toString() ?? 'Chi tiết người cao tuổi',
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -299,10 +434,12 @@ class _CaregiverElderlyDetailScreenState
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(14, 8, 14, 30),
                 children: [
-                  if (_truthy(widget.elderly['coCanhBaoKhanCap']))
+                  if (_activeSos != null)
                     _EmergencyCard(
-                      content: _text(widget.elderly['noiDungCanhBao']),
-                      sentAt: _dateTime(widget.elderly['ngayGuiCanhBao']),
+                      content: _text(
+                        _activeSos!['noiDung'] ?? _activeSos!['moTa'],
+                      ),
+                      sentAt: _dateTime(_activeSos!['ngayTao']),
                     ),
                   _Section(
                     title: 'Thông tin cơ bản',

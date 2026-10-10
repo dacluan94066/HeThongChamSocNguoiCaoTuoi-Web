@@ -39,7 +39,26 @@ async function flow({cdp,evaluate,waitFor,fill,delay,fixture}){
  console.log('MOBILE_UI: PROFILE_LOGOUT');
  await waitFor("document.querySelectorAll('flt-semantics input').length>=2");
  await fill(0,'test.caregiver');await fill(1,fixture.password);await tap('ĐĂNG NHẬP');await delay(1300);await shot('assigned');
- for(const name of ['TEST ONLY A','TEST ONLY B']){await tap(name);await delay(1100);await shot(name.endsWith('A')?'caregiver-a':'caregiver-b');await back();}
+ for(const name of ['TEST ONLY A','TEST ONLY B']){
+   await tap(name);await delay(1100);await shot(name.endsWith('A')?'caregiver-a':'caregiver-b');
+   await tap('Nhật ký chăm sóc');await delay(700);
+   if(name.endsWith('A')){
+     await tap('Thêm nhật ký');await delay(500);await fill(0,'TEST UI JOURNAL');await fill(1,'SYNTHETIC UI NOTE');await tap('Lưu nhật ký');await delay(1000);
+     await waitFor("Array.from(document.querySelectorAll('flt-semantics')).some(e=>(e.getAttribute('aria-label')||e.innerText||'').includes('TEST UI JOURNAL'))");
+     await tap('Sửa nhật ký');await delay(500);await fill(0,'TEST UI JOURNAL EDITED');await fill(1,'SYNTHETIC UI EDITED');await tap('Lưu nhật ký');await delay(800);
+     await tap('Xóa nhật ký');await tap('Xác nhận xóa');await delay(800);
+     await waitFor("!Array.from(document.querySelectorAll('flt-semantics')).some(e=>(e.getAttribute('aria-label')||e.innerText||'').includes('TEST UI JOURNAL EDITED'))");
+   }else{
+     assert.ok(!(await evaluate("Array.from(document.querySelectorAll('flt-semantics')).some(e=>(e.getAttribute('aria-label')||e.innerText||'').includes('TEST UI JOURNAL'))")),'UI_JOURNAL_WRONG_PROFILE');
+   }
+   await shot(name.endsWith('A')?'journal-a':'journal-b');await back();
+   if(name.endsWith('A')){
+     await tap('TIẾP NHẬN CẢNH BÁO');await delay(800);
+     await tap('ĐÁNH DẤU ĐÃ XỬ LÝ');await delay(500);await fill(0,'TEST UI SOS RESOLVED');
+     await tap('Xác nhận đã xử lý');await delay(900);await shot('sos-resolved');
+   }
+   await back();
+ }
  console.log('MOBILE_UI: CAREGIVER_TWO_PROFILES');
  await tap('Đăng xuất');await tap('Đăng xuất');await delay(700);await shot('logout');
  console.log('MOBILE_UI: COMPLETED_ALL_READ_NAVIGATION');

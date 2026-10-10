@@ -114,22 +114,20 @@ class _SplashScreenState extends State<SplashScreen> {
       _connectionError = null;
     });
 
-    final authService = AuthService.instance;
-    final token = await authService.getToken();
-
-    if (!mounted) return;
-    if (token == null || token.isEmpty) {
-      Navigator.pushReplacementNamed(context, '/welcome');
-      return;
-    }
-
     try {
+      final authService = AuthService.instance;
+      final token = await authService.getToken();
+      if (!mounted) return;
+      if (token == null || token.isEmpty) {
+        Navigator.pushReplacementNamed(context, '/welcome');
+        return;
+      }
       await authService.getMe();
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
-        await authService.logout();
+        await AuthService.instance.logout();
         if (!mounted) return;
         ApiClient.redirectToLogin();
         return;
@@ -146,7 +144,8 @@ class _SplashScreenState extends State<SplashScreen> {
       if (!mounted) return;
       setState(() {
         _checkingSession = false;
-        _connectionError = 'Không thể kết nối máy chủ, kiểm tra lại mạng';
+        _connectionError =
+            'Không thể khôi phục phiên. Kiểm tra kết nối và thử lại.';
       });
     }
   }

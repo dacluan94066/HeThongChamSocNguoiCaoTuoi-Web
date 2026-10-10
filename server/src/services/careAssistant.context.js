@@ -16,6 +16,8 @@ function detectIntent(question) {
   if (/dau nguc|kho tho|bat tinh|ngat xiu|khong tho|chay mau nhieu|meo mieng/.test(q)) return 'emergency';
   if (/chan doan|ke don|doi lieu|tang lieu|giam lieu|nen uong thuoc|bi benh gi/.test(q)) return 'medical';
   if (/sos|khan cap|cap cuu/.test(q)) return 'sos';
+  if (/nhin an|nhin uong/.test(q)) return 'visit_fasting';
+  if (/(chuan bi|mang theo|can mang|giay to|bhyt).*(kham|xet nghiem)|(kham|xet nghiem).*(chuan bi|mang theo|can mang|giay to|bhyt)|(truoc|khi).*kham.*(chuan bi|mang|can gi)/.test(q)) return 'visit_preparation';
   if (/nhat ky/.test(q)) return 'notes';
   if (/ke hoach|viec gi|viec can|can lam|hom nay lam|cong viec/.test(q)) return 'today';
   if (/thong bao|chua doc/.test(q)) return 'notifications';
@@ -29,6 +31,7 @@ function detectIntent(question) {
 }
 function isGeneral(question) {
   const q = normalize(question);
+  if (['visit_preparation','visit_fasting'].includes(detectIntent(question))) return true;
   return /la gi|nghia la|tai sao|giai thich|thong tin chung|cach cham soc/.test(q) &&
     !/cua toi|gan nhat|hom nay|toi nay|ngay mai|da luu|thuoc do|lich do|chi so do|nguoi do/.test(q);
 }
