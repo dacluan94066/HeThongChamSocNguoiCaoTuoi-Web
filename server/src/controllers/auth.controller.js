@@ -5,6 +5,10 @@ const jwt = require('jsonwebtoken');
 const { poolPromise, sql } = require('../config/db');
 const { sendMail } = require('../config/mailer');
 const { ok, fail } = require('../utils/response');
+const {
+  GoogleIdentityError,
+  verifyGoogleIdToken,
+} = require('../services/googleAuth.service');
 
 const RESET_MESSAGE = 'Nếu email tồn tại, mã xác nhận đã được gửi';
 
@@ -52,6 +56,41 @@ const writeLoginLog = async (pool, req, userId, ketQua, platform) => {
   } catch (auditError) {
     console.error('[AUTH] Khong ghi duoc nhat ky dang nhap:', auditError.message);
   }
+};
+
+const PUBLIC_MOBILE_ROLES = new Set(['NguoiCaoTuoi', 'NguoiChamSoc']);
+
+const googleUsername = (subject) => `google_${crypto
+  .createHash('sha256')
+  .update(subject)
+  .digest('hex')
+  .slice(0, 32)}`;
+
+const publicUser = (user) => ({
+  userId: user.userId,
+  tenDangNhap: user.tenDangNhap,
+  hoTen: user.hoTen,
+  email: user.email,
+  soDienThoai: user.soDienThoai,
+  vaiTroId: user.vaiTroId,
+  tenVaiTro: user.tenVaiTro,
+});
+
+const createMobileSession = async (pool, req, user) => {
+  const token = jwt.sign(
+    {
+      userId: user.userId,
+      vaiTroId: user.vaiTroId,
+      tenVaiTro: user.tenVaiTro,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
+  );
+  await pool.request()
+    .input('userId', sql.Int, user.userId)
+    .query('UPDATE NguoiDung SET LanDangNhapCuoi=SYSDATETIME() WHERE UserID=@userId');
+  await writeLoginLog(pool, req, user.userId, 'ThanhCong', 'mobile');
+  return { token, user: publicUser(user) };
 };
 
 // ─── DANG KY ────────────────────────────────────────────────────────────────
@@ -332,6 +371,251 @@ const login = async (req, res, next) => {
     }, 'Dang nhap thanh cong');
   } catch (err) {
     next(err);
+  }
+};
+
+// POST /api/auth/google - Google Sign-In chi danh cho ung dung Mobile.
+// Lan dau voi email moi: tra requiresRegistration de Mobile thu thap vai tro
+// va cac truong ho so bat buoc, sau do gui lai cung Google ID token.
+const googleLogin = async (req, res, next) => {
+  let transaction;
+  try {
+    let identity;
+    try {
+      identity = await verifyGoogleIdToken(req.body?.idToken);
+    } catch (error) {
+      if (error instanceof GoogleIdentityError) {
+        return fail(res, error.message, error.code, error.statusCode);
+      }
+      throw error;
+    }
+
+    const pool = await poolPromise;
+    const existing = await pool.request()
+      .input('googleSubject', sql.VarChar(255), identity.subject)
+      .input('email', sql.VarChar(100), identity.email)
+      .query(`
+        SELECT nd.UserID AS userId, nd.TenDangNhap AS tenDangNhap,
+          nd.HoTen AS hoTen, nd.Email AS email, nd.SoDienThoai AS soDienThoai,
+          nd.VaiTroID AS vaiTroId, nd.TrangThai AS trangThai,
+          nd.GoogleSubject AS googleSubject, vt.TenVaiTro AS tenVaiTro
+        FROM NguoiDung nd
+        INNER JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID
+        WHERE nd.GoogleSubject=@googleSubject OR nd.Email=@email
+        ORDER BY CASE WHEN nd.GoogleSubject=@googleSubject THEN 0 ELSE 1 END
+      `);
+
+    const distinctUsers = new Set(existing.recordset.map((row) => row.userId));
+    if (distinctUsers.size > 1) {
+      return fail(
+        res,
+        'Tai khoan Google dang xung dot voi mot email da lien ket. Vui long lien he quan tri vien.',
+        'GOOGLE_ACCOUNT_CONFLICT',
+        409,
+      );
+    }
+
+    if (existing.recordset.length) {
+      const user = existing.recordset[0];
+      if (user.googleSubject && user.googleSubject !== identity.subject) {
+        return fail(
+          res,
+          'Email nay da lien ket voi mot tai khoan Google khac',
+          'GOOGLE_ACCOUNT_CONFLICT',
+          409,
+        );
+      }
+      if (user.trangThai === 'KhoaTaiKhoan') {
+        await writeLoginLog(pool, req, user.userId, 'ThatBai', 'mobile');
+        return fail(res, 'Tai khoan da bi khoa, lien he quan tri vien', 'ACCOUNT_LOCKED', 403);
+      }
+      if (!PUBLIC_MOBILE_ROLES.has(user.tenVaiTro)) {
+        await writeLoginLog(pool, req, user.userId, 'ThatBai', 'mobile');
+        return fail(
+          res,
+          'Tai khoan nay khong ho tro tren Mobile, vui long dung he thong Web',
+          'MOBILE_ACCESS_DENIED',
+          403,
+        );
+      }
+
+      if (!user.googleSubject) {
+        await pool.request()
+          .input('userId', sql.Int, user.userId)
+          .input('googleSubject', sql.VarChar(255), identity.subject)
+          .input('photoUrl', sql.NVarChar(255), identity.photoUrl?.slice(0, 255) || null)
+          .query(`
+            UPDATE NguoiDung
+            SET GoogleSubject=@googleSubject,
+                AnhDaiDien=COALESCE(AnhDaiDien,@photoUrl)
+            WHERE UserID=@userId AND GoogleSubject IS NULL
+          `);
+      }
+
+      return ok(
+        res,
+        await createMobileSession(pool, req, user),
+        'Dang nhap Google thanh cong',
+      );
+    }
+
+    const accountType = req.body?.loaiTaiKhoan;
+    if (accountType == null || accountType === '') {
+      return ok(res, {
+        requiresRegistration: true,
+        googleProfile: {
+          hoTen: identity.displayName,
+          email: identity.email,
+          anhDaiDien: identity.photoUrl,
+        },
+      }, 'Vui long bo sung thong tin de tao tai khoan');
+    }
+    if (typeof accountType !== 'string' || !PUBLIC_MOBILE_ROLES.has(accountType)) {
+      return fail(
+        res,
+        'loaiTaiKhoan chi duoc la NguoiCaoTuoi hoac NguoiChamSoc',
+        'INVALID_PUBLIC_ACCOUNT_TYPE',
+        400,
+      );
+    }
+
+    const hoTen = typeof req.body?.hoTen === 'string' && req.body.hoTen.trim()
+      ? req.body.hoTen.trim()
+      : identity.displayName;
+    const soDienThoai = typeof req.body?.soDienThoai === 'string'
+      ? req.body.soDienThoai.trim()
+      : '';
+    const ngaySinh = req.body?.ngaySinh;
+    const gioiTinh = req.body?.gioiTinh;
+    if (!hoTen || hoTen.length > 100) {
+      return fail(res, 'Ho ten khong hop le', 'INVALID_NAME', 400);
+    }
+    if (soDienThoai.length < 8 || soDienThoai.length > 15
+      || !/^[0-9+]+$/.test(soDienThoai)) {
+      return fail(res, 'So dien thoai phai co tu 8 den 15 chu so', 'INVALID_PHONE', 400);
+    }
+    if (accountType === 'NguoiCaoTuoi') {
+      const birthDate = typeof ngaySinh === 'string'
+        ? new Date(`${ngaySinh}T00:00:00Z`)
+        : new Date(NaN);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ngaySinh || '')
+        || Number.isNaN(birthDate.getTime())
+        || birthDate.toISOString().slice(0, 10) !== ngaySinh
+        || birthDate > new Date()
+        || !['Nam', 'Nữ', 'Khác'].includes(gioiTinh)) {
+        return fail(
+          res,
+          'Ngay sinh va gioi tinh cua nguoi cao tuoi khong hop le',
+          'INVALID_PROFILE',
+          400,
+        );
+      }
+    }
+
+    const roleResult = await pool.request()
+      .input('tenVaiTro', sql.NVarChar(50), accountType)
+      .query('SELECT VaiTroID AS vaiTroId FROM VaiTro WHERE TenVaiTro=@tenVaiTro');
+    if (!roleResult.recordset.length) {
+      return fail(res, 'Khong tim thay vai tro dang ky', 'ROLE_NOT_FOUND', 500);
+    }
+    const vaiTroId = roleResult.recordset[0].vaiTroId;
+    const username = googleUsername(identity.subject);
+    const unusablePasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+
+    transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    const duplicate = await new sql.Request(transaction)
+      .input('googleSubject', sql.VarChar(255), identity.subject)
+      .input('email', sql.VarChar(100), identity.email)
+      .query(`
+        SELECT UserID FROM NguoiDung WITH (UPDLOCK,HOLDLOCK)
+        WHERE GoogleSubject=@googleSubject OR Email=@email
+      `);
+    if (duplicate.recordset.length) {
+      await transaction.rollback();
+      transaction = null;
+      return fail(
+        res,
+        'Tai khoan vua duoc tao hoac lien ket o phien khac. Vui long dang nhap lai.',
+        'GOOGLE_ACCOUNT_ALREADY_EXISTS',
+        409,
+      );
+    }
+
+    const userResult = await new sql.Request(transaction)
+      .input('tenDangNhap', sql.VarChar(50), username)
+      .input('matKhauHash', sql.VarChar(255), unusablePasswordHash)
+      .input('hoTen', sql.NVarChar(100), hoTen)
+      .input('email', sql.VarChar(100), identity.email)
+      .input('soDienThoai', sql.VarChar(15), soDienThoai)
+      .input('photoUrl', sql.NVarChar(255), identity.photoUrl?.slice(0, 255) || null)
+      .input('googleSubject', sql.VarChar(255), identity.subject)
+      .input('vaiTroId', sql.Int, vaiTroId)
+      .query(`
+        INSERT INTO NguoiDung
+          (TenDangNhap,MatKhauHash,HoTen,Email,SoDienThoai,AnhDaiDien,
+           GoogleSubject,VaiTroID,TrangThai,NgayTao)
+        OUTPUT INSERTED.UserID AS userId
+        VALUES
+          (@tenDangNhap,@matKhauHash,@hoTen,@email,@soDienThoai,@photoUrl,
+           @googleSubject,@vaiTroId,N'HoatDong',SYSDATETIME())
+      `);
+    const userId = userResult.recordset[0].userId;
+
+    if (accountType === 'NguoiCaoTuoi') {
+      await new sql.Request(transaction)
+        .input('userId', sql.Int, userId)
+        .input('hoTen', sql.NVarChar(100), hoTen)
+        .input('ngaySinh', sql.Date, ngaySinh)
+        .input('gioiTinh', sql.NVarChar(10), gioiTinh)
+        .input('soDienThoai', sql.VarChar(15), soDienThoai)
+        .query(`
+          INSERT INTO HoSoNguoiCaoTuoi
+            (UserID,HoTen,NgaySinh,GioiTinh,SoDienThoai,NguoiTaoID)
+          VALUES (@userId,@hoTen,@ngaySinh,@gioiTinh,@soDienThoai,@userId)
+        `);
+    } else {
+      await new sql.Request(transaction)
+        .input('userId', sql.Int, userId)
+        .input('hoTen', sql.NVarChar(100), hoTen)
+        .input('soDienThoai', sql.VarChar(15), soDienThoai)
+        .input('email', sql.VarChar(100), identity.email)
+        .query(`
+          INSERT INTO NguoiChamSoc (UserID,HoTen,SoDienThoai,Email)
+          VALUES (@userId,@hoTen,@soDienThoai,@email)
+        `);
+    }
+    await transaction.commit();
+    transaction = null;
+
+    const user = {
+      userId,
+      tenDangNhap: username,
+      hoTen,
+      email: identity.email,
+      soDienThoai,
+      vaiTroId,
+      tenVaiTro: accountType,
+    };
+    return ok(
+      res,
+      await createMobileSession(pool, req, user),
+      'Tao tai khoan va dang nhap Google thanh cong',
+      201,
+    );
+  } catch (error) {
+    if (transaction) {
+      try { await transaction.rollback(); } catch (_) { /* transaction da ket thuc */ }
+    }
+    if ([2601, 2627].includes(error.number)) {
+      return fail(
+        res,
+        'Email hoac tai khoan Google da duoc su dung',
+        'GOOGLE_ACCOUNT_ALREADY_EXISTS',
+        409,
+      );
+    }
+    next(error);
   }
 };
 
@@ -671,6 +955,7 @@ const resetPasswordWithToken = async (req, res, next) => {
 module.exports = {
   register,
   login,
+  googleLogin,
   me,
   updateMe,
   changePassword,

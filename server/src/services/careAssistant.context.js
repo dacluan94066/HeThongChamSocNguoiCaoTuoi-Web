@@ -25,6 +25,7 @@ function detectIntent(question) {
   if (/chi so|suc khoe|huyet ap|nhip tim|duong huyet|spo2|nhiet do|can nang/.test(q)) return 'health';
   if (/cham soc|nguoi than|ai dang|ai phu trach|so dien thoai|lien lac/.test(q)) return 'caregivers';
   if (/thuoc|uong gi|lieu dung/.test(q)) return 'medications';
+  if (/doi mat khau|thay mat khau|cap nhat mat khau|doi password|change password/.test(q)) return 'change_password';
   if (/^(?:giup|ho tro)(?: cho)?(?: toi)?(?: voi| nhe| di)?$/.test(q) || /dat ve|may bay|chung khoan|gia vang|thoi tiet|bong da/.test(q)) return 'clarification';
   if (/huong dan|su dung|dung ung dung|tro giup|giup toi|xin chao|\bchao\b|cam on|tam biet|help/.test(q)) return 'help';
   return 'unknown';

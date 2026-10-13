@@ -5,7 +5,8 @@ enum AssistantAction {
   caregivers('Người chăm sóc / liên hệ'),
   notifications('Thông báo'),
   notes('Nhật ký chăm sóc'),
-  sos('Mở màn hình SOS');
+  sos('Mở màn hình SOS'),
+  changePassword('Mở màn hình Đổi mật khẩu');
 
   const AssistantAction(this.label);
   final String label;

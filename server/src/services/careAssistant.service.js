@@ -11,7 +11,7 @@ const time = (raw) => {
 };
 const medication = (r) => `• ${value(r.tenThuoc)} — liều đã lưu: ${value(r.lieuDung)}; lịch ${time(r.thoiGianDuKien)}; ${({ChuaDenGio:'Chưa có xác nhận uống',DaUong:'Đã xác nhận uống',BoLo:'Đã ghi nhận bỏ lỡ',TuChoi:'Đã ghi nhận từ chối'})[r.trangThai] || value(r.trangThai)}${r.thoiGianThucTe ? ' lúc ' + time(r.thoiGianThucTe) : ''}`;
 const appointment = (r) => `• ${time(r.thoiGianKham)} — ${value(r.tenBenhVien)}, bác sĩ: ${value(r.bacSiPhuTrach)}${r.trangThai ? '; ' + (({ChuaDen:'Chưa đến',DaKham:'Đã khám',DaHuy:'Đã hủy',Huy:'Đã hủy',DaDoiLich:'Đã đổi lịch'})[r.trangThai] || 'Chưa rõ trạng thái') : ''}`;
-const allowedActions = new Set(['medications','appointments','health','caregivers','notifications','notes','sos']);
+const allowedActions = new Set(['medications','appointments','health','caregivers','notifications','notes','sos','change_password']);
 async function answer({ question, history = [], profile, user, repository, resolved, now = new Date() }) {
   const context = resolved || resolveQuestion(question, history);
   const intent = context.intent;
@@ -153,10 +153,14 @@ async function answer({ question, history = [], profile, user, repository, resol
     case 'help':
       text = /chao/.test(normalize(question)) ? 'Chào bạn! Bạn muốn mình giúp việc gì hôm nay?' : /cam on/.test(normalize(question)) ? 'Rất vui được giúp bạn.' : /tam biet/.test(normalize(question)) ? 'Chào bạn, hẹn gặp lại nhé.' : 'Bạn có thể hỏi dữ liệu đã lưu hoặc chọn nút dưới câu trả lời để xem chi tiết. Nếu chăm sóc nhiều người, hãy chọn hồ sơ ở phía trên trước khi hỏi.';
       break;
+    case 'change_password':
+      text = 'Để đổi mật khẩu, bạn chọn nút **Mở màn hình Đổi mật khẩu** bên dưới, sau đó nhập mật khẩu hiện tại, mật khẩu mới và xác nhận mật khẩu mới. Nếu tài khoản được tạo bằng Google và chưa có mật khẩu thường, hãy đăng xuất rồi dùng **Quên mật khẩu** để thiết lập mật khẩu qua email.';
+      actions = ['change_password'];
+      break;
     default:
       text = /tro chuyen|noi chuyen|ke chuyen|toi (?:dang )?(?:buon|vui|co don)/.test(normalize(question)) ? 'Mình đang nghe đây. Bạn muốn chia sẻ điều gì?' : 'Bạn muốn hỏi về thuốc, lịch khám, chỉ số hay người chăm sóc? Bạn nói thêm một chút để mình tra đúng nhé.';
   }
-  if (repository.authorize) await repository.authorize(Boolean(profile) && actions.some(a => a !== 'notifications'));
+  if (repository.authorize) await repository.authorize(Boolean(profile) && actions.some(a => !['notifications','change_password'].includes(a)));
   if (truncated) text += '\nCó thêm bản ghi; bạn có thể mở chi tiết để xem.';
   const field=({medications:'tenThuoc',appointments:'tenBenhVien',health:'tenChiSo',caregivers:'hoTen'})[intent];
   const labels=field ? [...new Set(rows.map(r=>r[field]).filter(Boolean))] : [];
@@ -164,6 +168,6 @@ async function answer({ question, history = [], profile, user, repository, resol
   const entityLabel=labels.length===1 && (intent!=='appointments'||rows.length===1) ? labels[0] : intent==='appointments' && context.options.nextAppointment && rows.length && nextIsUnique ? rows[0][field] : intent==='health' ? context.options.healthType || context.options.entityLabel : null;
   const entityId=intent==='appointments' && (rows.length===1 || context.options.nextAppointment && nextIsUnique) ? rows[0]?.id || null : null;
   const conversationContext={topic:intent,entityLabel,entityId,dayOffset:context.options.dayOffset,targetDate:context.options.targetDate,nextAppointment:context.options.nextAppointment,period:context.options.period,appointmentStatus:context.options.appointmentStatus};
-  return {mode:'functional', intent, profile, text: text.slice(0,2200), actions:actions.filter(a => allowedActions.has(a) && (a === 'notifications' || a === 'sos' || Boolean(profile))), rows, truncated, fetchedAt:new Date().toISOString(), dataTimeZone:'Asia/Ho_Chi_Minh',conversationContext};
+  return {mode:'functional', intent, profile, text: text.slice(0,2200), actions:actions.filter(a => allowedActions.has(a) && (['notifications','sos','change_password'].includes(a) || Boolean(profile))), rows, truncated, fetchedAt:new Date().toISOString(), dataTimeZone:'Asia/Ho_Chi_Minh',conversationContext};
 }
 module.exports = { normalize, detectIntent, answer };

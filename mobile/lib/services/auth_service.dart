@@ -9,6 +9,7 @@ import 'caregiver_service.dart';
 import 'caregiver_dashboard_service.dart';
 import 'elderly_service.dart';
 import 'health_metric_service.dart';
+import 'google_sign_in_service.dart';
 import 'local_notification_service.dart';
 import 'medication_schedule_service.dart';
 
@@ -77,6 +78,110 @@ class AuthService {
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
     }
+  }
+
+  Future<GoogleLoginResult> loginWithGoogle(String idToken) async {
+    final loginVersion = await _prepareForLogin();
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/auth/google',
+        data: {'idToken': idToken},
+      );
+      final data = _extractData(response);
+      if (data['requiresRegistration'] == true) {
+        final profile = data['googleProfile'];
+        return GoogleLoginResult(
+          requiresRegistration: true,
+          googleProfile: profile is Map
+              ? Map<String, dynamic>.from(profile)
+              : const <String, dynamic>{},
+        );
+      }
+      final user = await _saveAuthenticatedSession(data, loginVersion);
+      return GoogleLoginResult(requiresRegistration: false, user: user);
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
+  Future<Map<String, dynamic>> registerWithGoogle({
+    required String idToken,
+    required String loaiTaiKhoan,
+    required String hoTen,
+    required String soDienThoai,
+    String? ngaySinh,
+    String? gioiTinh,
+  }) async {
+    final loginVersion = await _prepareForLogin();
+    try {
+      final data = <String, dynamic>{
+        'idToken': idToken,
+        'loaiTaiKhoan': loaiTaiKhoan,
+        'hoTen': hoTen,
+        'soDienThoai': soDienThoai,
+      };
+      if (ngaySinh != null) {
+        data['ngaySinh'] = ngaySinh;
+      }
+      if (gioiTinh != null) {
+        data['gioiTinh'] = gioiTinh;
+      }
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/auth/google',
+        data: data,
+      );
+      return await _saveAuthenticatedSession(
+        _extractData(response),
+        loginVersion,
+      );
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
+  Future<int> _prepareForLogin() async {
+    ElderlyService.instance.clearCache();
+    AlertService.instance.clearCache();
+    AppointmentService.instance.clearCache();
+    CaregiverService.instance.clearCache();
+    CaregiverDashboardService.instance.clearCache();
+    HealthMetricService.instance.clearCache();
+    MedicationScheduleService.instance.clearCache();
+    await ApiClient.clearSession();
+    await LocalNotificationService.cancelMedicationReminders();
+    return ApiClient.sessionVersion;
+  }
+
+  Future<Map<String, dynamic>> _saveAuthenticatedSession(
+    Map<String, dynamic> data,
+    int loginVersion,
+  ) async {
+    final token = data['token']?.toString();
+    final user = data['user'];
+    if (token == null || token.isEmpty || user is! Map) {
+      throw const ApiException('Phản hồi đăng nhập Google không hợp lệ.');
+    }
+    final userMap = Map<String, dynamic>.from(user);
+    if (userMap['tenVaiTro'] != 'NguoiCaoTuoi' &&
+        userMap['tenVaiTro'] != 'NguoiChamSoc') {
+      throw const ApiException(
+        'Tài khoản này không hỗ trợ trên Mobile. Vui lòng dùng hệ thống Web.',
+        statusCode: 403,
+      );
+    }
+    await ApiClient.saveSession(
+      token: token,
+      encodedUser: jsonEncode(userMap),
+      expectedVersion: loginVersion,
+    );
+    ElderlyService.instance.beginSession(userMap['userId']);
+    AlertService.instance.beginSession();
+    AppointmentService.instance.beginSession();
+    CaregiverService.instance.beginSession();
+    CaregiverDashboardService.instance.beginSession();
+    HealthMetricService.instance.beginSession();
+    MedicationScheduleService.instance.beginSession();
+    return userMap;
   }
 
   Future<Map<String, dynamic>> register({
@@ -181,6 +286,7 @@ class AuthService {
       await ApiClient.clearSession();
     } finally {
       await LocalNotificationService.cancelMedicationReminders();
+      await GoogleSignInService.instance.signOut();
     }
   }
 
@@ -273,4 +379,16 @@ class AuthService {
       statusCode: response.statusCode,
     );
   }
+}
+
+class GoogleLoginResult {
+  const GoogleLoginResult({
+    required this.requiresRegistration,
+    this.user,
+    this.googleProfile = const <String, dynamic>{},
+  });
+
+  final bool requiresRegistration;
+  final Map<String, dynamic>? user;
+  final Map<String, dynamic> googleProfile;
 }

@@ -108,6 +108,7 @@ class ApiClient {
         : normalized;
     return const {
       '/auth/login',
+      '/auth/google',
       '/auth/register',
       '/auth/forgot-password',
       '/auth/verify-otp',

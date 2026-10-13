@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
+import 'screens/auth/google_registration_screen.dart';
 import 'services/local_notification_service.dart';
 import 'services/auth_storage.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
+import 'services/google_sign_in_service.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/caregiver/caregiver_home_screen.dart';
 
@@ -513,6 +515,55 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> loginWithGoogle() async {
+    setState(() => loggingIn = true);
+    try {
+      final identity = await GoogleSignInService.instance.authenticate();
+      final result = await AuthService.instance.loginWithGoogle(
+        identity.idToken,
+      );
+      if (!mounted) return;
+
+      if (result.requiresRegistration) {
+        final profile = result.googleProfile;
+        final completed = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => GoogleRegistrationScreen(
+              idToken: identity.idToken,
+              email: profile['email']?.toString() ?? identity.email,
+              displayName: profile['hoTen']?.toString() ?? identity.displayName,
+            ),
+          ),
+        );
+        if (!mounted) return;
+        if (completed == true) {
+          Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+        } else {
+          await GoogleSignInService.instance.signOut();
+        }
+        return;
+      }
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    } on ApiException catch (error) {
+      await GoogleSignInService.instance.signOut();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      await GoogleSignInService.instance.signOut();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể đăng nhập Google. Vui lòng thử lại.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => loggingIn = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -732,15 +783,7 @@ class _LoginScreenState extends State<LoginScreen> {
               width: double.infinity,
               height: 54,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Đăng nhập Google sẽ được kết nối ở bước sau.',
-                      ),
-                    ),
-                  );
-                },
+                onPressed: loggingIn ? null : loginWithGoogle,
                 icon: const Text(
                   'G',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),

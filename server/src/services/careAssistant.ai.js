@@ -90,6 +90,7 @@ async function chat({ question, history = [], profile, user, repository,
   };
   // Product capabilities are known locally, independent of history, Groq or quota.
   if (intent === 'capabilities') return fallback('capabilities');
+  if (intent === 'change_password') return fallback('app_navigation');
   if (intent === 'clarification') return fallback('clarification');
   if (['emergency', 'sos', 'medical'].includes(intent)) return fallback('safety');
   if (!config.configured) return fallback('missing_config');

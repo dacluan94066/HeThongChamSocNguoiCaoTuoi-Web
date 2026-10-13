@@ -5,6 +5,7 @@ import '../../services/care_assistant_controller.dart';
 import '../../widgets/assistant_message_bubble.dart';
 import '../notifications/notification_screen.dart';
 import '../caregiver/caregiver_screen.dart';
+import '../profile/change_password_screen.dart';
 import 'care_assistant_records_screen.dart';
 
 class CareAssistantScreen extends StatefulWidget {
@@ -143,6 +144,9 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
       case AssistantAction.sos:
         if (_chat.caregiver) return;
         screen = const CaregiverScreen();
+        break;
+      case AssistantAction.changePassword:
+        screen = const ChangePasswordScreen();
         break;
       default:
         screen = CareAssistantRecordsScreen(action: action, profile: profile);

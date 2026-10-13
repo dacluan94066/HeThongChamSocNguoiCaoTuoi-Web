@@ -284,7 +284,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             Text(
               selectedAccountType == 'NguoiCaoTuoi'
                   ? 'Email (dùng để khôi phục mật khẩu)'
-                  : 'Email (không bắt buộc)',
+                  : 'Email',
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
             ),
 

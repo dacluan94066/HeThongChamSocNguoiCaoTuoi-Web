@@ -64,6 +64,7 @@ CREATE TABLE NguoiDung (
     MatKhauHash     VARCHAR(255) NOT NULL,
     HoTen           NVARCHAR(100) NOT NULL,
     Email           VARCHAR(100) NULL,
+    GoogleSubject   VARCHAR(255) NULL,
     SoDienThoai     VARCHAR(15) NULL,
     AnhDaiDien      NVARCHAR(255) NULL,
     MaOTP            VARCHAR(255) NULL,
@@ -84,6 +85,12 @@ GO
 CREATE UNIQUE INDEX UX_NguoiDung_Email
     ON NguoiDung(Email)
     WHERE Email IS NOT NULL;
+GO
+
+-- Dinh danh `sub` da duoc Google ky; moi tai khoan Google chi lien ket mot user.
+CREATE UNIQUE INDEX UX_NguoiDung_GoogleSubject
+    ON NguoiDung(GoogleSubject)
+    WHERE GoogleSubject IS NOT NULL;
 GO
 
 CREATE TABLE NhatKyDangNhap (

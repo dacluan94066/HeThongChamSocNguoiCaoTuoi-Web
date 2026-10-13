@@ -529,6 +529,41 @@ void main() {
       session.dispose();
     },
   );
+  testWidgets('Password guidance button opens the password screen action', (
+    tester,
+  ) async {
+    final service = FakeService()
+      ..reply = const AssistantReply(
+        text: 'Mở màn hình đổi mật khẩu.',
+        intent: 'change_password',
+        actions: [AssistantAction.changePassword],
+      );
+    final session = ValueNotifier(0);
+    final chat = CareAssistantController(service: service, session: session);
+    final actions = <AssistantAction>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CareAssistantScreen(
+          controller: chat,
+          onNavigate: (action, _) async => actions.add(action),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'đổi mật khẩu');
+    await tester.tap(find.byTooltip('Gửi câu hỏi'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, 'Mở màn hình Đổi mật khẩu'),
+    );
+    await tester.pumpAndSettle();
+    expect(actions, [AssistantAction.changePassword]);
+
+    await tester.pumpWidget(const SizedBox());
+    chat.dispose();
+    session.dispose();
+  });
   testWidgets('Small screen, large text and keyboard do not overflow', (
     tester,
   ) async {
