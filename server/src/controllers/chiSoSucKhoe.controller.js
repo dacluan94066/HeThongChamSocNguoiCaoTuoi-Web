@@ -322,6 +322,17 @@ const createMine = async (req, res, next) => {
       `);
 
     const row = result.recordset[0];
+    emitToAdmin('chisuckhoe:new', {
+      id: row.id,
+      chiSoId: row.id,
+      nguoiCaoTuoiId: elderlyId,
+      loaiChiSoId: typeId,
+      tenChiSo: row.tenChiSo,
+      giaTri: Number(row.giaTri),
+      giaTriPhu: row.giaTriPhu == null ? null : Number(row.giaTriPhu),
+      laBatThuong: Boolean(row.laBatThuong),
+      thoiGianDo: row.thoiGianDo,
+    });
     if (row.alertId != null) {
       emitToAdmin('canhbao:new', {
         id: row.alertId,
@@ -464,6 +475,17 @@ const create = async (req, res, next) => {
 
         SELECT @chiSoId AS id, @canhBaoId AS alertId;
       `);
+    emitToAdmin('chisuckhoe:new', {
+      id: r.recordset[0].id,
+      chiSoId: r.recordset[0].id,
+      nguoiCaoTuoiId,
+      loaiChiSoId,
+      loaiChiSo,
+      giaTri: giaTriNum,
+      giaTriPhu: giaTriPhuNum,
+      laBatThuong: assessment.abnormal,
+      thoiGianDo,
+    });
     if (r.recordset[0].alertId != null) {
       emitToAdmin('canhbao:new', {
         id: r.recordset[0].alertId,

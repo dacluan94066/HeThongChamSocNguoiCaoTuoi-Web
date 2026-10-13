@@ -1,5 +1,5 @@
 // Trang chỉ số sức khỏe - Bảng lịch sử + Biểu đồ đường theo thời gian
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Select, Row, Col, Card, Tag, Button, Form, Input, DatePicker, TimePicker, message } from 'antd';
 import { Line } from 'react-chartjs-2';
 import {
@@ -20,6 +20,7 @@ import TableAvatar from '../../components/TableAvatar';
 import { formatEntityCode } from '../../utils/displayUtils';
 import TableActionButton from '../../components/TableActionButton';
 import RecordDetailModal from '../../components/RecordDetailModal';
+import { getSocket } from '../../services/socketClient';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -46,12 +47,22 @@ const HealthMetricsPage = () => {
   const [detailRecord, setDetailRecord] = useState(null);
   const [form] = Form.useForm();
 
-  useEffect(() => { getElders().then(setElders); }, []);
-  useEffect(() => {
+  const loadMetrics = useCallback(() => {
     setLoading(true);
-    getHealthMetrics({ nguoiCaoTuoiId: selectedElder, loaiChiSo: selectedType || undefined })
-      .then(setMetrics).finally(() => setLoading(false));
+    return getHealthMetrics({ nguoiCaoTuoiId: selectedElder, loaiChiSo: selectedType || undefined })
+      .then(setMetrics)
+      .finally(() => setLoading(false));
   }, [selectedElder, selectedType]);
+
+  useEffect(() => { getElders().then(setElders); }, []);
+  useEffect(() => { loadMetrics(); }, [loadMetrics]);
+  useEffect(() => {
+    const socket = getSocket();
+    const handleNewHealthMetric = () => { loadMetrics(); };
+
+    socket.on('chisuckhoe:new', handleNewHealthMetric);
+    return () => socket.off('chisuckhoe:new', handleNewHealthMetric);
+  }, [loadMetrics]);
 
   const handleAdd = () => {
     form.resetFields();
@@ -74,7 +85,7 @@ const HealthMetricsPage = () => {
       }
       setModalOpen(false);
       form.resetFields();
-      getHealthMetrics({ nguoiCaoTuoiId: selectedElder, loaiChiSo: selectedType || undefined }).then(setMetrics);
+      await loadMetrics();
     } finally {
       setSaving(false);
     }
