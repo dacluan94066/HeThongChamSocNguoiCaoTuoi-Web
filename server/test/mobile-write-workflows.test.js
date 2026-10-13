@@ -13,8 +13,9 @@ function fixture({role='NguoiChamSoc',allowed=true,assigned=true,author=3,failUp
   }},
  };
  const db={sql,poolPromise:Promise.resolve({})};
+ const socket={emitToAdmin:()=>true};
  const load=(name,workflow)=>{const module={exports:{}};vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/services/'+name),'utf8'),
-  {module,exports:module.exports,require:dep=>dep==='../config/db'?db:dep==='./alertWorkflow.service'?workflow:require(dep)});
+  {module,exports:module.exports,require:dep=>dep==='../config/db'?db:dep==='../socket'?socket:dep==='./alertWorkflow.service'?workflow:require(dep)});
   return module.exports;};
  const workflow=load('alertWorkflow.service.js');
  return {trace,workflow,notes:load('careNoteMutation.service.js',workflow),user:{userId:3,tenVaiTro:role}};

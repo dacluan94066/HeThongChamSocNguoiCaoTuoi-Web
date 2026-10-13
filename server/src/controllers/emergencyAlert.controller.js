@@ -1,6 +1,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const {scopedWhere,isMobileRole}=require('../middlewares/mobile-scope.middleware');
+const { emitToAdmin } = require('../socket');
 const getMine=async(req,res,next)=>{
  try{
   if(!isMobileRole(req))return fail(res,'Đường dẫn này chỉ dành cho tài khoản mobile.','FORBIDDEN',403);
@@ -34,11 +35,12 @@ const create = async (req, res, next) => {
     const pool = await poolPromise;
     // Lay lai ho so bang UserID ngay khi ghi, khong su dung ID do client gui.
     const profile = await pool.request().input('userId', sql.Int, req.user.userId)
-      .query('SELECT NguoiCaoTuoiID AS id FROM HoSoNguoiCaoTuoi WHERE UserID = @userId');
+      .query('SELECT NguoiCaoTuoiID AS id, HoTen AS name FROM HoSoNguoiCaoTuoi WHERE UserID = @userId');
     if (!profile.recordset.length) {
       return fail(res, 'Tai khoan chua co ho so nguoi cao tuoi lien ket', 'ELDERLY_PROFILE_NOT_FOUND', 404);
     }
     const elderlyId = profile.recordset[0].id;
+    const elderlyName = profile.recordset[0].name;
     transaction = new sql.Transaction(pool);
     await transaction.begin();
     const emergency = await new sql.Request(transaction)
@@ -76,6 +78,22 @@ const create = async (req, res, next) => {
         AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))`);
     await transaction.commit();
     transaction = null;
+    emitToAdmin('canhbao:new', {
+      id: alert.recordset[0].id,
+      canhBaoId: alert.recordset[0].id,
+      nguoiCaoTuoiId: elderlyId,
+      nguoiCaoTuoiTen: elderlyName,
+      loaiCanhBao: 'KhanCap',
+      loaiCanhBaoLabel: 'Khẩn cấp',
+      mucDo: 'KHAN_CAP',
+      mucDoLabel: 'Khẩn cấp',
+      moTa: noiDung || 'Người cao tuổi vừa gửi cảnh báo SOS.',
+      thoiGianPhatHien: emergency.recordset[0].ngayGui,
+      trangThai: 'CHUA_XU_LY',
+      trangThaiLabel: 'Chưa xử lý',
+      nguonBang: 'CanhBaoKhanCap',
+      nguonId: emergencyId,
+    });
     return ok(res, { ...emergency.recordset[0], canhBaoId: alert.recordset[0].id, nguoiCaoTuoiId: elderlyId, soNguoiChamSocDaThongBao:delivery.recordset.length }, 'Da gui canh bao SOS', 201);
   } catch (error) {
     if (transaction) {

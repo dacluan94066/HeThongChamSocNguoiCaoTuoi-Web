@@ -1,6 +1,6 @@
 // MainLayout - Khung bố cục chính (Sidebar + Header + Content)
 // Sidebar theme: #1B4965 | Responsive: icon-only ở tablet, Drawer ở mobile
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Layout, Menu, Avatar, Dropdown, Badge, Button, Tooltip, Space } from 'antd';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
@@ -29,6 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
 import { getAlerts } from '../services/alertService';
 import AccountMenuModals from '../components/AccountMenuModals';
+import useRealtimeAlerts from '../hooks/useRealtimeAlerts';
 
 const { Sider, Header, Content } = Layout;
 
@@ -158,12 +159,18 @@ const MainLayout = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
+  const refreshUnreadAlerts = useCallback(() => {
     if (!hasPermission('QLCANHBAO', 'xem')) return;
     getAlerts({ trangThai: 'CHUA_XU_LY' }).then((alerts) => {
       setUnreadAlerts(alerts.length);
     });
   }, [hasPermission]);
+
+  useEffect(() => {
+    refreshUnreadAlerts();
+  }, [refreshUnreadAlerts]);
+
+  useRealtimeAlerts(refreshUnreadAlerts);
 
   const selectedKey = location.pathname;
   const openKeys = visibleMenuItems
