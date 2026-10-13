@@ -13,6 +13,7 @@ const getMe = async (req, res, next) => {
       SELECT nct.NguoiCaoTuoiID AS id, nct.UserID AS userId,
         nct.HoTen AS hoTen, nct.NgaySinh AS ngaySinh, nct.GioiTinh AS gioiTinh,
         nct.CCCD AS cccd, nct.DiaChi AS diaChi, nct.SoDienThoai AS soDienThoai,
+        nd.Email AS email,
         nct.NhomMau AS nhomMau, nct.BenhNen AS benhNen, nct.DiUng AS diUng,
         nct.TrangThai AS trangThai, nct.NgayTao AS ngayTao, nd.Email AS email,
         ncsMain.NguoiChamSocID AS nguoiChamSocId,
@@ -24,9 +25,10 @@ const getMe = async (req, res, next) => {
         FROM NguoiCaoTuoi_NguoiChamSoc lk
         JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lk.NguoiChamSocID
         WHERE lk.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+          AND lk.LaChinh = 1
           AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
           AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
-        ORDER BY lk.LaChinh DESC, lk.ID DESC
+        ORDER BY lk.ID DESC
       ) ncsMain
       WHERE nct.UserID = @userId
     `);
@@ -70,6 +72,14 @@ const updateMe = async (req, res, next) => {
     }
     if (gioiTinh !== undefined && !['Nam', 'Nữ', 'Khác'].includes(gioiTinh)) {
       return fail(res, 'Gioi tinh khong hop le', 'INVALID_GENDER', 400);
+    }
+    const normalizedEmail = typeof req.body.email === 'string'
+      ? req.body.email.trim().toLowerCase()
+      : '';
+    if (req.body.email !== undefined
+      && (!normalizedEmail || normalizedEmail.length > 100
+        || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))) {
+      return fail(res, 'Email khong hop le', 'INVALID_EMAIL', 400);
     }
     for (const field of ['soDienThoai', 'diaChi', 'nhomMau', 'benhNen', 'diUng']) {
       if (req.body[field] !== undefined && req.body[field] !== null
@@ -159,10 +169,11 @@ const getAll = async (req, res, next) => {
       OUTER APPLY (
         SELECT TOP 1 ncs.NguoiChamSocID, ncs.HoTen
         FROM NguoiCaoTuoi_NguoiChamSoc lienKet
-        INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
-        WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+          INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
+          WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+          AND lienKet.LaChinh = 1
           AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
-        ORDER BY lienKet.LaChinh DESC, lienKet.ID DESC
+        ORDER BY lienKet.ID DESC
       ) ncsMain
       WHERE 1=1
     `;
@@ -217,8 +228,9 @@ const getById = async (req, res, next) => {
           FROM NguoiCaoTuoi_NguoiChamSoc lienKet
           INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
           WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
+            AND lienKet.LaChinh = 1
             AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
-          ORDER BY lienKet.LaChinh DESC, lienKet.ID DESC
+          ORDER BY lienKet.ID DESC
         ) ncsMain
         WHERE nct.NguoiCaoTuoiID = @id
       `);
@@ -407,7 +419,11 @@ const assignCaregiver = async (req, res, next) => {
       .input('nguoiChamSocId', sql.Int, nguoiChamSocId)
       .query(`
         UPDATE NguoiCaoTuoi_NguoiChamSoc
-        SET LaChinh = 0
+        SET LaChinh = 0,
+            MoiQuanHe = CASE
+              WHEN MoiQuanHe = N'Người chăm sóc chính' THEN N'Người chăm sóc'
+              ELSE MoiQuanHe
+            END
         WHERE NguoiCaoTuoiID = @id;
 
         MERGE NguoiCaoTuoi_NguoiChamSoc WITH (HOLDLOCK) AS target
@@ -415,7 +431,9 @@ const assignCaregiver = async (req, res, next) => {
           ON target.NguoiCaoTuoiID = source.NguoiCaoTuoiID
          AND target.NguoiChamSocID = source.NguoiChamSocID
         WHEN MATCHED THEN
-          UPDATE SET LaChinh = 1, NgayKetThuc = NULL
+          UPDATE SET LaChinh = 1,
+            MoiQuanHe = N'Người chăm sóc chính',
+            NgayKetThuc = NULL
         WHEN NOT MATCHED THEN
           INSERT (NguoiCaoTuoiID, NguoiChamSocID, MoiQuanHe, LaChinh, NgayBatDau)
           VALUES (source.NguoiCaoTuoiID, source.NguoiChamSocID, N'Người chăm sóc chính', 1, CAST(GETDATE() AS DATE));

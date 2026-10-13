@@ -1,6 +1,7 @@
 // authService.js - Service xác thực người dùng
 // Kết nối với backend API thật qua axiosClient
 import axiosClient from './axiosClient';
+import { disconnectSocket } from './socketClient';
 
 // ─── Đăng nhập ───────────────────────────────────────────────────────────────
 // Gọi POST /auth/login với body { tenDangNhap, matKhau, platform }
@@ -20,6 +21,7 @@ export const login = async (tenDangNhap, matKhau, platform = 'web') => {
 
 // ─── Đăng xuất ───────────────────────────────────────────────────────────────
 export const logout = () => {
+  disconnectSocket();
   localStorage.removeItem('token');
   localStorage.removeItem('user');
 };
@@ -60,5 +62,25 @@ export const getLoginHistory = async () => {
 // ─── Đăng ký tài khoản ──────────────────────────────────────────────────────
 export const register = async (userData) => {
   const res = await axiosClient.post('/auth/register', userData);
+  return res.data;
+};
+
+export const forgotPassword = async ({ email, tenDangNhap }) => {
+  const res = await axiosClient.post('/auth/forgot-password', { email, tenDangNhap });
+  return res.data;
+};
+
+export const verifyPasswordOtp = async ({ email, tenDangNhap, otp }) => {
+  const res = await axiosClient.post('/auth/verify-otp', { email, tenDangNhap, otp });
+  const resetToken = res.data?.data?.resetToken;
+  if (!resetToken) throw new Error('Máy chủ không trả về phiên đặt lại mật khẩu');
+  return resetToken;
+};
+
+export const resetPasswordWithToken = async (resetToken, matKhauMoi) => {
+  const res = await axiosClient.post('/auth/reset-password-with-token', {
+    resetToken,
+    matKhauMoi,
+  });
   return res.data;
 };

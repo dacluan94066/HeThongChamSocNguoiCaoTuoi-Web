@@ -4,6 +4,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+const { emitToAdmin } = require('../socket');
 
 const MUC_DO = {
   Thap:      { ma: 'THAP',       label: 'Thấp' },
@@ -26,6 +27,18 @@ const LOAI_CANH_BAO_LABEL = {
   KhanCap:         'Khẩn cấp',
   Khac:            'Khác',
 };
+
+const VALID_ALERT_TYPES = new Set(Object.keys(LOAI_CANH_BAO_LABEL));
+const SEVERITY_INPUTS = new Map([
+  ['Thap', 'Thap'],
+  ['THAP', 'Thap'],
+  ['TrungBinh', 'TrungBinh'],
+  ['TRUNG_BINH', 'TrungBinh'],
+  ['Cao', 'Cao'],
+  ['CAO', 'Cao'],
+  ['KhanCap', 'KhanCap'],
+  ['KHAN_CAP', 'KhanCap'],
+]);
 
 const SLA_PHUT = {
   KhanCap: 15,
@@ -111,6 +124,97 @@ const mapAlert = (row) => {
     nguonId:          row.nguonId,
     ...getSmartInsights(row),
   };
+};
+
+const parseDateOnly = (value) => {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) return undefined;
+  return value;
+};
+
+const getForElderly = async (req, res, next, elderlyId) => {
+  const { loai, mucDo, tuNgay, denNgay } = req.query;
+  if (loai && !VALID_ALERT_TYPES.has(loai)) {
+    return fail(res, 'Loai canh bao khong hop le', 'INVALID_ALERT_TYPE', 400);
+  }
+  const normalizedSeverity = mucDo ? SEVERITY_INPUTS.get(mucDo) : null;
+  if (mucDo && !normalizedSeverity) {
+    return fail(res, 'Muc do canh bao khong hop le', 'INVALID_ALERT_SEVERITY', 400);
+  }
+  const fromDate = parseDateOnly(tuNgay);
+  const toDate = parseDateOnly(denNgay);
+  if (fromDate === undefined || toDate === undefined) {
+    return fail(res, 'tuNgay va denNgay phai theo dinh dang YYYY-MM-DD', 'INVALID_DATE_RANGE', 400);
+  }
+  if (fromDate && toDate && fromDate > toDate) {
+    return fail(res, 'tuNgay khong duoc lon hon denNgay', 'INVALID_DATE_RANGE', 400);
+  }
+
+  try {
+    const pool = await poolPromise;
+    const request = pool.request().input('elderlyId', sql.Int, elderlyId);
+    let query = `
+      SELECT c.CanhBaoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
+        nct.HoTen AS nguoiCaoTuoiTen, c.LoaiCanhBao AS loaiCanhBao,
+        c.NoiDung AS noiDung, c.MucDo AS mucDo, c.TrangThai AS trangThai,
+        c.NgayTao AS ngayTao, c.NgayXuLy AS ngayXuLy, nd.HoTen AS nguoiXuLyTen,
+        c.GhiChuXuLy AS ghiChuXuLy, c.NguonBang AS nguonBang, c.NguonID AS nguonId,
+        (
+          SELECT COUNT(*)
+          FROM CanhBao c2
+          WHERE c2.NguoiCaoTuoiID = c.NguoiCaoTuoiID
+            AND c2.NgayTao >= DATEADD(DAY, -7, SYSDATETIME())
+        ) AS soLanLap7Ngay
+      FROM CanhBao c
+      JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID = c.NguoiCaoTuoiID
+      LEFT JOIN NguoiDung nd ON c.NguoiXuLyID = nd.UserID
+      WHERE c.NguoiCaoTuoiID = @elderlyId
+    `;
+    if (loai) {
+      request.input('loai', sql.NVarChar(30), loai);
+      query += ' AND c.LoaiCanhBao = @loai';
+    }
+    if (normalizedSeverity) {
+      request.input('mucDo', sql.NVarChar(20), normalizedSeverity);
+      query += ' AND c.MucDo = @mucDo';
+    }
+    if (fromDate) {
+      request.input('tuNgay', sql.Date, fromDate);
+      query += ' AND c.NgayTao >= @tuNgay';
+    }
+    if (toDate) {
+      request.input('denNgay', sql.Date, toDate);
+      query += ' AND c.NgayTao < DATEADD(DAY, 1, @denNgay)';
+    }
+    query += ' ORDER BY c.NgayTao DESC, c.CanhBaoID DESC';
+    const result = await request.query(query);
+    return ok(res, result.recordset.map(mapAlert), 'Lay lich su canh bao thanh cong');
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/elderly/me/alerts
+const getMine = async (req, res, next) => {
+  if (req.user.tenVaiTro !== 'NguoiCaoTuoi') {
+    return fail(res, 'Chi tai khoan nguoi cao tuoi duoc xem lich su cua minh', 'FORBIDDEN', 403);
+  }
+  const elderlyId = req.mobileElderlyIds?.[0];
+  if (!elderlyId) {
+    return fail(res, 'Tai khoan chua co ho so nguoi cao tuoi lien ket', 'ELDERLY_PROFILE_NOT_FOUND', 404);
+  }
+  return getForElderly(req, res, next, elderlyId);
+};
+
+// GET /api/elderly/:id/alerts
+const getByElderly = (req, res, next) => {
+  const elderlyId = Number(req.params.id);
+  if (!Number.isInteger(elderlyId) || elderlyId < 1) {
+    return fail(res, 'ID nguoi cao tuoi khong hop le', 'INVALID_ID', 400);
+  }
+  return getForElderly(req, res, next, elderlyId);
 };
 
 // GET /api/alerts?mucDo=&trangThai=

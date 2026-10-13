@@ -1,225 +1,161 @@
 import 'package:flutter/material.dart';
 
+import '../../services/api_client.dart';
+import '../../services/auth_service.dart';
+
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  const ResetPasswordScreen({super.key, required this.resetToken});
+
+  final String resetToken;
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
-  final newPasswordController = TextEditingController();
-
-  final confirmPasswordController = TextEditingController();
-
-  bool showNewPassword = false;
-  bool showConfirmPassword = false;
+  final passwordController = TextEditingController();
+  final confirmController = TextEditingController();
+  bool obscurePassword = true;
+  bool obscureConfirm = true;
+  bool saving = false;
 
   @override
   void dispose() {
-    newPasswordController.dispose();
-    confirmPasswordController.dispose();
-
+    passwordController.dispose();
+    confirmController.dispose();
     super.dispose();
   }
 
   Future<void> resetPassword() async {
-    final newPassword = newPasswordController.text.trim();
-
-    final confirmPassword = confirmPasswordController.text.trim();
-
-    if (newPassword.isEmpty || confirmPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập đầy đủ mật khẩu mới.')),
-      );
-
-      return;
-    }
-
-    if (newPassword.length < 6) {
+    final password = passwordController.text;
+    final confirmation = confirmController.text;
+    if (password.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Mật khẩu mới phải có ít nhất 6 ký tự.')),
       );
-
       return;
     }
-
-    if (newPassword != confirmPassword) {
+    if (password != confirmation) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Xác nhận mật khẩu không khớp.')),
       );
-
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đặt lại mật khẩu qua OTP chưa được máy chủ hỗ trợ.'),
-      ),
-    );
+    setState(() => saving = true);
+    try {
+      await AuthService.instance.resetPasswordWithToken(
+        resetToken: widget.resetToken,
+        matKhauMoi: password,
+      );
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đặt lại mật khẩu thành công. Vui lòng đăng nhập.'),
+          backgroundColor: Color(0xff07856d),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
   }
 
-  Widget buildPasswordField({
+  Widget passwordField({
     required String label,
-    required String hint,
     required TextEditingController controller,
-    required bool visible,
-    required VoidCallback onToggle,
+    required bool obscure,
+    required VoidCallback toggle,
+    TextInputAction? textInputAction,
+    VoidCallback? onSubmitted,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      textInputAction: textInputAction,
+      onSubmitted: (_) => onSubmitted?.call(),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.lock_outline_rounded),
+        suffixIcon: IconButton(
+          onPressed: toggle,
+          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
         ),
-
-        const SizedBox(height: 8),
-
-        TextField(
-          controller: controller,
-          obscureText: !visible,
-          decoration: InputDecoration(
-            hintText: hint,
-            prefixIcon: const Icon(Icons.lock_outline_rounded),
-            suffixIcon: IconButton(
-              onPressed: onToggle,
-              icon: Icon(
-                visible
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-              ),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(
-                color: Color(0xff07856d),
-                width: 1.4,
-              ),
-            ),
-          ),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
         ),
-      ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff3f3f1),
-
+      backgroundColor: const Color(0xfff6f7f5),
       appBar: AppBar(
-        backgroundColor: const Color(0xfff3f3f1),
-        elevation: 0,
+        backgroundColor: const Color(0xfff6f7f5),
         centerTitle: true,
         title: const Text(
-          'Đặt lại mật khẩu',
+          'Đặt mật khẩu mới',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(24),
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xffe9fff6), Color(0xffffffe8)],
-                ),
-                borderRadius: BorderRadius.circular(26),
-              ),
-              child: const Column(
-                children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.lock_reset_rounded,
-                      size: 34,
-                      color: Color(0xff07856d),
-                    ),
-                  ),
-
-                  SizedBox(height: 12),
-
-                  Text(
-                    'Tạo mật khẩu mới',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-
-                  SizedBox(height: 6),
-
-                  Text(
-                    'Mật khẩu mới cần có ít nhất 6 ký tự.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 13, color: Colors.black54),
-                  ),
-                ],
+            const SizedBox(height: 32),
+            const CircleAvatar(
+              radius: 46,
+              backgroundColor: Color(0xffe2f4ee),
+              child: Icon(
+                Icons.lock_reset_rounded,
+                size: 48,
+                color: Color(0xff07856d),
               ),
             ),
-
-            const SizedBox(height: 26),
-
-            buildPasswordField(
-              label: 'Mật khẩu mới',
-              hint: 'Nhập mật khẩu mới',
-              controller: newPasswordController,
-              visible: showNewPassword,
-              onToggle: () {
-                setState(() {
-                  showNewPassword = !showNewPassword;
-                });
-              },
-            ),
-
-            const SizedBox(height: 18),
-
-            buildPasswordField(
-              label: 'Xác nhận mật khẩu mới',
-              hint: 'Nhập lại mật khẩu mới',
-              controller: confirmPasswordController,
-              visible: showConfirmPassword,
-              onToggle: () {
-                setState(() {
-                  showConfirmPassword = !showConfirmPassword;
-                });
-              },
-            ),
-
             const SizedBox(height: 28),
-
+            passwordField(
+              label: 'Mật khẩu mới',
+              controller: passwordController,
+              obscure: obscurePassword,
+              toggle: () => setState(() => obscurePassword = !obscurePassword),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 18),
+            passwordField(
+              label: 'Xác nhận mật khẩu mới',
+              controller: confirmController,
+              obscure: obscureConfirm,
+              toggle: () => setState(() => obscureConfirm = !obscureConfirm),
+              textInputAction: TextInputAction.done,
+              onSubmitted: saving ? null : resetPassword,
+            ),
+            const SizedBox(height: 24),
             SizedBox(
-              width: double.infinity,
               height: 54,
-              child: ElevatedButton(
-                onPressed: resetPassword,
-                style: ElevatedButton.styleFrom(
+              child: FilledButton(
+                onPressed: saving ? null : resetPassword,
+                style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xff07856d),
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: Colors.black12,
-                  elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: const Text(
-                  'LƯU MẬT KHẨU MỚI',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+                child: saving
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        'ĐỔI MẬT KHẨU',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
               ),
             ),
           ],

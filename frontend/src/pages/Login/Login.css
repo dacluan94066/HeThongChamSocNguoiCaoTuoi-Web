@@ -342,6 +342,10 @@
 
 /* Forgot password link */
 .login-forgot-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
   font-size: 15px;
   color: var(--medical-primary);
   font-weight: 500;

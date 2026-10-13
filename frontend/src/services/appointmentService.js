@@ -24,3 +24,8 @@ export const cancelAppointment = async (id) => {
   const res = await axiosClient.patch(`/appointments/${id}/cancel`);
   return res.data?.data ?? res.data;
 };
+
+export const recordAppointmentResult = async (id, ketQuaKham) => {
+  const res = await axiosClient.patch(`/appointments/${id}/result`, { ketQuaKham });
+  return res.data?.data ?? res.data;
+};

@@ -99,6 +99,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   String? _connectionError;
+  bool _unsupportedRole = false;
   bool _checkingSession = false;
 
   @override
@@ -112,6 +113,7 @@ class _SplashScreenState extends State<SplashScreen> {
     setState(() {
       _checkingSession = true;
       _connectionError = null;
+      _unsupportedRole = false;
     });
 
     try {
@@ -122,9 +124,21 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.pushReplacementNamed(context, '/welcome');
         return;
       }
-      await authService.getMe();
+      final user = await authService.getMe();
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
+      final role = user['tenVaiTro']?.toString();
+      if (role == 'NguoiCaoTuoi' || role == 'NguoiChamSoc') {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        await authService.logout();
+        if (!mounted) return;
+        setState(() {
+          _checkingSession = false;
+          _unsupportedRole = true;
+          _connectionError =
+              'Tài khoản này không hỗ trợ trên ứng dụng Mobile, vui lòng dùng hệ thống Web';
+        });
+      }
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
         await AuthService.instance.logout();
@@ -179,9 +193,23 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
-                      onPressed: _checkingSession ? null : _restoreSession,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Thử lại'),
+                      onPressed: _checkingSession
+                          ? null
+                          : _unsupportedRole
+                          ? () => Navigator.pushNamedAndRemoveUntil(
+                              context,
+                              '/login',
+                              (route) => false,
+                            )
+                          : _restoreSession,
+                      icon: Icon(
+                        _unsupportedRole
+                            ? Icons.login_rounded
+                            : Icons.refresh_rounded,
+                      ),
+                      label: Text(
+                        _unsupportedRole ? 'Về đăng nhập' : 'Thử lại',
+                      ),
                     ),
                   ],
                 ),
@@ -449,10 +477,23 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await AuthService.instance.login(username, password);
+      final user = await AuthService.instance.login(username, password);
       if (!mounted) return;
-
-      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      final role = user['tenVaiTro']?.toString();
+      if (role == 'NguoiCaoTuoi' || role == 'NguoiChamSoc') {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      } else {
+        await AuthService.instance.logout();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Color(0xffc0392b),
+            content: Text(
+              'Tài khoản này không hỗ trợ trên ứng dụng Mobile, vui lòng dùng hệ thống Web',
+            ),
+          ),
+        );
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(

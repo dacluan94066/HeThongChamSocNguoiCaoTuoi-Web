@@ -66,6 +66,11 @@ CREATE TABLE NguoiDung (
     Email           VARCHAR(100) NULL,
     SoDienThoai     VARCHAR(15) NULL,
     AnhDaiDien      NVARCHAR(255) NULL,
+    MaOTP            VARCHAR(255) NULL,
+    MaOTPHetHan      DATETIME2 NULL,
+    MaOTPGuiLuc      DATETIME2 NULL,
+    MaOTPCuaSoBatDau DATETIME2 NULL,
+    SoLanGuiOTP      INT NOT NULL DEFAULT 0,
     VaiTroID        INT NOT NULL,
     TrangThai       NVARCHAR(20) NOT NULL DEFAULT N'HoatDong'
                         CHECK (TrangThai IN (N'HoatDong', N'KhoaTaiKhoan', N'ChoDuyet')),
@@ -167,6 +172,12 @@ CREATE TABLE NguoiCaoTuoi_NguoiChamSoc (
     CONSTRAINT FK_NCT_NCS_NCS FOREIGN KEY (NguoiChamSocID) REFERENCES NguoiChamSoc(NguoiChamSocID),
     CONSTRAINT UQ_NCT_NCS UNIQUE (NguoiCaoTuoiID, NguoiChamSocID)
 );
+GO
+
+-- Moi nguoi cao tuoi chi co toi da mot nguoi cham soc chinh dang hoat dong.
+CREATE UNIQUE INDEX UX_NCT_NCS_OneActivePrimary
+    ON NguoiCaoTuoi_NguoiChamSoc(NguoiCaoTuoiID)
+    WHERE LaChinh = 1;
 GO
 
 CREATE TABLE LienHeKhanCap (

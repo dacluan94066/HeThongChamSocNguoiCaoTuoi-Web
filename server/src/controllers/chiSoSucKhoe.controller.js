@@ -5,6 +5,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
+const { emitToAdmin } = require('../socket');
 
 // Map TenChiSo trong DB -> loaiChiSo frontend
 const MAP_LOAI = {
@@ -163,6 +164,56 @@ const getMine = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// GET /api/elderly/:id/health-metrics?loaiChiSoId=&tuNgay=&denNgay=
+const getByElderly = async (req, res, next) => {
+  try {
+    const elderlyId = Number(req.params.id);
+    if (!Number.isInteger(elderlyId) || elderlyId < 1) {
+      return fail(res, 'ID nguoi cao tuoi khong hop le', 'INVALID_ID', 400);
+    }
+    const { loaiChiSoId, tuNgay, denNgay } = req.query;
+    const typeId = loaiChiSoId == null || loaiChiSoId === '' ? null : Number(loaiChiSoId);
+    if (typeId != null && (!Number.isInteger(typeId) || typeId < 1)) {
+      return fail(res, 'loaiChiSoId khong hop le', 'INVALID_TYPE_ID', 400);
+    }
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if ((tuNgay && !datePattern.test(tuNgay)) || (denNgay && !datePattern.test(denNgay))) {
+      return fail(res, 'tuNgay va denNgay phai co dinh dang YYYY-MM-DD', 'INVALID_DATE', 400);
+    }
+    if (tuNgay && denNgay && tuNgay > denNgay) {
+      return fail(res, 'tuNgay khong duoc lon hon denNgay', 'INVALID_DATE_RANGE', 400);
+    }
+
+    let query = `
+      SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
+        c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
+        c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
+        c.ThoiGianDo AS thoiGianDo, c.LaBatThuong AS laBatThuong,
+        c.GhiChu AS ghiChu
+      FROM ChiSoSucKhoe c
+      JOIN LoaiChiSoSucKhoe l ON l.LoaiChiSoID = c.LoaiChiSoID
+      WHERE c.NguoiCaoTuoiID = @elderlyId
+    `;
+    const pool = await poolPromise;
+    const request = pool.request().input('elderlyId', sql.Int, elderlyId);
+    if (typeId != null) {
+      query += ' AND c.LoaiChiSoID = @typeId';
+      request.input('typeId', sql.Int, typeId);
+    }
+    if (tuNgay) {
+      query += ' AND c.ThoiGianDo >= CAST(@fromDate AS DATE)';
+      request.input('fromDate', sql.VarChar(10), tuNgay);
+    }
+    if (denNgay) {
+      query += ' AND c.ThoiGianDo < DATEADD(DAY, 1, CAST(@toDate AS DATE))';
+      request.input('toDate', sql.VarChar(10), denNgay);
+    }
+    query += ' ORDER BY c.ThoiGianDo DESC, c.ChiSoID DESC';
+    const result = await request.query(query);
+    return ok(res, result.recordset.map(mapMobileMetric));
+  } catch (error) { next(error); }
+};
+
 // POST /api/elderly/me/health-metrics
 const createMine = async (req, res, next) => {
   try {
@@ -271,6 +322,23 @@ const createMine = async (req, res, next) => {
       `);
 
     const row = result.recordset[0];
+    if (row.alertId != null) {
+      emitToAdmin('canhbao:new', {
+        id: row.alertId,
+        canhBaoId: row.alertId,
+        nguoiCaoTuoiId: elderlyId,
+        loaiCanhBao: 'ChiSoBatThuong',
+        loaiCanhBaoLabel: 'Chỉ số bất thường',
+        mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
+        mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
+        moTa: assessment.description,
+        thoiGianPhatHien: row.thoiGianDo,
+        trangThai: 'CHUA_XU_LY',
+        trangThaiLabel: 'Chưa xử lý',
+        nguonBang: 'ChiSoSucKhoe',
+        nguonId: row.id,
+      });
+    }
     return ok(res, {
       ...mapMobileMetric(row),
       alertCreated: row.alertId != null,
@@ -396,6 +464,23 @@ const create = async (req, res, next) => {
 
         SELECT @chiSoId AS id, @canhBaoId AS alertId;
       `);
+    if (r.recordset[0].alertId != null) {
+      emitToAdmin('canhbao:new', {
+        id: r.recordset[0].alertId,
+        canhBaoId: r.recordset[0].alertId,
+        nguoiCaoTuoiId,
+        loaiCanhBao: 'ChiSoBatThuong',
+        loaiCanhBaoLabel: 'Chỉ số bất thường',
+        mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
+        mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
+        moTa: assessment.description,
+        thoiGianPhatHien: thoiGianDo,
+        trangThai: 'CHUA_XU_LY',
+        trangThaiLabel: 'Chưa xử lý',
+        nguonBang: 'ChiSoSucKhoe',
+        nguonId: r.recordset[0].id,
+      });
+    }
     return ok(res, {
       id: r.recordset[0].id,
       alertCreated: r.recordset[0].alertId != null,
@@ -405,4 +490,4 @@ const create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getMetricTypes, getMine, createMine, getAll, create };
+module.exports = { getMetricTypes, getMine, getByElderly, createMine, getAll, create };

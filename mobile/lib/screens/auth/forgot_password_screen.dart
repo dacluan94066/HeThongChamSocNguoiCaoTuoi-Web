@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import '../../services/api_client.dart';
+import '../../services/auth_service.dart';
+import 'otp_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -9,36 +12,40 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final TextEditingController phoneController = TextEditingController();
-
-  void sendOtp() {
-    final phone = phoneController.text.trim();
-
-    if (phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập số điện thoại.')),
-      );
-      return;
-    }
-
-    if (phone.length != 10 || !phone.startsWith('0')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Số điện thoại không hợp lệ.')),
-      );
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Khôi phục mật khẩu qua OTP chưa được máy chủ hỗ trợ.'),
-      ),
-    );
-  }
+  final emailController = TextEditingController();
+  bool sending = false;
 
   @override
   void dispose() {
-    phoneController.dispose();
+    emailController.dispose();
     super.dispose();
+  }
+
+  Future<void> sendOtp() async {
+    final email = emailController.text.trim();
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng nhập địa chỉ email hợp lệ.')),
+      );
+      return;
+    }
+
+    setState(() => sending = true);
+    try {
+      await AuthService.instance.forgotPassword(email: email);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => OtpScreen(email: email)),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
   }
 
   @override
@@ -47,123 +54,94 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       backgroundColor: const Color(0xfff6f7f5),
       appBar: AppBar(
         backgroundColor: const Color(0xfff6f7f5),
-        elevation: 0,
+        centerTitle: true,
         title: const Text(
           'Quên mật khẩu',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(24),
           children: [
-            const SizedBox(height: 15),
-
-            const Icon(
-              Icons.lock_reset_rounded,
-              size: 72,
-              color: Color(0xff07856d),
+            const SizedBox(height: 34),
+            const CircleAvatar(
+              radius: 46,
+              backgroundColor: Color(0xffe2f4ee),
+              child: Icon(
+                Icons.mark_email_read_outlined,
+                size: 44,
+                color: Color(0xff07856d),
+              ),
             ),
-
-            const SizedBox(height: 24),
-
+            const SizedBox(height: 26),
             const Text(
-              'Khôi phục mật khẩu',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              'Nhận mã xác nhận',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
             ),
-
-            const SizedBox(height: 10),
-
+            const SizedBox(height: 12),
             const Text(
-              'Nhập số điện thoại đã đăng ký. Hệ thống sẽ gửi mã OTP để xác minh.',
+              'Nhập email đã đăng ký. CareSenior sẽ gửi mã OTP gồm 6 số, có hiệu lực trong 10 phút.',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
                 color: Colors.black54,
-                height: 1.5,
+                height: 1.45,
               ),
             ),
-
-            const SizedBox(height: 32),
-
-            const Text(
-              'Số điện thoại',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-
-            const SizedBox(height: 8),
-
+            const SizedBox(height: 30),
             TextField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(10),
-              ],
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              autocorrect: false,
+              onSubmitted: (_) {
+                if (!sending) sendOtp();
+              },
               decoration: InputDecoration(
-                hintText: 'VD: 0912345678',
-                prefixIcon: const Icon(Icons.phone_outlined),
+                labelText: 'Email',
+                hintText: 'vidu@gmail.com',
+                prefixIcon: const Icon(Icons.email_outlined),
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(18),
                   borderSide: BorderSide.none,
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: const BorderSide(
-                    color: Color(0xff07856d),
-                    width: 1.5,
-                  ),
-                ),
               ),
             ),
-
-            const SizedBox(height: 28),
-
+            const SizedBox(height: 22),
             SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: sendOtp,
-                style: ElevatedButton.styleFrom(
+              height: 54,
+              child: FilledButton(
+                onPressed: sending ? null : sendOtp,
+                style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xff07856d),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: const Text(
-                  'GỬI MÃ OTP',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                child: sending
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'GỬI MÃ OTP',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
               ),
             ),
-
-            const SizedBox(height: 18),
-
-            Center(
-              child: TextButton(
-                onPressed: () {
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/login',
-                    (route) => false,
-                  );
-                },
-                child: const Text(
-                  'Quay lại đăng nhập',
-                  style: TextStyle(
-                    color: Color(0xff07856d),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: sending ? null : () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('Quay lại đăng nhập'),
             ),
           ],
         ),

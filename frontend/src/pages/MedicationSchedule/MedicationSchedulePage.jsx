@@ -24,6 +24,7 @@ import TableActionButton from '../../components/TableActionButton';
 import { formatEntityCode } from '../../utils/displayUtils';
 import RecordDetailModal from '../../components/RecordDetailModal';
 import ModalForm, { FormSection } from '../../components/ModalForm';
+import { getSocket } from '../../services/socketClient';
 
 const { Option } = Select;
 
@@ -178,6 +179,21 @@ const MedicationSchedulePage = () => {
       .then(setSchedules)
       .catch(() => setSchedules([]))
       .finally(() => setLoading(false));
+  }, [selectedElder, filterStatus]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    const handleScheduleUpdated = (event) => {
+      if (selectedElder
+          && Number(event?.nguoiCaoTuoiId) !== Number(selectedElder)) return;
+      getSchedules({
+        nguoiCaoTuoiId: selectedElder,
+        trangThai: filterStatus || undefined,
+      }).then(setSchedules).catch(() => setSchedules([]));
+    };
+
+    socket.on('lichuongthuoc:updated', handleScheduleUpdated);
+    return () => socket.off('lichuongthuoc:updated', handleScheduleUpdated);
   }, [selectedElder, filterStatus]);
 
   const handleElderFilterChange = (value) => {

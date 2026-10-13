@@ -10,6 +10,11 @@ router.post('/register', authController.register);
 // POST /api/auth/login - Dang nhap lay token (public)
 router.post('/login', authController.login);
 
+// Dat lai mat khau qua ma OTP gui email (public)
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/verify-otp', authController.verifyOtp);
+router.post('/reset-password-with-token', authController.resetPasswordWithToken);
+
 // GET /api/auth/me - Lay thong tin ca nhan (can dang nhap)
 router.get('/me', authMiddleware, authController.me);
 

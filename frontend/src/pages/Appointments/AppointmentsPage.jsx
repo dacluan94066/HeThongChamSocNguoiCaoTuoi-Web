@@ -2,9 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { Space, Button, Popconfirm, Form, Select, DatePicker, TimePicker, Input, message, Row, Col } from 'antd';
 import {
-  PlusOutlined, EditOutlined, EyeOutlined, StopOutlined, CalendarOutlined,
+  PlusOutlined, EditOutlined, EyeOutlined, StopOutlined, CalendarOutlined, FileDoneOutlined,
 } from '@ant-design/icons';
-import { getAppointments, createAppointment, updateAppointment, cancelAppointment } from '../../services/appointmentService';
+import {
+  getAppointments, createAppointment, updateAppointment, cancelAppointment,
+  recordAppointmentResult,
+} from '../../services/appointmentService';
 import { getElders } from '../../services/elderlyService';
 import dayjs from 'dayjs';
 import PageHeader from '../../components/PageHeader';
@@ -17,6 +20,7 @@ import TableAvatar from '../../components/TableAvatar';
 import TableActionButton from '../../components/TableActionButton';
 import { formatEntityCode } from '../../utils/displayUtils';
 import RecordDetailModal from '../../components/RecordDetailModal';
+import { getSocket } from '../../services/socketClient';
 
 const { Option } = Select;
 
@@ -27,14 +31,16 @@ const AppointmentsPage = () => {
   const canDelete = hasPermission('QLLICHKHAM', 'xoa');
   const [appointments, setAppointments] = useState([]);
   const [elders, setElders] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detailRecord, setDetailRecord] = useState(null);
+  const [resultRecord, setResultRecord] = useState(null);
   const [form] = Form.useForm();
+  const [resultForm] = Form.useForm();
 
   const load = () => {
     setLoading(true);
@@ -42,8 +48,33 @@ const AppointmentsPage = () => {
       .then(setAppointments).finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [search, filterStatus]);
+  useEffect(() => {
+    getAppointments({ search, trangThai: filterStatus || undefined })
+      .then(setAppointments)
+      .finally(() => setLoading(false));
+  }, [search, filterStatus]);
   useEffect(() => { getElders().then(setElders); }, []);
+
+  useEffect(() => {
+    const socket = getSocket();
+    const handleAppointmentUpdated = () => {
+      getAppointments({ search, trangThai: filterStatus || undefined })
+        .then(setAppointments);
+    };
+
+    socket.on('lichkham:updated', handleAppointmentUpdated);
+    return () => socket.off('lichkham:updated', handleAppointmentUpdated);
+  }, [search, filterStatus]);
+
+  const handleSearch = (value) => {
+    setLoading(true);
+    setSearch(value);
+  };
+
+  const handleFilterStatus = (value) => {
+    setLoading(true);
+    setFilterStatus(value || '');
+  };
 
   const handleCancel = async (id) => {
     await cancelAppointment(id);
@@ -89,6 +120,25 @@ const AppointmentsPage = () => {
       }
       setModalOpen(false);
       form.resetFields();
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openResultModal = (record) => {
+    setResultRecord(record);
+    resultForm.setFieldsValue({ ketQuaKham: record.ketQua || '' });
+  };
+
+  const handleSaveResult = async ({ ketQuaKham }) => {
+    if (!resultRecord) return;
+    setSaving(true);
+    try {
+      await recordAppointmentResult(resultRecord.id, ketQuaKham.trim());
+      message.success('Đã ghi kết quả khám và cập nhật trạng thái Đã khám');
+      setResultRecord(null);
+      resultForm.resetFields();
       load();
     } finally {
       setSaving(false);
@@ -150,6 +200,14 @@ const AppointmentsPage = () => {
         <Space>
           <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setDetailRecord(r)} />
           {canEdit && <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(r)} />}
+          {canEdit && r.trangThai !== 'HUY' && (
+            <TableActionButton
+              type="view"
+              tooltip="Ghi kết quả khám"
+              icon={<FileDoneOutlined />}
+              onClick={() => openResultModal(r)}
+            />
+          )}
           {canDelete && r.trangThai === 'CHUA_DEN' && (
             <Popconfirm title="Hủy lịch khám này?" onConfirm={() => handleCancel(r.id)} okText="Hủy lịch" cancelText="Không">
               <TableActionButton type="delete" tooltip="Hủy lịch" icon={<StopOutlined />} />
@@ -183,7 +241,7 @@ const AppointmentsPage = () => {
 
       <TableToolbar
         search={search}
-        onSearch={setSearch}
+        onSearch={handleSearch}
         searchPlaceholder="Tìm theo tên, nơi khám..."
         filters={[
           <Select
@@ -191,7 +249,7 @@ const AppointmentsPage = () => {
             placeholder="Lọc trạng thái"
             style={{ width: 160 }}
             allowClear
-            onChange={setFilterStatus}
+            onChange={handleFilterStatus}
           >
             <Option value="CHUA_DEN">Chưa đến</Option>
             <Option value="DA_KHAM">Đã khám</Option>
@@ -278,6 +336,38 @@ const AppointmentsPage = () => {
           </Form.Item>
           <Form.Item name="ghiChu" label="Chuyên khoa / Ghi chú">
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="VD: Tim mạch; mang theo kết quả xét nghiệm cũ" />
+          </Form.Item>
+        </FormSection>
+      </ModalForm>
+
+      <ModalForm
+        title="Ghi kết quả khám"
+        subtitle={`${resultRecord?.nguoiCaoTuoiTen || ''} — ${resultRecord?.noiKham || ''}`}
+        icon={<FileDoneOutlined />}
+        mode="edit"
+        open={!!resultRecord}
+        onCancel={() => setResultRecord(null)}
+        onFinish={handleSaveResult}
+        loading={saving}
+        saveLabel="Lưu kết quả"
+        form={resultForm}
+      >
+        <FormSection
+          title="Kết quả buổi khám"
+          description="Sau khi lưu, lịch khám sẽ được chuyển sang trạng thái Đã khám"
+        >
+          <Form.Item
+            name="ketQuaKham"
+            label="Kết quả khám"
+            rules={[
+              { required: true, whitespace: true, message: 'Vui lòng nhập kết quả khám' },
+              { max: 500, message: 'Kết quả khám tối đa 500 ký tự' },
+            ]}
+          >
+            <Input.TextArea
+              autoSize={{ minRows: 4, maxRows: 8 }}
+              placeholder="Nhập chẩn đoán, kết luận hoặc hướng điều trị..."
+            />
           </Form.Item>
         </FormSection>
       </ModalForm>
