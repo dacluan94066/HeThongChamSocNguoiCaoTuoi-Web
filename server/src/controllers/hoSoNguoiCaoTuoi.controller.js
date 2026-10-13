@@ -15,7 +15,7 @@ const getMe = async (req, res, next) => {
         nct.CCCD AS cccd, nct.DiaChi AS diaChi, nct.SoDienThoai AS soDienThoai,
         nd.Email AS email,
         nct.NhomMau AS nhomMau, nct.BenhNen AS benhNen, nct.DiUng AS diUng,
-        nct.TrangThai AS trangThai, nct.NgayTao AS ngayTao, nd.Email AS email,
+        nct.TrangThai AS trangThai, nct.NgayTao AS ngayTao,
         ncsMain.NguoiChamSocID AS nguoiChamSocId,
         ncsMain.HoTen AS nguoiChamSocTen
       FROM HoSoNguoiCaoTuoi nct
