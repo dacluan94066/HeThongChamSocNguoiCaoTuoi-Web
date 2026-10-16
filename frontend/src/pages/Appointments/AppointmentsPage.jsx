@@ -1,28 +1,113 @@
-// Trang lịch khám bệnh - Danh sách và thêm lịch mới
-import React, { useState, useEffect } from 'react';
-import { Space, Button, Popconfirm, Form, Select, DatePicker, TimePicker, Input, message, Row, Col } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  PlusOutlined, EditOutlined, EyeOutlined, StopOutlined, CalendarOutlined, FileDoneOutlined,
+  Button, Col, DatePicker, Form, Input, message, Popconfirm, Row, Select, TimePicker,
+} from 'antd';
+import {
+  BankOutlined, CalendarOutlined, CheckCircleOutlined, ClockCircleOutlined,
+  EditOutlined, EyeOutlined, FileDoneOutlined, MedicineBoxOutlined, PlusOutlined,
+  SearchOutlined, StopOutlined, TeamOutlined, UserOutlined, WarningOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import {
   getAppointments, createAppointment, updateAppointment, cancelAppointment,
   recordAppointmentResult,
 } from '../../services/appointmentService';
 import { getElders } from '../../services/elderlyService';
-import dayjs from 'dayjs';
-import PageHeader from '../../components/PageHeader';
-import TableToolbar from '../../components/TableToolbar';
-import DataTable from '../../components/DataTable';
 import ModalForm, { FormSection } from '../../components/ModalForm';
 import StatusTag, { getAppointmentStatusMap } from '../../components/StatusTag';
 import usePermission from '../../hooks/usePermission';
 import TableAvatar from '../../components/TableAvatar';
-import TableActionButton from '../../components/TableActionButton';
 import { formatEntityCode } from '../../utils/displayUtils';
 import RecordDetailModal from '../../components/RecordDetailModal';
 import { getSocket } from '../../services/socketClient';
 
-const { Option } = Select;
+const appointmentDateTime = (appointment) => {
+  if (!appointment.ngayKham) return null;
+  const value = dayjs(`${appointment.ngayKham}T${appointment.gioKham || '00:00'}`);
+  return value.isValid() ? value : null;
+};
+
+const AppointmentCard = ({ appointment, canEdit, canDelete, onDetail, onEdit, onResult, onCancel }) => {
+  const appointmentTime = appointmentDateTime(appointment);
+  const status = getAppointmentStatusMap(appointment.trangThai);
+
+  return (
+    <article
+      className={`appointment-card status-${String(appointment.trangThai || '').toLowerCase()}`}
+      onClick={() => onDetail(appointment)}
+    >
+      <header className="appointment-card-header">
+        <div className="appointment-person">
+          <TableAvatar name={appointment.nguoiCaoTuoiTen} size={48} />
+          <div>
+            <div className="appointment-person-name">
+              <strong>{appointment.nguoiCaoTuoiTen}</strong>
+              <span>{formatEntityCode('NCT', appointment.nguoiCaoTuoiId)}</span>
+              <em>{formatEntityCode('LK', appointment.id)}</em>
+            </div>
+            <small>{appointment.lyDoKham || 'Chưa cập nhật lý do khám'}</small>
+          </div>
+        </div>
+        <StatusTag {...status} />
+      </header>
+
+      <div className="appointment-card-body">
+        <div className="appointment-time-block">
+          <ClockCircleOutlined />
+          <div>
+            <strong>{appointment.gioKham || '—'}</strong>
+            <span>{appointmentTime ? appointmentTime.format('dddd, DD/MM/YYYY') : 'Chưa cập nhật ngày khám'}</span>
+          </div>
+        </div>
+        <div className="appointment-info-item">
+          <BankOutlined />
+          <span><small>Bệnh viện</small><strong>{appointment.noiKham || 'Chưa cập nhật'}</strong></span>
+        </div>
+        <div className="appointment-info-item">
+          <UserOutlined />
+          <span><small>Bác sĩ</small><strong>{appointment.bacSiTen || 'Chưa cập nhật'}</strong></span>
+        </div>
+        <div className="appointment-info-item">
+          <MedicineBoxOutlined />
+          <span><small>Chuyên khoa</small><strong>{appointment.ghiChu || 'Chưa cập nhật'}</strong></span>
+        </div>
+      </div>
+
+      <div className="appointment-reason">
+        <small>Lý do khám</small>
+        <p>{appointment.lyDoKham || 'Chưa cập nhật lý do khám.'}</p>
+      </div>
+
+      {appointment.ketQua && (
+        <div className="appointment-result">
+          <CheckCircleOutlined />
+          <span><small>Kết quả khám</small><strong>{appointment.ketQua}</strong></span>
+        </div>
+      )}
+
+      <footer className="appointment-card-actions" onClick={(event) => event.stopPropagation()}>
+        <Button icon={<EyeOutlined />} onClick={() => onDetail(appointment)}>Chi tiết</Button>
+        {canEdit && !['HUY', 'DA_KHAM'].includes(appointment.trangThai) && (
+          <Button type="primary" icon={<FileDoneOutlined />} onClick={() => onResult(appointment)}>Ghi kết quả khám</Button>
+        )}
+        {canEdit && (
+          <Button icon={<EditOutlined />} onClick={() => onEdit(appointment)}>Sửa</Button>
+        )}
+        {canDelete && appointment.trangThai === 'CHUA_DEN' && (
+          <Popconfirm
+            title="Hủy lịch khám này?"
+            description="Lịch khám sẽ chuyển sang trạng thái Đã hủy."
+            onConfirm={() => onCancel(appointment.id)}
+            okText="Hủy lịch"
+            cancelText="Không"
+          >
+            <Button danger icon={<StopOutlined />}>Hủy</Button>
+          </Popconfirm>
+        )}
+      </footer>
+    </article>
+  );
+};
 
 const AppointmentsPage = () => {
   const { hasPermission } = usePermission();
@@ -35,6 +120,7 @@ const AppointmentsPage = () => {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [dateRange, setDateRange] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detailRecord, setDetailRecord] = useState(null);
@@ -42,44 +128,83 @@ const AppointmentsPage = () => {
   const [form] = Form.useForm();
   const [resultForm] = Form.useForm();
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    getAppointments({ search, trangThai: filterStatus || undefined })
-      .then(setAppointments).finally(() => setLoading(false));
+    try {
+      setAppointments(await getAppointments());
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    getAppointments({ search, trangThai: filterStatus || undefined })
-      .then(setAppointments)
-      .finally(() => setLoading(false));
-  }, [search, filterStatus]);
-  useEffect(() => { getElders().then(setElders); }, []);
+    let active = true;
+    Promise.all([getAppointments(), getElders()])
+      .then(([appointmentData, elderData]) => {
+        if (!active) return;
+        setAppointments(appointmentData);
+        setElders(elderData);
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const socket = getSocket();
     const handleAppointmentUpdated = () => {
-      getAppointments({ search, trangThai: filterStatus || undefined })
-        .then(setAppointments);
+      getAppointments().then(setAppointments);
     };
-
     socket.on('lichkham:updated', handleAppointmentUpdated);
     return () => socket.off('lichkham:updated', handleAppointmentUpdated);
-  }, [search, filterStatus]);
+  }, []);
 
-  const handleSearch = (value) => {
-    setLoading(true);
-    setSearch(value);
-  };
+  const filteredAppointments = useMemo(() => {
+    const keyword = search.trim().toLocaleLowerCase('vi');
+    return appointments.filter((appointment) => {
+      const date = appointmentDateTime(appointment);
+      const matchesSearch = !keyword || [
+        appointment.nguoiCaoTuoiTen,
+        formatEntityCode('NCT', appointment.nguoiCaoTuoiId),
+        formatEntityCode('LK', appointment.id),
+        appointment.noiKham,
+        appointment.bacSiTen,
+        appointment.ghiChu,
+        appointment.lyDoKham,
+      ].some((value) => String(value || '').toLocaleLowerCase('vi').includes(keyword));
+      const matchesDate = !dateRange?.[0] || !dateRange?.[1] || (date
+        && !date.isBefore(dateRange[0].startOf('day'))
+        && !date.isAfter(dateRange[1].endOf('day')));
+      return matchesSearch
+        && matchesDate
+        && (!filterStatus || appointment.trangThai === filterStatus);
+    });
+  }, [appointments, dateRange, filterStatus, search]);
 
-  const handleFilterStatus = (value) => {
-    setLoading(true);
-    setFilterStatus(value || '');
-  };
+  const stats = useMemo(() => {
+    const now = dayjs();
+    const weekStart = now.startOf('week');
+    const weekEnd = now.endOf('week');
+    return {
+      week: appointments.filter((item) => {
+        const date = appointmentDateTime(item);
+        return date && !date.isBefore(weekStart) && !date.isAfter(weekEnd);
+      }).length,
+      today: appointments.filter((item) => {
+        const date = appointmentDateTime(item);
+        return date?.isSame(now, 'day');
+      }).length,
+      upcoming: appointments.filter((item) => item.trangThai === 'CHUA_DEN').length,
+      overdue: appointments.filter((item) => {
+        const date = appointmentDateTime(item);
+        return item.trangThai === 'CHUA_DEN' && date?.isBefore(now);
+      }).length,
+    };
+  }, [appointments]);
 
   const handleCancel = async (id) => {
     await cancelAppointment(id);
     message.success('Hủy lịch khám thành công');
-    load();
+    await load();
   };
 
   const handleAdd = () => {
@@ -102,7 +227,7 @@ const AppointmentsPage = () => {
   const handleSave = async (values) => {
     setSaving(true);
     try {
-      const elder = elders.find((e) => e.id === values.nguoiCaoTuoiId);
+      const elder = elders.find((item) => item.id === values.nguoiCaoTuoiId);
       const payload = {
         ...values,
         nguoiCaoTuoiTen: elder?.hoTen || '',
@@ -120,7 +245,7 @@ const AppointmentsPage = () => {
       }
       setModalOpen(false);
       form.resetFields();
-      load();
+      await load();
     } finally {
       setSaving(false);
     }
@@ -139,135 +264,94 @@ const AppointmentsPage = () => {
       message.success('Đã ghi kết quả khám và cập nhật trạng thái Đã khám');
       setResultRecord(null);
       resultForm.resetFields();
-      load();
+      await load();
     } finally {
       setSaving(false);
     }
   };
 
-  const columns = [
-    {
-      title: 'Mã lịch',
-      key: 'maLich',
-      width: 115,
-      render: (_, record) => <span className="entity-code-badge">{formatEntityCode('LK', record.id)}</span>,
-    },
-    {
-      title: 'Người cao tuổi',
-      dataIndex: 'nguoiCaoTuoiTen',
-      key: 'nguoiCaoTuoiTen',
-      sorter: (a, b) => a.nguoiCaoTuoiTen.localeCompare(b.nguoiCaoTuoiTen, 'vi'),
-      render: (v) => <div className="table-person-cell"><TableAvatar name={v} /><span className="table-person-name">{v}</span></div>,
-    },
-    {
-      title: 'Ngày & Giờ khám',
-      key: 'ngayGio',
-      render: (_, r) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>
-            <CalendarOutlined style={{ marginRight: 6, color: '#2E7D9A' }} />
-            {dayjs(r.ngayKham).format('DD/MM/YYYY')}
-          </div>
-          <div style={{ fontSize: 13, color: '#7A93A3' }}>⏰ {r.gioKham}</div>
-        </div>
-      ),
-    },
-    { title: 'Nơi khám', dataIndex: 'noiKham', key: 'noiKham' },
-    { title: 'Lý do khám', dataIndex: 'lyDoKham', key: 'lyDoKham' },
-    { title: 'Bác sĩ', dataIndex: 'bacSiTen', key: 'bacSiTen' },
-    {
-      title: 'Kết quả',
-      dataIndex: 'ketQua',
-      key: 'ketQua',
-      render: (v) => v || <span style={{ color: '#BFBFBF' }}>—</span>,
-    },
-    {
-      title: 'Trạng thái',
-      dataIndex: 'trangThai',
-      key: 'trangThai',
-      sorter: (a, b) => a.trangThai.localeCompare(b.trangThai),
-      render: (v) => {
-        const mapped = getAppointmentStatusMap(v);
-        return <StatusTag {...mapped} />;
-      },
-    },
-    {
-      title: 'Hành động',
-      key: 'action',
-      fixed: 'right',
-      width: 132,
-      render: (_, r) => (
-        <Space>
-          <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setDetailRecord(r)} />
-          {canEdit && <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(r)} />}
-          {canEdit && r.trangThai !== 'HUY' && (
-            <TableActionButton
-              type="view"
-              tooltip="Ghi kết quả khám"
-              icon={<FileDoneOutlined />}
-              onClick={() => openResultModal(r)}
-            />
-          )}
-          {canDelete && r.trangThai === 'CHUA_DEN' && (
-            <Popconfirm title="Hủy lịch khám này?" onConfirm={() => handleCancel(r.id)} okText="Hủy lịch" cancelText="Không">
-              <TableActionButton type="delete" tooltip="Hủy lịch" icon={<StopOutlined />} />
-            </Popconfirm>
-          )}
-          {!canEdit && !(canDelete && r.trangThai === 'CHUA_DEN') && <span style={{ color: '#BFBFBF' }}>—</span>}
-        </Space>
-      ),
-    },
-  ];
-
   return (
-    <div>
-      <PageHeader
-        title="Lịch khám bệnh"
-        subtitle="Quản lý lịch khám và theo dõi kết quả khám bệnh"
-        icon={<CalendarOutlined />}
-        count={appointments.length}
-        countLabel="lịch khám"
-        extra={canCreate && (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAdd}
-            size="large"
-          >
-            Thêm lịch khám
-          </Button>
-        )}
-      />
+    <div className="appointments-page">
+      <section className="appointments-heading">
+        <div>
+          <span className="appointments-eyebrow"><span /> Theo dõi lịch khám bệnh</span>
+          <h1>Quản lý Lịch khám bệnh</h1>
+          <p>Quản lý lịch hẹn, thông tin chuyên khoa và kết quả khám của người cao tuổi.</p>
+        </div>
+        {canCreate && <Button type="primary" size="large" icon={<PlusOutlined />} onClick={handleAdd}>Thêm lịch khám</Button>}
+      </section>
 
-      <TableToolbar
-        search={search}
-        onSearch={handleSearch}
-        searchPlaceholder="Tìm theo tên, nơi khám..."
-        filters={[
-          <Select
-            key="status"
-            placeholder="Lọc trạng thái"
-            style={{ width: 160 }}
+      <section className="appointment-kpi-grid">
+        <article className="appointment-kpi-card is-week">
+          <span><CalendarOutlined /></span>
+          <div><small>Tổng lịch trong tuần</small><strong>{stats.week}</strong><em>lịch khám</em></div>
+        </article>
+        <article className="appointment-kpi-card is-today">
+          <span><ClockCircleOutlined /></span>
+          <div><small>Hôm nay</small><strong>{stats.today}</strong><em>lịch khám</em></div>
+        </article>
+        <article className="appointment-kpi-card is-upcoming">
+          <span><TeamOutlined /></span>
+          <div><small>Chưa đến</small><strong>{stats.upcoming}</strong><em>lịch khám</em></div>
+        </article>
+        <article className="appointment-kpi-card is-overdue">
+          <span><WarningOutlined /></span>
+          <div><small>Quá hạn chưa khám</small><strong>{stats.overdue}</strong><em>cần kiểm tra</em></div>
+        </article>
+      </section>
+
+      <section className="appointment-list-panel">
+        <div className="appointment-filter-bar">
+          <Input
             allowClear
-            onChange={handleFilterStatus}
-          >
-            <Option value="CHUA_DEN">Chưa đến</Option>
-            <Option value="DA_KHAM">Đã khám</Option>
-            <Option value="HUY">Hủy</Option>
-            <Option value="DA_DOI_LICH">Đã đổi lịch</Option>
-          </Select>,
-        ]}
-      />
+            prefix={<SearchOutlined />}
+            placeholder="Tìm theo tên, mã NCT, bệnh viện, bác sĩ"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <DatePicker.RangePicker
+            value={dateRange}
+            onChange={setDateRange}
+            format="DD/MM/YYYY"
+            placeholder={['Từ ngày', 'Đến ngày']}
+          />
+          <Select
+            value={filterStatus || undefined}
+            placeholder="Tất cả trạng thái"
+            allowClear
+            onChange={(value) => setFilterStatus(value || '')}
+            options={[
+              { value: 'CHUA_DEN', label: 'Chưa đến' },
+              { value: 'DA_KHAM', label: 'Đã khám' },
+              { value: 'HUY', label: 'Đã hủy' },
+              { value: 'DA_DOI_LICH', label: 'Đã dời lịch' },
+            ]}
+          />
+        </div>
 
-      <DataTable
-        columns={columns}
-        dataSource={appointments}
-        rowKey="id"
-        loading={loading}
-        onRow={(record) => ({ onClick: () => setDetailRecord(record) })}
-        emptyDescription="Chưa có lịch khám bệnh"
-        emptyAction={canCreate && <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>Thêm lịch khám</Button>}
-      />
+        <div className="appointment-card-list" aria-busy={loading}>
+          {filteredAppointments.map((appointment) => (
+            <AppointmentCard
+              key={appointment.id}
+              appointment={appointment}
+              canEdit={canEdit}
+              canDelete={canDelete}
+              onDetail={setDetailRecord}
+              onEdit={handleEdit}
+              onResult={openResultModal}
+              onCancel={handleCancel}
+            />
+          ))}
+          {!loading && filteredAppointments.length === 0 && (
+            <div className="appointment-empty-state">
+              <CalendarOutlined />
+              <strong>Không có lịch khám phù hợp</strong>
+              <span>Hãy thay đổi từ khóa, khoảng ngày hoặc trạng thái.</span>
+              {canCreate && <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>Thêm lịch khám</Button>}
+            </div>
+          )}
+        </div>
+      </section>
 
       <RecordDetailModal
         open={!!detailRecord}
@@ -279,8 +363,9 @@ const AppointmentsPage = () => {
           { label: 'Người cao tuổi', key: 'nguoiCaoTuoiTen' },
           { label: 'Ngày khám', key: 'ngayKham', render: (value) => value ? dayjs(value).format('DD/MM/YYYY') : null },
           { label: 'Giờ khám', key: 'gioKham' },
-          { label: 'Nơi khám', key: 'noiKham' },
+          { label: 'Bệnh viện', key: 'noiKham' },
           { label: 'Bác sĩ', key: 'bacSiTen' },
+          { label: 'Chuyên khoa', key: 'ghiChu', span: 2 },
           { label: 'Lý do khám', key: 'lyDoKham', span: 2 },
           { label: 'Kết quả', key: 'ketQua', span: 2 },
           { label: 'Trạng thái', key: 'trangThai', span: 2, render: (value) => <StatusTag {...getAppointmentStatusMap(value)} /> },
@@ -303,7 +388,7 @@ const AppointmentsPage = () => {
             <Col xs={24} md={12}>
               <Form.Item name="nguoiCaoTuoiId" label="Người cao tuổi" rules={[{ required: true, message: 'Vui lòng chọn người cao tuổi' }]}>
                 <Select placeholder="Chọn hồ sơ người cao tuổi" showSearch optionFilterProp="children">
-                  {elders.map((e) => <Option key={e.id} value={e.id}>{e.hoTen}</Option>)}
+                  {elders.map((elder) => <Select.Option key={elder.id} value={elder.id}>{elder.hoTen}</Select.Option>)}
                 </Select>
               </Form.Item>
             </Col>
@@ -330,12 +415,12 @@ const AppointmentsPage = () => {
           </Row>
         </FormSection>
 
-        <FormSection title="Nội dung khám" description="Mục đích khám và các lưu ý cần chuẩn bị">
+        <FormSection title="Nội dung khám" description="Mục đích khám và chuyên khoa tiếp nhận">
           <Form.Item name="lyDoKham" label="Lý do khám">
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="Mô tả triệu chứng hoặc lý do tái khám" />
           </Form.Item>
-          <Form.Item name="ghiChu" label="Chuyên khoa / Ghi chú">
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="VD: Tim mạch; mang theo kết quả xét nghiệm cũ" />
+          <Form.Item name="ghiChu" label="Chuyên khoa">
+            <Input placeholder="VD: Tim mạch, Cơ xương khớp" />
           </Form.Item>
         </FormSection>
       </ModalForm>

@@ -1,376 +1,324 @@
-// MainLayout - Khung bố cục chính (Sidebar + Header + Content)
-// Sidebar theme: #1B4965 | Responsive: icon-only ở tablet, Drawer ở mobile
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Badge, Button, Tooltip, Space } from 'antd';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  DashboardOutlined,
-  UserOutlined,
-  TeamOutlined,
-  MedicineBoxOutlined,
-  CalendarOutlined,
-  HeartFilled,
-  BellOutlined,
-  PhoneOutlined,
-  BookOutlined,
-  BarChartOutlined,
-  LogoutOutlined,
-  LockOutlined,
-  HistoryOutlined,
-  SettingOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  ClockCircleOutlined,
+  Avatar, Badge, Button, Dropdown, Input, Layout, Menu, Space, Tooltip,
+} from 'antd';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import {
   AlertOutlined,
-  MenuOutlined,
+  BarChartOutlined,
+  BellOutlined,
+  BookOutlined,
+  CalendarOutlined,
+  ClockCircleOutlined,
+  DashboardOutlined,
+  HeartFilled,
   HeartOutlined,
+  HistoryOutlined,
+  LockOutlined,
+  LogoutOutlined,
+  MedicineBoxOutlined,
+  MenuFoldOutlined,
+  MenuOutlined,
+  MenuUnfoldOutlined,
+  PhoneOutlined,
+  SearchOutlined,
+  SettingOutlined,
+  TeamOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
 import { getAlerts } from '../services/alertService';
 import AccountMenuModals from '../components/AccountMenuModals';
 import useRealtimeAlerts from '../hooks/useRealtimeAlerts';
+import { getNameInitials } from '../utils/displayUtils';
 
 const { Sider, Header, Content } = Layout;
+const { Search } = Input;
 
-// Màu sidebar
-const SIDEBAR_BG = '#1B4965';
+const SIDEBAR_WIDTH = 264;
+const SIDEBAR_COLLAPSED_WIDTH = 76;
+const MOBILE_BREAKPOINT = 768;
+const TABLET_BREAKPOINT = 1100;
 
-// Danh sách menu điều hướng
-const menuItems = [
-  {
-    key: '/dashboard',
-    icon: <DashboardOutlined />,
-    label: 'Tổng quan',
-  },
-  {
-    key: 'quan-ly',
-    icon: <TeamOutlined />,
-    label: 'Quản lý hệ thống',
-    children: [
-      { key: '/nguoi-dung', icon: <UserOutlined />, label: 'Người dùng & phân quyền', permission: 'QLNGUOIDUNG' },
-      { key: '/ho-so-nguoi-cao-tuoi', icon: <HeartOutlined />, label: 'Hồ sơ NCT', permission: 'QLHOSONCT' },
-      { key: '/nguoi-cham-soc', icon: <TeamOutlined />, label: 'Người chăm sóc', permission: 'QLNGUOICHAMSOC' },
-    ],
-  },
-  {
-    key: 'thuoc',
-    icon: <MedicineBoxOutlined />,
-    label: 'Thuốc & Lịch',
-    children: [
-      { key: '/danh-muc-thuoc', icon: <MedicineBoxOutlined />, label: 'Danh mục thuốc', permission: 'QLTHUOC' },
-      { key: '/lich-uong-thuoc', icon: <ClockCircleOutlined />, label: 'Lịch uống thuốc', permission: 'QLLICHUONGTHUOC' },
-      { key: '/lich-kham-benh', icon: <CalendarOutlined />, label: 'Lịch khám bệnh', permission: 'QLLICHKHAM' },
-    ],
-  },
-  {
-    key: 'theo-doi',
-    icon: <HeartFilled style={{ color: '#E15554' }} />,
-    label: 'Theo dõi sức khỏe',
-    children: [
-      { key: '/chi-so-suc-khoe', icon: <HeartFilled />, label: 'Chỉ số sức khỏe', permission: 'QLCHISOSK' },
-      { key: '/canh-bao', icon: <AlertOutlined />, label: 'Cảnh báo', permission: 'QLCANHBAO' },
-    ],
-  },
-  {
-    key: 'khac',
-    icon: <BookOutlined />,
-    label: 'Tiện ích',
-    children: [
-      { key: '/lien-he-khan-cap', icon: <PhoneOutlined />, label: 'Liên hệ khẩn cấp', permission: 'QLLIENHEKC' },
-      { key: '/nhat-ky-cham-soc', icon: <BookOutlined />, label: 'Nhật ký chăm sóc', permission: 'QLNHATKY' },
-      { key: '/bao-cao', icon: <BarChartOutlined />, label: 'Báo cáo', permission: 'QLBAOCAO' },
-    ],
-  },
+const ROLE_LABELS = {
+  QuanTriVien: 'Quản trị viên',
+  BacSi: 'Bác sĩ',
+};
+
+const MAIN_NAVIGATION = [
+  { key: '/dashboard', icon: <DashboardOutlined />, label: 'Tổng quan' },
+  { key: '/ho-so-nguoi-cao-tuoi', icon: <HeartOutlined />, label: 'Hồ sơ NCT', permission: 'QLHOSONCT' },
+  { key: '/nguoi-cham-soc', icon: <TeamOutlined />, label: 'Người chăm sóc', permission: 'QLNGUOICHAMSOC' },
+  { key: '/chi-so-suc-khoe', icon: <HeartFilled />, label: 'Chỉ số sức khỏe', permission: 'QLCHISOSK' },
+  { key: '/canh-bao', icon: <AlertOutlined />, label: 'Cảnh báo', permission: 'QLCANHBAO', alertItem: true },
+  { key: '/lich-uong-thuoc', icon: <ClockCircleOutlined />, label: 'Lịch uống thuốc', permission: 'QLLICHUONGTHUOC' },
+  { key: '/danh-muc-thuoc', icon: <MedicineBoxOutlined />, label: 'Danh mục thuốc', permission: 'QLTHUOC' },
+  { key: '/lich-kham-benh', icon: <CalendarOutlined />, label: 'Lịch khám bệnh', permission: 'QLLICHKHAM' },
+  { key: '/nhat-ky-cham-soc', icon: <BookOutlined />, label: 'Nhật ký chăm sóc', permission: 'QLNHATKY' },
+  { key: '/lien-he-khan-cap', icon: <PhoneOutlined />, label: 'Liên hệ khẩn cấp', permission: 'QLLIENHEKC' },
+  { key: '/bao-cao', icon: <BarChartOutlined />, label: 'Báo cáo', permission: 'QLBAOCAO' },
 ];
 
-// ---- Logo component ----
+const SYSTEM_NAVIGATION = [
+  { key: '/nguoi-dung', icon: <UserOutlined />, label: 'Người dùng & Phân quyền', permission: 'QLNGUOIDUNG' },
+];
+
 const SidebarLogo = ({ collapsed, onClick }) => (
-  <div className="sidebar-logo" onClick={onClick}>
-    <div className="sidebar-logo-icon">
-      <HeartFilled style={{ color: 'white', fontSize: 20 }} />
-    </div>
+  <button type="button" className="sidebar-logo" onClick={onClick} aria-label="Về trang tổng quan">
+    <span className="sidebar-logo-icon"><HeartFilled /></span>
     {!collapsed && (
-      <div className="sidebar-logo-text">
-        <div className="sidebar-logo-title">CareSenior</div>
-        <div className="sidebar-logo-subtitle">Sức khỏe người cao tuổi</div>
-      </div>
+      <span className="sidebar-logo-text">
+        <span className="sidebar-logo-title">CareSenior</span>
+        <span className="sidebar-logo-subtitle">Sức khỏe người cao tuổi</span>
+      </span>
     )}
-  </div>
+  </button>
 );
 
-// ---- Menu nội dung ----
-const SidebarMenu = ({ selectedKey, defaultOpenKeys, onMenuClick, items }) => (
+const SidebarNavigation = ({ collapsed, items, onMenuClick, selectedKey }) => (
   <div className="sidebar-menu">
     <Menu
       theme="dark"
       mode="inline"
+      inlineCollapsed={collapsed}
       selectedKeys={[selectedKey]}
-      defaultOpenKeys={defaultOpenKeys}
       items={items}
       onClick={onMenuClick}
-      style={{
-        border: 'none',
-        background: 'transparent',
-        fontSize: 15,
-      }}
     />
   </div>
 );
 
-// ---- Main Layout ----
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Desktop: collapsed sidebar (icon-only)
-  const [collapsed, setCollapsed] = useState(false);
-  // Mobile: drawer open
-  const [mobileOpen, setMobileOpen] = useState(false);
-  // Screen width tracking
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 600);
-  const [isTablet, setIsTablet] = useState(window.innerWidth < 900 && window.innerWidth >= 600);
-
   const { user: currentUser, logout, setUserData } = useAuth();
   const { hasPermission } = usePermission();
+
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < MOBILE_BREAKPOINT);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
+  const [unresolvedSos, setUnresolvedSos] = useState(0);
+  const [headerKeyword, setHeaderKeyword] = useState('');
   const [activeAccountModal, setActiveAccountModal] = useState(null);
 
-  const visibleMenuItems = useMemo(() => menuItems
-    .map((item) => {
-      if (!item.children) return item;
-      const children = item.children.filter((child) => hasPermission(child.permission, 'xem'));
-      return children.length > 0 ? { ...item, children } : null;
-    })
-    .filter(Boolean), [hasPermission]);
+  const canViewAlerts = hasPermission('QLCANHBAO', 'xem');
 
-  // Track window resize
+  const navigationItems = useMemo(() => {
+    const decorateItem = (item) => ({
+      ...item,
+      label: item.alertItem ? (
+        <span className="sidebar-menu-label">
+          <span>{item.label}</span>
+          {unreadAlerts > 0 && <Badge count={unreadAlerts} size="small" overflowCount={99} />}
+        </span>
+      ) : item.label,
+    });
+    const mainItems = MAIN_NAVIGATION
+      .filter((item) => !item.permission || hasPermission(item.permission, 'xem'))
+      .map(decorateItem);
+    const systemItems = SYSTEM_NAVIGATION
+      .filter((item) => hasPermission(item.permission, 'xem'))
+      .map(decorateItem);
+    if (systemItems.length === 0) return mainItems;
+    return [
+      ...mainItems,
+      { type: 'divider' },
+      { type: 'group', label: 'HỆ THỐNG', children: systemItems },
+    ];
+  }, [hasPermission, unreadAlerts]);
+
   useEffect(() => {
     const handleResize = () => {
-      const w = window.innerWidth;
-      setIsMobile(w < 600);
-      setIsTablet(w >= 600 && w < 900);
-      // Auto collapse sidebar on tablet
-      if (w < 900 && w >= 600) setCollapsed(true);
-      if (w >= 900) setCollapsed(false);
+      const width = window.innerWidth;
+      setIsMobile(width < MOBILE_BREAKPOINT);
+      setCollapsed(width >= MOBILE_BREAKPOINT && width < TABLET_BREAKPOINT);
+      if (width >= MOBILE_BREAKPOINT) setMobileOpen(false);
     };
     window.addEventListener('resize', handleResize);
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const refreshUnreadAlerts = useCallback(() => {
-    if (!hasPermission('QLCANHBAO', 'xem')) return;
-    getAlerts({ trangThai: 'CHUA_XU_LY' }).then((alerts) => {
-      setUnreadAlerts(alerts.length);
-    });
-  }, [hasPermission]);
+  const refreshAlertCounters = useCallback(() => {
+    if (!canViewAlerts) return;
+    getAlerts({ trangThai: 'CHUA_XU_LY' })
+      .then((alerts) => {
+        setUnreadAlerts(alerts.length);
+        setUnresolvedSos(alerts.filter((alert) => (
+          alert.loaiCanhBao === 'KhanCap'
+          || alert.loaiCanhBao === 'KHAN_CAP'
+          || alert.mucDo === 'KhanCap'
+          || alert.mucDo === 'KHAN_CAP'
+        )).length);
+      })
+      .catch(() => {
+        setUnreadAlerts(0);
+        setUnresolvedSos(0);
+      });
+  }, [canViewAlerts]);
 
   useEffect(() => {
-    refreshUnreadAlerts();
-  }, [refreshUnreadAlerts]);
+    refreshAlertCounters();
+  }, [refreshAlertCounters]);
 
-  useRealtimeAlerts(refreshUnreadAlerts);
-
-  const selectedKey = location.pathname;
-  const openKeys = visibleMenuItems
-    .filter((item) => item.children?.some((child) => location.pathname.startsWith(child.key)))
-    .map((item) => item.key);
+  useRealtimeAlerts(refreshAlertCounters);
 
   const handleMenuClick = ({ key }) => {
     navigate(key);
     if (isMobile) setMobileOpen(false);
   };
 
-  const handleLogout = () => {
-    // logout() từ AuthContext tự xóa localStorage và chuyển về /login
-    logout();
+  const handleHeaderSearch = (value) => {
+    const keyword = value.trim();
+    const query = keyword ? `?keyword=${encodeURIComponent(keyword)}` : '';
+    navigate(`/ho-so-nguoi-cao-tuoi${query}`);
   };
 
   const userMenuItems = [
-    {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: 'Thông tin cá nhân',
-    },
-    {
-      key: 'change-password',
-      icon: <LockOutlined />,
-      label: 'Đổi mật khẩu',
-    },
-    {
-      key: 'login-history',
-      icon: <HistoryOutlined />,
-      label: 'Lịch sử đăng nhập',
-    },
-    {
-      key: 'settings',
-      icon: <SettingOutlined />,
-      label: 'Cài đặt tài khoản',
-    },
+    { key: 'profile', icon: <UserOutlined />, label: 'Thông tin cá nhân' },
+    { key: 'change-password', icon: <LockOutlined />, label: 'Đổi mật khẩu' },
+    { key: 'login-history', icon: <HistoryOutlined />, label: 'Lịch sử đăng nhập' },
+    { key: 'settings', icon: <SettingOutlined />, label: 'Cài đặt tài khoản' },
     { type: 'divider' },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: 'Đăng xuất',
-      danger: true,
-    },
+    { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', danger: true },
   ];
 
   const handleUserMenuClick = ({ key }) => {
-    if (key === 'logout') {
-      handleLogout();
-      return;
-    }
-    setActiveAccountModal(key);
+    if (key === 'logout') logout();
+    else setActiveAccountModal(key);
   };
 
-  // Chiều rộng sidebar (fixed)
-  const siderWidth = 240;
-  const siderCollapsedWidth = 64;
-  const currentSiderWidth = isMobile ? 0 : (collapsed ? siderCollapsedWidth : siderWidth);
+  const renderSidebar = (mobile = false) => (
+    <>
+      <SidebarLogo
+        collapsed={!mobile && collapsed}
+        onClick={() => {
+          navigate('/dashboard');
+          setMobileOpen(false);
+        }}
+      />
+      <SidebarNavigation
+        collapsed={!mobile && collapsed}
+        items={navigationItems}
+        selectedKey={location.pathname}
+        onMenuClick={handleMenuClick}
+      />
+      <div className="sidebar-footer">{(!collapsed || mobile) && '© 2026 CareSenior'}</div>
+    </>
+  );
+
+  const userName = currentUser?.hoTen || currentUser?.tenDangNhap || 'Người dùng';
+  const roleName = ROLE_LABELS[currentUser?.tenVaiTro]
+    || currentUser?.vaiTroLabel
+    || currentUser?.tenVaiTro
+    || 'Người dùng hệ thống';
+  const currentSiderWidth = isMobile ? 0 : (collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH);
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      {/* ===== SIDEBAR DESKTOP (hidden on mobile) ===== */}
+    <Layout className="main-layout">
       {!isMobile && (
         <Sider
           className="app-sidebar"
           theme="dark"
           collapsed={collapsed}
-          width={siderWidth}
-          collapsedWidth={siderCollapsedWidth}
-          style={{ background: SIDEBAR_BG }}
+          width={SIDEBAR_WIDTH}
+          collapsedWidth={SIDEBAR_COLLAPSED_WIDTH}
         >
-          <SidebarLogo collapsed={collapsed} onClick={() => navigate('/dashboard')} />
-          <SidebarMenu
-            selectedKey={selectedKey}
-            defaultOpenKeys={openKeys}
-            onMenuClick={handleMenuClick}
-            items={visibleMenuItems}
-          />
-          <div className="sidebar-footer">
-            {!collapsed && '© 2024 CareSenior'}
-          </div>
+          {renderSidebar()}
         </Sider>
       )}
 
-      {/* ===== SIDEBAR MOBILE (Drawer) ===== */}
       {isMobile && (
         <>
           {mobileOpen && (
-            <div
+            <button
+              type="button"
               className="sidebar-mobile-overlay"
-              style={{ display: 'block' }}
+              aria-label="Đóng menu"
               onClick={() => setMobileOpen(false)}
             />
           )}
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              height: '100vh',
-              width: siderWidth,
-              background: SIDEBAR_BG,
-              zIndex: 300,
-              transform: mobileOpen ? 'translateX(0)' : `translateX(-${siderWidth}px)`,
-              transition: 'transform 0.25s ease',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <SidebarLogo collapsed={false} onClick={() => { navigate('/dashboard'); setMobileOpen(false); }} />
-            <SidebarMenu
-              selectedKey={selectedKey}
-              defaultOpenKeys={openKeys}
-              onMenuClick={handleMenuClick}
-              items={visibleMenuItems}
-            />
-            <div className="sidebar-footer">© 2024 CareSenior</div>
-          </div>
+          <aside className={`mobile-sidebar ${mobileOpen ? 'mobile-sidebar-open' : ''}`}>
+            {renderSidebar(true)}
+          </aside>
         </>
       )}
 
-      {/* ===== MAIN AREA ===== */}
-      <Layout style={{ marginLeft: currentSiderWidth, transition: 'margin-left 0.2s ease' }}>
-        {/* Header */}
+      <Layout className="main-shell" style={{ marginLeft: currentSiderWidth }}>
         <Header className="app-header">
           <div className="header-left">
-            {/* Hamburger (mobile) */}
-            {isMobile && (
-              <Button
-                className="header-hamburger-btn"
-                type="text"
-                icon={<MenuOutlined style={{ fontSize: 20 }} />}
-                onClick={() => setMobileOpen(!mobileOpen)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 20,
-                  color: '#3D5263',
-                  width: 40,
-                  height: 40,
-                  borderRadius: 8,
-                }}
-              />
-            )}
-
-            {/* Collapse button (tablet/desktop) */}
-            {!isMobile && (
-              <Button
-                className="header-collapse-btn"
-                type="text"
-                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={() => setCollapsed(!collapsed)}
+            <Button
+              className={isMobile ? 'header-hamburger-btn' : 'header-collapse-btn'}
+              type="text"
+              aria-label={isMobile ? 'Mở menu' : 'Thu gọn menu'}
+              icon={isMobile
+                ? <MenuOutlined />
+                : (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />)}
+              onClick={() => (isMobile ? setMobileOpen(true) : setCollapsed((value) => !value))}
+            />
+            {hasPermission('QLHOSONCT', 'xem') && (
+              <Search
+                className="header-search"
+                value={headerKeyword}
+                prefix={<SearchOutlined />}
+                placeholder="Tìm người cao tuổi theo tên hoặc mã hồ sơ"
+                allowClear
+                enterButton="Tìm kiếm"
+                onChange={(event) => setHeaderKeyword(event.target.value)}
+                onSearch={handleHeaderSearch}
               />
             )}
           </div>
 
           <div className="header-right">
-            {/* Chuông cảnh báo */}
-            {hasPermission('QLCANHBAO', 'xem') && <Tooltip title={`${unreadAlerts} cảnh báo chưa xử lý`}>
-              <Badge count={unreadAlerts} size="small" offset={[-2, 2]}>
+            {canViewAlerts && (
+              <Badge count={unresolvedSos} size="small" overflowCount={99}>
                 <Button
-                  type="text"
-                  icon={<BellOutlined style={{ fontSize: 20 }} />}
-                  onClick={() => navigate('/canh-bao')}
-                  style={{
-                    color: unreadAlerts > 0 ? '#E15554' : '#7A93A3',
-                    width: 40,
-                    height: 40,
-                    borderRadius: 8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  className={unreadAlerts > 0 ? 'pulse-danger' : ''}
-                />
+                  danger
+                  type="primary"
+                  className="header-sos-button"
+                  icon={<AlertOutlined />}
+                  onClick={() => navigate('/canh-bao?tab=sos')}
+                >
+                  Cảnh báo SOS
+                </Button>
               </Badge>
-            </Tooltip>}
+            )}
 
-            {/* Thông tin người dùng */}
-            {currentUser && (
-              <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight" arrow>
-                <Space style={{ cursor: 'pointer', gap: 10 }}>
-                  <Avatar
-                    style={{ backgroundColor: '#2E7D9A' }}
-                    icon={<UserOutlined />}
-                    size={36}
-                    className="header-avatar"
+            {canViewAlerts && (
+              <Tooltip title={`${unreadAlerts} cảnh báo chưa xử lý`}>
+                <Badge count={unreadAlerts} size="small" overflowCount={99}>
+                  <Button
+                    type="text"
+                    className="header-notification-button"
+                    aria-label="Xem cảnh báo"
+                    icon={<BellOutlined />}
+                    onClick={() => navigate('/canh-bao')}
                   />
-                  <div className="header-user-info" style={{ display: isMobile ? 'none' : 'block' }}>
-                    <div className="header-user-name">{currentUser.hoTen}</div>
-                    <div className="header-user-role">{currentUser.tenVaiTro ?? currentUser.vaiTroLabel}</div>
-                  </div>
+                </Badge>
+              </Tooltip>
+            )}
+
+            {currentUser && (
+              <Dropdown
+                menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
+                placement="bottomRight"
+                arrow
+              >
+                <Space className="header-account" size={10}>
+                  <Avatar className="header-avatar" size={40}>{getNameInitials(userName)}</Avatar>
+                  <span className="header-user-info">
+                    <span className="header-user-name">{userName}</span>
+                    <span className="header-user-role">{roleName}</span>
+                  </span>
                 </Space>
               </Dropdown>
             )}
           </div>
         </Header>
 
-        {/* Nội dung chính */}
         <Content className="page-content">
           <Outlet />
         </Content>

@@ -1,17 +1,14 @@
-// Trang lịch uống thuốc - Theo từng người cao tuổi, trạng thái màu sắc
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Button, Card, Col, DatePicker, Form, Input, InputNumber, Row,
+  Button, Card, Col, DatePicker, Form, Input, InputNumber, Progress, Row,
   Select, Space, Tag, TimePicker, Typography, message,
 } from 'antd';
 import {
-  ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  DeleteOutlined, EyeOutlined, MedicineBoxOutlined, PlusOutlined,
+  AlertOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined,
+  DeleteOutlined, EyeOutlined, HourglassOutlined, MedicineBoxOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import {
-  createPrescription, getSchedules, updateScheduleStatus,
-} from '../../services/scheduleService';
+import { createPrescription, getSchedules, updateScheduleStatus } from '../../services/scheduleService';
 import { getElders } from '../../services/elderlyService';
 import { getMedications } from '../../services/medicationService';
 import PageHeader from '../../components/PageHeader';
@@ -20,25 +17,47 @@ import DataTable from '../../components/DataTable';
 import StatusTag, { getMedStatusMap } from '../../components/StatusTag';
 import usePermission from '../../hooks/usePermission';
 import TableAvatar from '../../components/TableAvatar';
-import TableActionButton from '../../components/TableActionButton';
 import { formatEntityCode } from '../../utils/displayUtils';
 import RecordDetailModal from '../../components/RecordDetailModal';
 import ModalForm, { FormSection } from '../../components/ModalForm';
+import MedicationQuickTabs from '../../components/MedicationQuickTabs';
 import { getSocket } from '../../services/socketClient';
 
 const { Option } = Select;
 
+const SHIFT_OPTIONS = [
+  { key: 'ALL', label: 'Tất cả ca' },
+  { key: 'MORNING', label: 'Sáng', range: '05:00–10:59' },
+  { key: 'NOON', label: 'Trưa', range: '11:00–13:59' },
+  { key: 'AFTERNOON', label: 'Chiều', range: '14:00–17:59' },
+  { key: 'EVENING', label: 'Tối', range: '18:00–04:59' },
+];
+
+const getScheduleTime = (schedule) => {
+  const parsed = dayjs(schedule?.thoiGianDuKien);
+  return parsed.isValid() ? parsed : null;
+};
+
+const getScheduleShift = (schedule) => {
+  const time = getScheduleTime(schedule);
+  if (!time) return null;
+  const hour = time.hour();
+  if (hour >= 5 && hour < 11) return 'MORNING';
+  if (hour >= 11 && hour < 14) return 'NOON';
+  if (hour >= 14 && hour < 18) return 'AFTERNOON';
+  return 'EVENING';
+};
+
+const getShiftLabel = (schedule) => (
+  SHIFT_OPTIONS.find((item) => item.key === getScheduleShift(schedule))?.label || 'Không xác định'
+);
+
 const PrescriptionMedicationRow = ({ field, form, medications, onRemove, canRemove }) => {
-  const timesPerDay = Form.useWatch(
-    ['danhSachThuoc', field.name, 'soLanMoiNgay'],
-    form,
-  ) || 1;
+  const timesPerDay = Form.useWatch(['danhSachThuoc', field.name, 'soLanMoiNgay'], form) || 1;
 
   const updateTimesPerDay = (value) => {
     const count = Math.max(1, Math.min(24, Number(value) || 1));
-    const currentTimes = form.getFieldValue([
-      'danhSachThuoc', field.name, 'gioUong',
-    ]) || [];
+    const currentTimes = form.getFieldValue(['danhSachThuoc', field.name, 'gioUong']) || [];
     form.setFieldValue(
       ['danhSachThuoc', field.name, 'gioUong'],
       Array.from({ length: count }, (_, index) => currentTimes[index] || null),
@@ -50,14 +69,7 @@ const PrescriptionMedicationRow = ({ field, form, medications, onRemove, canRemo
       size="small"
       title={`Thuốc ${field.name + 1}`}
       extra={canRemove && (
-        <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined />}
-          onClick={onRemove}
-        >
-          Xóa
-        </Button>
+        <Button type="text" danger icon={<DeleteOutlined />} onClick={onRemove}>Xóa</Button>
       )}
       style={{ marginBottom: 16 }}
     >
@@ -119,12 +131,7 @@ const PrescriptionMedicationRow = ({ field, form, medications, onRemove, canRemo
               label={`Lần ${timeIndex + 1}`}
               rules={[{ required: true, message: 'Vui lòng chọn giờ' }]}
             >
-              <TimePicker
-                format="HH:mm"
-                minuteStep={1}
-                placeholder="Chọn giờ"
-                style={{ width: '100%' }}
-              />
+              <TimePicker format="HH:mm" minuteStep={1} placeholder="Chọn giờ" style={{ width: '100%' }} />
             </Form.Item>
           </Col>
         ))}
@@ -142,8 +149,10 @@ const MedicationSchedulePage = () => {
   const [medications, setMedications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
   const [selectedElder, setSelectedElder] = useState(null);
   const [filterStatus, setFilterStatus] = useState('');
+  const [selectedShift, setSelectedShift] = useState('ALL');
   const [detailRecord, setDetailRecord] = useState(null);
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
   const [prescriptionForm] = Form.useForm();
@@ -151,60 +160,75 @@ const MedicationSchedulePage = () => {
   useEffect(() => {
     Promise.all([getElders(), getMedications()]).then(([elderlyList, medicationList]) => {
       setElders(elderlyList);
-      setMedications(
-        medicationList.filter((medication) => medication.trangThai !== 'NGUNG_SU_DUNG'),
-      );
+      setMedications(medicationList.filter((medication) => medication.trangThai !== 'NGUNG_SU_DUNG'));
     }).catch(() => {
       setElders([]);
       setMedications([]);
     });
   }, []);
 
-  const loadSchedules = (elderlyId = selectedElder, status = filterStatus) => {
-    setLoading(true);
-    return getSchedules({
-      nguoiCaoTuoiId: elderlyId,
-      trangThai: status || undefined,
-    })
-      .then(setSchedules)
-      .catch(() => setSchedules([]))
-      .finally(() => setLoading(false));
-  };
+  const loadSchedules = useCallback(async () => {
+    try {
+      setSchedules(await getSchedules());
+    } catch {
+      setSchedules([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    getSchedules({
-      nguoiCaoTuoiId: selectedElder,
-      trangThai: filterStatus || undefined,
-    })
-      .then(setSchedules)
-      .catch(() => setSchedules([]))
-      .finally(() => setLoading(false));
-  }, [selectedElder, filterStatus]);
+    let active = true;
+    getSchedules()
+      .then((data) => { if (active) setSchedules(data); })
+      .catch(() => { if (active) setSchedules([]); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const socket = getSocket();
-    const handleScheduleUpdated = (event) => {
-      if (selectedElder
-          && Number(event?.nguoiCaoTuoiId) !== Number(selectedElder)) return;
-      getSchedules({
-        nguoiCaoTuoiId: selectedElder,
-        trangThai: filterStatus || undefined,
-      }).then(setSchedules).catch(() => setSchedules([]));
-    };
-
+    const handleScheduleUpdated = () => loadSchedules();
     socket.on('lichuongthuoc:updated', handleScheduleUpdated);
     return () => socket.off('lichuongthuoc:updated', handleScheduleUpdated);
-  }, [selectedElder, filterStatus]);
+  }, [loadSchedules]);
 
-  const handleElderFilterChange = (value) => {
-    setLoading(true);
-    setSelectedElder(value);
-  };
+  const todaySchedules = useMemo(() => schedules.filter((schedule) => {
+    const time = getScheduleTime(schedule);
+    return time?.isSame(dayjs(), 'day');
+  }), [schedules]);
 
-  const handleStatusFilterChange = (value) => {
-    setLoading(true);
-    setFilterStatus(value || '');
-  };
+  const kpis = useMemo(() => {
+    const total = todaySchedules.length;
+    const taken = todaySchedules.filter((item) => item.trangThaiHom_nay === 'DA_UONG').length;
+    const intervention = todaySchedules.filter((item) => (
+      ['BO_LO', 'TU_CHOI'].includes(item.trangThaiHom_nay)
+    )).length;
+    const upcoming = todaySchedules.filter((item) => item.trangThaiHom_nay === 'CHUA_DEN_GIO').length;
+    return {
+      total,
+      taken,
+      intervention,
+      upcoming,
+      completionRate: total ? Math.round((taken / total) * 100) : 0,
+    };
+  }, [todaySchedules]);
+
+  const filteredSchedules = useMemo(() => {
+    const keyword = search.trim().toLocaleLowerCase('vi');
+    return schedules.filter((schedule) => {
+      const matchesSearch = !keyword || [
+        schedule.nguoiCaoTuoiTen,
+        schedule.tenThuoc,
+        formatEntityCode('LUT', schedule.id),
+      ].some((value) => String(value || '').toLocaleLowerCase('vi').includes(keyword));
+      const matchesElder = !selectedElder
+        || Number(schedule.nguoiCaoTuoiId) === Number(selectedElder);
+      const matchesStatus = !filterStatus || schedule.trangThaiHom_nay === filterStatus;
+      const matchesShift = selectedShift === 'ALL' || getScheduleShift(schedule) === selectedShift;
+      return matchesSearch && matchesElder && matchesStatus && matchesShift;
+    });
+  }, [filterStatus, schedules, search, selectedElder, selectedShift]);
 
   const openPrescriptionModal = () => {
     prescriptionForm.resetFields();
@@ -252,14 +276,10 @@ const MedicationSchedulePage = () => {
       message.success(`Tạo đơn thuốc thành công, đã sinh ${result.soLichDaTao || 0} lịch uống`);
       setPrescriptionModalOpen(false);
       prescriptionForm.resetFields();
-      if (selectedElder !== values.nguoiCaoTuoiId) {
-        setLoading(true);
-        setSelectedElder(values.nguoiCaoTuoiId);
-      } else {
-        await loadSchedules(values.nguoiCaoTuoiId, filterStatus);
-      }
+      setSelectedElder(values.nguoiCaoTuoiId);
+      await loadSchedules();
     } catch {
-      // Axios interceptor da hien thi thong bao loi tu backend.
+      // Axios interceptor hiển thị thông báo lỗi từ backend.
     } finally {
       setSaving(false);
     }
@@ -269,152 +289,206 @@ const MedicationSchedulePage = () => {
     const { label } = getMedStatusMap(newStatus);
     await updateScheduleStatus(id, newStatus);
     message.success(`Đã cập nhật: ${label}`);
-    setSchedules((prev) =>
-      prev.map((s) => s.id === id ? { ...s, trangThaiHom_nay: newStatus, trangThaiLabel: label } : s)
-    );
+    await loadSchedules();
   };
+
+  const hasConfirmerData = schedules.some((item) => Boolean(item.nguoiXacNhanTen));
 
   const columns = [
     {
-      title: 'Mã lịch',
-      key: 'maLich',
-      width: 115,
+      title: 'Mã lịch', key: 'maLich', width: 120,
       render: (_, record) => <span className="entity-code-badge">{formatEntityCode('LUT', record.id)}</span>,
     },
     {
-      title: 'Người cao tuổi',
-      dataIndex: 'nguoiCaoTuoiTen',
-      key: 'nguoiCaoTuoiTen',
+      title: 'Người cao tuổi', dataIndex: 'nguoiCaoTuoiTen', key: 'nguoiCaoTuoiTen', width: 210,
       sorter: (a, b) => a.nguoiCaoTuoiTen.localeCompare(b.nguoiCaoTuoiTen, 'vi'),
-      render: (v) => <div className="table-person-cell"><TableAvatar name={v} /><span className="table-person-name">{v}</span></div>,
-    },
-    {
-      title: 'Thuốc',
-      dataIndex: 'tenThuoc',
-      key: 'tenThuoc',
-      render: (v, r) => (
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>{v}</div>
-          <div style={{ fontSize: 13, color: '#7A93A3' }}>{r.lieuDung}</div>
+      render: (value) => (
+        <div className="table-person-cell">
+          <TableAvatar name={value} />
+          <span className="table-person-name">{value}</span>
         </div>
       ),
     },
     {
-      title: 'Giờ uống',
-      key: 'gio',
-      render: (_, r) => (
-        <Space direction="vertical" size={4}>
-          {r.gioBuoiSang && (
-            <Tag icon={<ClockCircleOutlined />} style={{ background: '#FEF6E6', color: '#D4870A', borderColor: '#F5A623' }}>
-              ☀️ Sáng: {r.gioBuoiSang}
-            </Tag>
-          )}
-          {r.gioBuoiTrua && (
-            <Tag icon={<ClockCircleOutlined />} style={{ background: '#EBF5FB', color: '#2E7D9A', borderColor: '#A8D4E6' }}>
-              🌤 Trưa: {r.gioBuoiTrua}
-            </Tag>
-          )}
-          {r.gioBuoiToi && (
-            <Tag icon={<ClockCircleOutlined />} style={{ background: '#F0F4F7', color: '#6B7C8A', borderColor: '#C8D6DE' }}>
-              🌙 Tối: {r.gioBuoiToi}
-            </Tag>
-          )}
-        </Space>
+      title: 'Thuốc & liều dùng', dataIndex: 'tenThuoc', key: 'tenThuoc', width: 220,
+      render: (value, record) => (
+        <div className="medication-name-cell">
+          <strong>{value || 'Chưa cập nhật'}</strong>
+          <span>{record.lieuDung || 'Chưa cập nhật liều dùng'}</span>
+        </div>
       ),
     },
     {
-      title: 'Trạng thái hôm nay',
-      dataIndex: 'trangThaiHom_nay',
-      key: 'trangThai',
-      sorter: (a, b) => (a.trangThaiHom_nay || '').localeCompare(b.trangThaiHom_nay || ''),
-      render: (v) => {
-        const { status, label } = getMedStatusMap(v || 'CHUA_DEN_GIO');
-        return <StatusTag status={status} label={label} />;
+      title: 'Giờ uống', key: 'gio', width: 145,
+      render: (_, record) => {
+        const time = getScheduleTime(record);
+        return (
+          <Tag className={`schedule-time-tag shift-${(getScheduleShift(record) || 'unknown').toLowerCase()}`}>
+            <ClockCircleOutlined />
+            <strong>{time ? time.format('HH:mm') : '—'}</strong>
+            <span>{getShiftLabel(record)}</span>
+          </Tag>
+        );
       },
     },
     {
-      title: 'Cập nhật',
-      key: 'action',
-      fixed: 'right',
-      width: 160,
-      render: (_, r) => (
-        <Space>
-          <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setDetailRecord(r)} />
-          {canEdit && <TableActionButton
-            type="view"
-            tooltip="Đánh dấu đã uống"
-            icon={<CheckCircleOutlined />}
-            onClick={() => handleStatusChange(r.id, 'DA_UONG')}
-            disabled={r.trangThaiHom_nay === 'DA_UONG'}
-          />}
-          {canEdit && <TableActionButton
-            type="delete"
-            tooltip="Đánh dấu bỏ lỡ"
-            icon={<CloseCircleOutlined />}
-            onClick={() => handleStatusChange(r.id, 'BO_LO')}
-            disabled={r.trangThaiHom_nay === 'BO_LO'}
-          />}
+      title: 'Trạng thái', dataIndex: 'trangThaiHom_nay', key: 'trangThai', width: 145,
+      render: (value) => <StatusTag {...getMedStatusMap(value || 'CHUA_DEN_GIO')} />,
+    },
+    {
+      title: 'Người xác nhận', dataIndex: 'nguoiXacNhanTen', key: 'nguoiXacNhanTen', width: 180,
+      render: (value, record) => (
+        <div className="schedule-confirmer">
+          <strong>{value || 'Chưa xác nhận'}</strong>
+          {record.thoiGianThucTe && <span>{dayjs(record.thoiGianThucTe).format('HH:mm DD/MM/YYYY')}</span>}
+        </div>
+      ),
+    },
+    {
+      title: 'Thao tác', key: 'action', fixed: 'right', width: 275,
+      render: (_, record) => (
+        <Space wrap>
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={(event) => { event.stopPropagation(); setDetailRecord(record); }}
+          >
+            Xem
+          </Button>
+          {canEdit && record.trangThaiHom_nay !== 'DA_UONG' && (
+            <Button
+              size="small"
+              type="primary"
+              icon={<CheckCircleOutlined />}
+              onClick={(event) => { event.stopPropagation(); handleStatusChange(record.id, 'DA_UONG'); }}
+            >
+              Xác nhận đã uống
+            </Button>
+          )}
+          {canEdit && !['BO_LO', 'TU_CHOI'].includes(record.trangThaiHom_nay) && (
+            <Button
+              size="small"
+              danger
+              icon={<CloseCircleOutlined />}
+              onClick={(event) => { event.stopPropagation(); handleStatusChange(record.id, 'BO_LO'); }}
+            >
+              Bỏ lỡ
+            </Button>
+          )}
         </Space>
       ),
     },
   ];
 
+  const visibleColumns = hasConfirmerData
+    ? columns
+    : columns.filter((column) => column.key !== 'nguoiXacNhanTen');
+
   return (
-    <div>
+    <div className="medication-management-page">
       <PageHeader
-        title="Lịch uống thuốc"
-        subtitle="Theo dõi và cập nhật trạng thái uống thuốc theo từng người cao tuổi"
+        title="Quản lý lịch uống thuốc"
+        subtitle="Theo dõi đúng giờ, xác nhận liều đã uống và phát hiện trường hợp cần can thiệp"
         icon={<ClockCircleOutlined />}
-        count={schedules.length}
-        countLabel="lịch uống"
         extra={canCreate && (
-          <Button
-            type="primary"
-            size="large"
-            icon={<PlusOutlined />}
-            onClick={openPrescriptionModal}
-          >
+          <Button type="primary" size="large" icon={<PlusOutlined />} onClick={openPrescriptionModal}>
             Tạo đơn thuốc
           </Button>
         )}
       />
 
-      <TableToolbar
-        filters={[
-          <Select
-            key="elder"
-            placeholder="Chọn người cao tuổi"
-            style={{ width: 240 }}
-            allowClear
-            value={selectedElder}
-            onChange={handleElderFilterChange}
-          >
-            {elders.map((e) => <Option key={e.id} value={e.id}>{e.hoTen}</Option>)}
-          </Select>,
-          <Select
-            key="status"
-            placeholder="Lọc trạng thái"
-            style={{ width: 180 }}
-            allowClear
-            onChange={handleStatusFilterChange}
-          >
-            <Option value="DA_UONG">✅ Đã uống</Option>
-            <Option value="BO_LO">❌ Bỏ lỡ</Option>
-            <Option value="CHUA_DEN_GIO">⏰ Chưa đến giờ</Option>
-            <Option value="TU_CHOI">Từ chối</Option>
-          </Select>,
-        ]}
-      />
+      <MedicationQuickTabs />
 
-      <DataTable
-        columns={columns}
-        dataSource={schedules}
-        rowKey="id"
-        loading={loading}
-        emptyDescription="Chưa có lịch uống thuốc"
-        onRow={(record) => ({ onClick: () => setDetailRecord(record) })}
-        rowClassName={(r) => r.trangThaiHom_nay === 'BO_LO' ? 'row-danger' : ''}
-      />
+      <section className="medication-kpi-grid" aria-label="Thống kê lịch uống thuốc hôm nay">
+        <article className="medication-kpi-card">
+          <div className="medication-kpi-icon is-primary"><MedicineBoxOutlined /></div>
+          <div><span>Tổng liều hôm nay</span><strong>{kpis.total}</strong><small>liều theo lịch</small></div>
+        </article>
+        <article className="medication-kpi-card is-success">
+          <div className="medication-kpi-icon"><CheckCircleOutlined /></div>
+          <div className="medication-kpi-content">
+            <span>Đã uống</span><strong>{kpis.taken}</strong>
+            <Progress percent={kpis.completionRate} size="small" showInfo strokeColor="#16A34A" />
+          </div>
+        </article>
+        <article className="medication-kpi-card is-danger">
+          <div className="medication-kpi-icon"><AlertOutlined /></div>
+          <div><span>Cần can thiệp</span><strong>{kpis.intervention}</strong><small>Bỏ lỡ hoặc từ chối</small></div>
+        </article>
+        <article className="medication-kpi-card is-warning">
+          <div className="medication-kpi-icon"><HourglassOutlined /></div>
+          <div><span>Chưa đến giờ</span><strong>{kpis.upcoming}</strong><small>liều còn chờ hôm nay</small></div>
+        </article>
+      </section>
+
+      <section className="medication-list-panel">
+        <div className="medication-list-heading">
+          <div><h3>Danh sách lịch uống thuốc</h3><p>Dữ liệu được đồng bộ theo thời gian thực từ hệ thống.</p></div>
+          <span>{filteredSchedules.length} lịch phù hợp</span>
+        </div>
+
+        <TableToolbar
+          search={search}
+          onSearch={setSearch}
+          searchPlaceholder="Tìm mã lịch, người cao tuổi, tên thuốc..."
+          searchWidth={330}
+          filters={[
+            <Select
+              key="elder"
+              placeholder="Chọn người cao tuổi"
+              style={{ width: 230 }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={selectedElder}
+              onChange={setSelectedElder}
+              options={elders.map((elder) => ({ value: elder.id, label: elder.hoTen }))}
+            />,
+            <Select
+              key="status"
+              placeholder="Tất cả trạng thái"
+              style={{ width: 185 }}
+              allowClear
+              value={filterStatus || undefined}
+              onChange={(value) => setFilterStatus(value || '')}
+            >
+              <Option value="CHUA_DEN_GIO">Chưa đến giờ</Option>
+              <Option value="DA_UONG">Đã uống</Option>
+              <Option value="BO_LO">Bỏ lỡ</Option>
+              <Option value="TU_CHOI">Từ chối</Option>
+            </Select>,
+          ]}
+        />
+
+        <div className="schedule-shift-filter">
+          <span>Ca uống:</span>
+          <div>
+            {SHIFT_OPTIONS.map((shift) => (
+              <button
+                type="button"
+                key={shift.key}
+                className={selectedShift === shift.key ? 'is-active' : ''}
+                onClick={() => setSelectedShift(shift.key)}
+                title={shift.range}
+              >
+                {shift.label}{shift.range && <small>{shift.range}</small>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <DataTable
+          columns={visibleColumns}
+          dataSource={filteredSchedules}
+          rowKey="id"
+          loading={loading}
+          emptyDescription="Chưa có lịch uống thuốc phù hợp"
+          onRow={(record) => ({ onClick: () => setDetailRecord(record) })}
+          rowClassName={(record) => (
+            ['BO_LO', 'TU_CHOI'].includes(record.trangThaiHom_nay) ? 'row-danger' : ''
+          )}
+        />
+      </section>
 
       <RecordDetailModal
         open={!!detailRecord}
@@ -426,8 +500,13 @@ const MedicationSchedulePage = () => {
           { label: 'Người cao tuổi', key: 'nguoiCaoTuoiTen' },
           { label: 'Thuốc', key: 'tenThuoc' },
           { label: 'Liều dùng', key: 'lieuDung' },
-          { label: 'Thời gian dự kiến', key: 'thoiGianDuKien' },
+          { label: 'Thời gian dự kiến', key: 'thoiGianDuKien', render: (value) => value ? dayjs(value).format('HH:mm DD/MM/YYYY') : '—' },
           { label: 'Trạng thái', key: 'trangThaiHom_nay', render: (value) => <StatusTag {...getMedStatusMap(value)} /> },
+          ...(hasConfirmerData ? [
+            { label: 'Người xác nhận', key: 'nguoiXacNhanTen' },
+            { label: 'Thời gian thực tế', key: 'thoiGianThucTe', render: (value) => value ? dayjs(value).format('HH:mm DD/MM/YYYY') : '—' },
+          ] : []),
+          { label: 'Ghi chú', key: 'ghiChu', span: 2 },
         ]}
       />
 
@@ -443,17 +522,10 @@ const MedicationSchedulePage = () => {
         width={980}
         form={prescriptionForm}
       >
-        <FormSection
-          title="Thông tin đơn thuốc"
-          description="Chọn người cao tuổi và khoảng thời gian áp dụng"
-        >
+        <FormSection title="Thông tin đơn thuốc" description="Chọn người cao tuổi và khoảng thời gian áp dụng">
           <Row gutter={16}>
             <Col xs={24} md={12}>
-              <Form.Item
-                name="nguoiCaoTuoiId"
-                label="Người cao tuổi"
-                rules={[{ required: true, message: 'Vui lòng chọn người cao tuổi' }]}
-              >
+              <Form.Item name="nguoiCaoTuoiId" label="Người cao tuổi" rules={[{ required: true, message: 'Vui lòng chọn người cao tuổi' }]}>
                 <Select
                   showSearch
                   optionFilterProp="label"
@@ -463,20 +535,12 @@ const MedicationSchedulePage = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item
-                name="bacSiKeDon"
-                label="Bác sĩ kê đơn"
-                rules={[{ max: 100, message: 'Tên bác sĩ tối đa 100 ký tự' }]}
-              >
+              <Form.Item name="bacSiKeDon" label="Bác sĩ kê đơn" rules={[{ max: 100, message: 'Tên bác sĩ tối đa 100 ký tự' }]}>
                 <Input placeholder="Nhập tên bác sĩ kê đơn" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item
-                name="ngayBatDau"
-                label="Ngày bắt đầu"
-                rules={[{ required: true, message: 'Vui lòng chọn ngày bắt đầu' }]}
-              >
+              <Form.Item name="ngayBatDau" label="Ngày bắt đầu" rules={[{ required: true, message: 'Vui lòng chọn ngày bắt đầu' }]}>
                 <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -488,9 +552,7 @@ const MedicationSchedulePage = () => {
                 rules={[({ getFieldValue }) => ({
                   validator(_, value) {
                     const start = getFieldValue('ngayBatDau');
-                    if (!value || !start || !value.isBefore(start, 'day')) {
-                      return Promise.resolve();
-                    }
+                    if (!value || !start || !value.isBefore(start, 'day')) return Promise.resolve();
                     return Promise.reject(new Error('Ngày kết thúc không được trước ngày bắt đầu'));
                   },
                 })]}
@@ -499,22 +561,12 @@ const MedicationSchedulePage = () => {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item
-            name="ghiChu"
-            label="Ghi chú"
-            rules={[{ max: 500, message: 'Ghi chú tối đa 500 ký tự' }]}
-          >
-            <Input.TextArea
-              autoSize={{ minRows: 2, maxRows: 4 }}
-              placeholder="Lưu ý thêm cho đơn thuốc (nếu có)"
-            />
+          <Form.Item name="ghiChu" label="Ghi chú" rules={[{ max: 500, message: 'Ghi chú tối đa 500 ký tự' }]}>
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="Lưu ý thêm cho đơn thuốc (nếu có)" />
           </Form.Item>
         </FormSection>
 
-        <FormSection
-          title="Danh sách thuốc"
-          description="Số ô giờ uống luôn khớp với số lần uống mỗi ngày"
-        >
+        <FormSection title="Danh sách thuốc" description="Số ô giờ uống luôn khớp với số lần uống mỗi ngày">
           <Form.List name="danhSachThuoc">
             {(fields, { add, remove }) => (
               <>
@@ -528,12 +580,7 @@ const MedicationSchedulePage = () => {
                     canRemove={fields.length > 1}
                   />
                 ))}
-                <Button
-                  type="dashed"
-                  block
-                  icon={<PlusOutlined />}
-                  onClick={() => add({ soLanMoiNgay: 1, gioUong: [null] })}
-                >
+                <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ soLanMoiNgay: 1, gioUong: [null] })}>
                   Thêm thuốc
                 </Button>
               </>

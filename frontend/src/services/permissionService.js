@@ -4,3 +4,13 @@ export const getMyPermissions = async () => {
   const response = await axiosClient.get('/permissions/me');
   return response.data?.data || [];
 };
+
+export const getPermissionMatrix = async () => {
+  const response = await axiosClient.get('/permissions/matrix');
+  return response.data?.data || { roles: [], functions: [], permissions: [] };
+};
+
+export const updatePermissionMatrix = async (permissions) => {
+  const response = await axiosClient.put('/permissions/matrix', { permissions });
+  return response.data?.data || response.data;
+};

@@ -1,155 +1,441 @@
-// Trang báo cáo thống kê - Biểu đồ tổng hợp, màu theme y tế
-import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Spin } from 'antd';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Button, DatePicker, Empty, Select, Skeleton, Tag } from 'antd';
 import {
-  Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement,
-  PointElement, Title, Tooltip, Legend, ArcElement,
+  AlertOutlined, BarChartOutlined, CheckCircleOutlined, HeartOutlined,
+  MedicineBoxOutlined, WarningOutlined,
+} from '@ant-design/icons';
+import { Bar, Line } from 'react-chartjs-2';
+import {
+  BarElement, CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale,
+  LineElement, PointElement, Title, Tooltip,
 } from 'chart.js';
-import {
-  getAlertsByMonth, getMedicationCompliance, getAlertsByLevel, getHealthMetricsTrend,
-} from '../../services/reportService';
-import { BarChartOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import DataTable from '../../components/DataTable';
+import TableAvatar from '../../components/TableAvatar';
+import { getHealthReport } from '../../services/reportService';
+import { calculateAge, formatEntityCode } from '../../utils/displayUtils';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement);
+ChartJS.register(
+  CategoryScale, LinearScale, BarElement, LineElement, PointElement,
+  Title, Tooltip, Legend, Filler,
+);
 
-// Palette màu y tế
-const CHART_COLORS = {
-  primary:   '#2E7D9A',
-  success:   '#4CAF93',
-  warning:   '#F5A623',
-  danger:    '#E15554',
-  urgent:    '#C0392B',
-  primaryBg: 'rgba(46, 125, 154, 0.15)',
-  successBg: 'rgba(76, 175, 147, 0.15)',
-  dangerBg:  'rgba(225, 85, 84, 0.15)',
+const { RangePicker } = DatePicker;
+
+const COLORS = {
+  teal: '#0F5C63',
+  tealLight: 'rgba(15,92,99,.15)',
+  green: '#16A34A',
+  red: '#B42318',
+  orange: '#D97706',
+  blue: '#2563EB',
 };
 
+const QUICK_RANGES = [
+  { key: 'today', label: 'Hôm nay', value: () => [dayjs(), dayjs()] },
+  { key: '7days', label: '7 ngày', value: () => [dayjs().subtract(6, 'day'), dayjs()] },
+  { key: '30days', label: '30 ngày', value: () => [dayjs().subtract(29, 'day'), dayjs()] },
+  { key: 'month', label: 'Tháng này', value: () => [dayjs().startOf('month'), dayjs()] },
+];
+
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: {
+      position: 'bottom',
+      labels: {
+        usePointStyle: true,
+        boxWidth: 8,
+        padding: 18,
+        filter: (item, data) => !data.datasets[item.datasetIndex]?.isThreshold,
+      },
+    },
+  },
+  scales: {
+    x: { grid: { display: false }, ticks: { color: '#64748B' } },
+    y: { beginAtZero: true, grid: { color: 'rgba(148,163,184,.16)' }, ticks: { color: '#64748B' } },
+  },
+};
+
+const formatDateTime = (value) => {
+  if (!value) return '—';
+  const date = dayjs(value);
+  return date.isValid() ? date.format('DD/MM/YYYY HH:mm') : '—';
+};
+
+const ReportKpi = ({ className = '', icon, label, value, suffix, note }) => (
+  <article className={`report-kpi-card ${className}`}>
+    <span className="report-kpi-icon">{icon}</span>
+    <div>
+      <small>{label}</small>
+      <strong>{value}<em>{suffix}</em></strong>
+      <p>{note}</p>
+    </div>
+  </article>
+);
+
 const ReportsPage = () => {
-  const [alertsByMonth, setAlertsByMonth] = useState([]);
-  const [compliance, setCompliance] = useState([]);
-  const [alertsByLevel, setAlertsByLevel] = useState([]);
-  const [healthTrend, setHealthTrend] = useState(null);
+  const [range, setRange] = useState(() => QUICK_RANGES[2].value());
+  const [quickRange, setQuickRange] = useState('30days');
+  const [selectedElder, setSelectedElder] = useState('all');
+  const [selectedMetric, setSelectedMetric] = useState(null);
+  const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const fromDate = range?.[0]?.format('YYYY-MM-DD');
+  const toDate = range?.[1]?.format('YYYY-MM-DD');
 
   useEffect(() => {
-    Promise.all([
-      getAlertsByMonth(), getMedicationCompliance(), getAlertsByLevel(), getHealthMetricsTrend(),
-    ]).then(([abm, comp, abl, ht]) => {
-      setAlertsByMonth(abm); setCompliance(comp); setAlertsByLevel(abl); setHealthTrend(ht);
-    }).finally(() => setLoading(false));
-  }, []);
+    let active = true;
+    getHealthReport({
+      from: fromDate,
+      to: toDate,
+      nguoiCaoTuoiId: selectedElder === 'all' ? null : selectedElder,
+    })
+      .then((data) => { if (active) setReport(data); })
+      .catch(() => {
+        if (active) {
+          setReport(null);
+          setError('Không thể tải dữ liệu báo cáo. Vui lòng kiểm tra kết nối và thử lại.');
+        }
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [fromDate, toDate, selectedElder, reloadKey]);
 
-  if (loading) return <div className="page-loading"><Spin size="large" /></div>;
+  const metricTypes = report?.xuHuongChiSo || [];
+  const currentMetric = metricTypes.find((item) => item.id === selectedMetric)
+    || metricTypes.find((item) => item.duLieu?.length)
+    || metricTypes[0];
 
-  const barAlerts = {
-    labels: alertsByMonth.map((d) => d.thang),
-    datasets: [{
-      label: 'Số cảnh báo',
-      data: alertsByMonth.map((d) => d.soLuong),
-      backgroundColor: CHART_COLORS.primaryBg,
-      borderColor: CHART_COLORS.primary,
-      borderWidth: 2,
-      borderRadius: 6,
-    }],
-  };
+  const medicationChart = useMemo(() => {
+    const rows = report?.tuanThuTheoTuan || [];
+    return {
+      labels: rows.map((item) => `Tuần ${dayjs(item.tuanBatDau).format('DD/MM')}`),
+      datasets: [{
+        label: 'Tỷ lệ tuân thủ',
+        data: rows.map((item) => item.tyLe),
+        backgroundColor: rows.map((item) => (
+          item.tyLe >= 80 ? COLORS.teal : item.tyLe >= 60 ? COLORS.orange : COLORS.red
+        )),
+        borderRadius: 8,
+        maxBarThickness: 52,
+      }],
+    };
+  }, [report]);
 
-  const barCompliance = {
-    labels: compliance.map((d) => d.ten),
-    datasets: [{
-      label: 'Tỉ lệ (%)',
-      data: compliance.map((d) => d.tyLe),
-      backgroundColor: compliance.map((d) =>
-        d.tyLe >= 80 ? CHART_COLORS.successBg : d.tyLe >= 60 ? 'rgba(245,166,35,0.2)' : CHART_COLORS.dangerBg
+  const alertChart = useMemo(() => {
+    const rows = report?.canhBaoTheoThang || [];
+    const keys = [...new Set(rows.map((item) => `${item.nam}-${String(item.thang).padStart(2, '0')}`))];
+    const levels = [
+      { key: 'Thap', label: 'Thấp', color: '#60A5FA' },
+      { key: 'TrungBinh', label: 'Trung bình', color: '#FBBF24' },
+      { key: 'Cao', label: 'Cao', color: '#F97316' },
+      { key: 'KhanCap', label: 'Khẩn cấp', color: '#DC2626' },
+    ];
+    return {
+      labels: keys.map((key) => {
+        const [year, month] = key.split('-');
+        return `T${Number(month)}/${year}`;
+      }),
+      datasets: levels.map((level) => ({
+        label: level.label,
+        backgroundColor: level.color,
+        borderRadius: 4,
+        data: keys.map((key) => rows
+          .filter((item) => `${item.nam}-${String(item.thang).padStart(2, '0')}` === key && item.mucDo === level.key)
+          .reduce((sum, item) => sum + item.soLuong, 0)),
+      })),
+    };
+  }, [report]);
+
+  const metricChart = useMemo(() => {
+    const points = currentMetric?.duLieu || [];
+    const labels = points.map((point) => dayjs(point.thoiGian).format('DD/MM HH:mm'));
+    const abnormalColors = points.map((point) => (point.laBatThuong ? COLORS.red : COLORS.teal));
+    const datasets = [{
+      label: currentMetric?.ten || 'Chỉ số',
+      data: points.map((point) => point.giaTri),
+      borderColor: COLORS.teal,
+      backgroundColor: COLORS.tealLight,
+      pointBackgroundColor: abnormalColors,
+      pointBorderColor: abnormalColors,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      tension: 0.3,
+      borderWidth: 2.5,
+    }];
+
+    if (points.some((point) => point.giaTriPhu != null)) {
+      datasets.push({
+        label: `${currentMetric?.ten || 'Chỉ số'} phụ`,
+        data: points.map((point) => point.giaTriPhu),
+        borderColor: COLORS.blue,
+        backgroundColor: 'rgba(37,99,235,.08)',
+        pointBackgroundColor: abnormalColors,
+        pointBorderColor: abnormalColors,
+        pointRadius: 4,
+        tension: 0.3,
+        borderWidth: 2,
+      });
+    }
+
+    const appendRange = (min, max, color, background) => {
+      if (min == null || max == null || !labels.length) return;
+      datasets.push({
+        label: 'Ngưỡng dưới', data: labels.map(() => min), borderColor: color,
+        borderDash: [5, 5], pointRadius: 0, borderWidth: 1, isThreshold: true,
+      });
+      datasets.push({
+        label: 'Dải ngưỡng', data: labels.map(() => max), borderColor: color,
+        backgroundColor: background, borderDash: [5, 5], pointRadius: 0,
+        borderWidth: 1, fill: '-1', isThreshold: true,
+      });
+    };
+    appendRange(currentMetric?.giaTriMin, currentMetric?.giaTriMax, 'rgba(22,163,74,1)', 'rgba(22,163,74,.08)');
+    appendRange(currentMetric?.giaTriMin2, currentMetric?.giaTriMax2, 'rgba(37,99,235,1)', 'rgba(37,99,235,.06)');
+
+    return { labels, datasets };
+  }, [currentMetric]);
+
+  const kpi = report?.kpi || {};
+  const summaryColumns = [
+    {
+      title: 'Người cao tuổi',
+      key: 'elderly',
+      width: 240,
+      render: (_, record) => (
+        <div className="table-person-cell">
+          <TableAvatar name={record.hoTen} size={42} />
+          <div className="table-person-copy">
+            <div className="table-person-name">{record.hoTen}</div>
+            <div className="table-person-meta">
+              {formatEntityCode('NCT', record.id)} · {calculateAge(record.ngaySinh) ?? '—'} tuổi · {record.gioiTinh || '—'}
+            </div>
+          </div>
+        </div>
       ),
-      borderColor: compliance.map((d) =>
-        d.tyLe >= 80 ? CHART_COLORS.success : d.tyLe >= 60 ? CHART_COLORS.warning : CHART_COLORS.danger
-      ),
-      borderWidth: 2,
-      borderRadius: 6,
-    }],
-  };
-
-  const doughnutData = {
-    labels: alertsByLevel.map((d) => d.mucDo),
-    datasets: [{
-      data: alertsByLevel.map((d) => d.soLuong),
-      backgroundColor: [CHART_COLORS.success, CHART_COLORS.warning, CHART_COLORS.danger, CHART_COLORS.urgent],
-      borderWidth: 0,
-    }],
-  };
-
-  const lineBloodPressure = {
-    labels: (healthTrend?.huyetAp || []).map((d) => d.ngay),
-    datasets: [
-      {
-        label: 'Huyết áp tâm thu (mmHg)',
-        data: (healthTrend?.huyetAp || []).map((d) => d.tren),
-        borderColor: CHART_COLORS.danger,
-        backgroundColor: CHART_COLORS.dangerBg,
-        fill: true, tension: 0.4, borderWidth: 2,
-      },
-      {
-        label: 'Huyết áp tâm trương (mmHg)',
-        data: (healthTrend?.huyetAp || []).map((d) => d.duoi),
-        borderColor: CHART_COLORS.primary,
-        backgroundColor: CHART_COLORS.primaryBg,
-        fill: true, tension: 0.4, borderWidth: 2,
-      },
-    ],
-  };
-
-  const commonOpts = {
-    responsive: true,
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { size: 13 }, padding: 16 } },
     },
-    scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.04)' } },
-      x: { grid: { display: false } },
+    {
+      title: 'Đã uống đúng', dataIndex: 'daUong', key: 'daUong', align: 'center', width: 130,
+      render: (value) => <strong className="report-count-success">{value}</strong>,
     },
+    {
+      title: 'Bỏ lỡ / Từ chối', dataIndex: 'boLoTuChoi', key: 'boLoTuChoi', align: 'center', width: 150,
+      render: (value) => <strong className={value ? 'report-count-danger' : ''}>{value}</strong>,
+    },
+    {
+      title: 'Cảnh báo', dataIndex: 'soCanhBao', key: 'soCanhBao', align: 'center', width: 115,
+      render: (value) => <Tag color={value ? 'orange' : 'default'}>{value}</Tag>,
+    },
+    {
+      title: 'Chỉ số bất thường gần nhất',
+      dataIndex: 'chiSoBatThuongGanNhat',
+      key: 'latestAbnormal',
+      width: 300,
+      render: (metric) => metric ? (
+        <div className="report-abnormal-cell">
+          <strong>{metric.ten}: {metric.giaTri}{metric.giaTriPhu != null ? `/${metric.giaTriPhu}` : ''} {metric.donVi}</strong>
+          <span>{formatDateTime(metric.thoiGian)}</span>
+        </div>
+      ) : <span className="text-muted">Không ghi nhận trong kỳ</span>,
+    },
+  ];
+
+  const chooseQuickRange = (item) => {
+    setLoading(true);
+    setError('');
+    setQuickRange(item.key);
+    setRange(item.value());
   };
 
   return (
-    <div>
+    <div className="health-report-page">
       <PageHeader
-        title="Báo cáo & Thống kê"
-        subtitle="Tổng hợp dữ liệu sức khỏe và hoạt động chăm sóc"
+        title="Báo cáo & Thống kê sức khỏe"
+        subtitle="Tổng hợp dữ liệu chăm sóc, cảnh báo và chỉ số sức khỏe từ hệ thống"
         icon={<BarChartOutlined />}
       />
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={14}>
-          <Card title="📈 Số cảnh báo theo tháng" bordered={false}>
-            <Bar data={barAlerts} options={{ ...commonOpts, plugins: { legend: { display: false } } }} height={120} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={10}>
-          <Card title="🔔 Phân loại cảnh báo theo mức độ" bordered={false}>
-            <Doughnut
-              data={doughnutData}
-              options={{ ...commonOpts, cutout: '60%', scales: undefined }}
-            />
-          </Card>
-        </Col>
+      <section className="report-filter-panel">
+        <div className="report-quick-ranges">
+          {QUICK_RANGES.map((item) => (
+            <Button
+              key={item.key}
+              type={quickRange === item.key ? 'primary' : 'text'}
+              onClick={() => chooseQuickRange(item)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
+        <RangePicker
+          value={range}
+          format="DD/MM/YYYY"
+          allowClear={false}
+          onChange={(value) => {
+            if (value?.[0] && value?.[1]) {
+              setLoading(true);
+              setError('');
+              setQuickRange('');
+              setRange(value);
+            }
+          }}
+        />
+        <Select
+          className="report-subject-select"
+          value={selectedElder}
+          onChange={(value) => {
+            setLoading(true);
+            setError('');
+            setSelectedElder(value);
+          }}
+          showSearch
+          optionFilterProp="label"
+          placeholder="Tất cả người cao tuổi"
+          options={[
+            { value: 'all', label: 'Tất cả người cao tuổi' },
+            ...(report?.doiTuong || []).map((item) => ({
+              value: item.id,
+              label: `${item.hoTen} · ${formatEntityCode('NCT', item.id)}`,
+            })),
+          ]}
+        />
+      </section>
 
-        <Col xs={24}>
-          <Card title="💊 Tỉ lệ tuân thủ uống thuốc theo từng người (%)" bordered={false}>
-            <Bar
-              data={barCompliance}
-              options={{ ...commonOpts, indexAxis: 'y', plugins: { legend: { display: false } } }}
-              height={80}
-            />
-          </Card>
-        </Col>
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          message={error}
+          action={<Button size="small" onClick={() => {
+            setLoading(true);
+            setError('');
+            setReloadKey((value) => value + 1);
+          }}>Thử lại</Button>}
+        />
+      )}
 
-        <Col xs={24}>
-          <Card title="❤️ Xu hướng huyết áp theo ngày" bordered={false}>
-            <Line data={lineBloodPressure} options={commonOpts} height={70} />
-          </Card>
-        </Col>
-      </Row>
+      {loading && !report ? (
+        <Skeleton active paragraph={{ rows: 12 }} />
+      ) : (
+        <>
+          <section className={`report-kpi-grid ${loading ? 'is-loading' : ''}`}>
+            <ReportKpi
+              className="is-success"
+              icon={<MedicineBoxOutlined />}
+              label="Tỷ lệ tuân thủ uống thuốc"
+              value={kpi.tyLeTuanThu ?? 0}
+              suffix="%"
+              note={`${kpi.daUong ?? 0}/${kpi.tongLieu ?? 0} liều đã uống`}
+            />
+            <ReportKpi
+              className="is-warning"
+              icon={<AlertOutlined />}
+              label="Tổng cảnh báo trong kỳ"
+              value={kpi.tongCanhBao ?? 0}
+              note={`${kpi.tyLeCanhBaoDaXuLy ?? 0}% đã xử lý`}
+            />
+            <ReportKpi
+              className="is-danger"
+              icon={<WarningOutlined />}
+              label="Cảnh báo SOS"
+              value={kpi.soSOS ?? 0}
+              note="tín hiệu khẩn cấp từ Mobile"
+            />
+            <ReportKpi
+              className="is-info"
+              icon={<HeartOutlined />}
+              label="Chỉ số bất thường"
+              value={kpi.chiSoBatThuong ?? 0}
+              note="lần đo vượt ngưỡng trong kỳ"
+            />
+          </section>
+
+          <section className="report-chart-grid">
+            <article className="report-panel">
+              <div className="report-panel-heading">
+                <div><h3>Tuân thủ uống thuốc theo tuần</h3><p>Tỷ lệ số liều đã uống trên tổng lịch trong từng tuần</p></div>
+                <CheckCircleOutlined />
+              </div>
+              {(report?.tuanThuTheoTuan || []).length ? (
+                <div className="report-chart"><Bar data={medicationChart} options={{
+                  ...chartOptions,
+                  plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: (context) => `${context.raw}%` } } },
+                  scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, max: 100, ticks: { callback: (value) => `${value}%` } } },
+                }} /></div>
+              ) : <Empty description="Không có lịch uống thuốc trong kỳ" />}
+            </article>
+
+            <article className="report-panel">
+              <div className="report-panel-heading">
+                <div><h3>Cảnh báo theo tháng</h3><p>Phân bổ số cảnh báo theo mức độ</p></div>
+                <AlertOutlined />
+              </div>
+              {(report?.canhBaoTheoThang || []).length ? (
+                <div className="report-chart"><Bar data={alertChart} options={{
+                  ...chartOptions,
+                  scales: {
+                    x: { ...chartOptions.scales.x, stacked: true },
+                    y: { ...chartOptions.scales.y, stacked: true, ticks: { precision: 0 } },
+                  },
+                }} /></div>
+              ) : <Empty description="Không có cảnh báo trong kỳ" />}
+            </article>
+          </section>
+
+          <section className="report-panel report-health-trend">
+            <div className="report-panel-heading is-wrap">
+              <div>
+                <h3>Xu hướng chỉ số sức khỏe</h3>
+                <p>Điểm màu đỏ là lần đo vượt ngưỡng; vùng màu nhạt thể hiện khoảng bình thường.</p>
+              </div>
+              <div className="report-metric-tabs">
+                {metricTypes.map((metric) => (
+                  <Button
+                    key={metric.id}
+                    type={currentMetric?.id === metric.id ? 'primary' : 'default'}
+                    onClick={() => setSelectedMetric(metric.id)}
+                  >
+                    {metric.ten}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            {currentMetric?.duLieu?.length ? (
+              <>
+                <div className="report-threshold-copy">
+                  Ngưỡng chính: {currentMetric.giaTriMin ?? '—'}–{currentMetric.giaTriMax ?? '—'} {currentMetric.donVi}
+                  {currentMetric.giaTriMin2 != null && ` · Ngưỡng phụ: ${currentMetric.giaTriMin2}–${currentMetric.giaTriMax2} ${currentMetric.donVi}`}
+                </div>
+                <div className="report-chart is-wide"><Line data={metricChart} options={chartOptions} /></div>
+              </>
+            ) : <Empty description={`Không có dữ liệu ${currentMetric?.ten?.toLowerCase() || 'chỉ số'} trong kỳ`} />}
+          </section>
+
+          <section className="report-panel report-summary-panel">
+            <div className="report-panel-heading">
+              <div>
+                <h3>Tổng hợp theo từng người cao tuổi</h3>
+                <p>Số liệu được tính trong đúng khoảng ngày và đối tượng đã chọn.</p>
+              </div>
+              <span className="report-result-count">{report?.tongHopNguoiCaoTuoi?.length || 0} hồ sơ</span>
+            </div>
+            <DataTable
+              columns={summaryColumns}
+              dataSource={report?.tongHopNguoiCaoTuoi || []}
+              rowKey="id"
+              pageSize={10}
+              emptyDescription="Không có hồ sơ phù hợp"
+            />
+          </section>
+        </>
+      )}
     </div>
   );
 };

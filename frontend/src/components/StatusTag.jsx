@@ -78,8 +78,8 @@ export const getAppointmentStatusMap = (value) => ({
   DA_KHAM: { status: 'success', label: 'Đã khám' },
   Huy: { status: 'inactive', label: 'Đã hủy' },
   HUY: { status: 'inactive', label: 'Đã hủy' },
-  DaDoiLich: { status: 'warning', label: 'Đã đổi lịch' },
-  DA_DOI_LICH: { status: 'warning', label: 'Đã đổi lịch' },
+  DaDoiLich: { status: 'warning', label: 'Đã dời lịch' },
+  DA_DOI_LICH: { status: 'warning', label: 'Đã dời lịch' },
   TRE_LICH: { status: 'warning', label: 'Trễ lịch' },
 }[value] || unknownStatus);
 

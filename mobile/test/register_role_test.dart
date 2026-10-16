@@ -21,8 +21,10 @@ void main() {
     await tester.tap(find.text('Tôi là người chăm sóc, người thân'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Email'), findsOneWidget);
-    expect(find.text('Email (dùng để khôi phục mật khẩu)'), findsNothing);
+    expect(
+      find.text('Email (dùng để khôi phục mật khẩu)'),
+      findsOneWidget,
+    );
     expect(find.text('Ngày sinh'), findsNothing);
     expect(find.text('Giới tính'), findsNothing);
   });

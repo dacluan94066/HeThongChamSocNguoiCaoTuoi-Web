@@ -137,10 +137,11 @@ const register = async (req, res, next) => {
       }
     }
 
+    if (!normalizedEmail) {
+      return fail(res, 'Email la bat buoc de khoi phuc mat khau', 'MISSING_EMAIL', 400);
+    }
+
     if (accountType === 'NguoiCaoTuoi') {
-      if (!normalizedEmail) {
-        return fail(res, 'Email la bat buoc voi nguoi cao tuoi', 'MISSING_ELDERLY_EMAIL', 400);
-      }
       if (!ngaySinh || !gioiTinh) {
         return fail(res, 'ngaySinh va gioiTinh la bat buoc voi nguoi cao tuoi', 'MISSING_ELDERLY_FIELDS', 400);
       }
@@ -199,6 +200,40 @@ const register = async (req, res, next) => {
     // Tai khoan va ho so tuong ung luon duoc tao trong cung transaction.
     transaction = new sql.Transaction(pool);
     await transaction.begin();
+    const caregiverMatch = await new sql.Request(transaction)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .query(`
+        SELECT TOP (2) NguoiChamSocID AS id, UserID AS userId
+        FROM NguoiChamSoc WITH (UPDLOCK, HOLDLOCK)
+        WHERE LOWER(LTRIM(RTRIM(Email)))=@email
+        ORDER BY NguoiChamSocID
+      `);
+    if (accountType !== 'NguoiChamSoc' && caregiverMatch.recordset.length) {
+      await transaction.rollback();
+      transaction = null;
+      return fail(
+        res,
+        'Email da duoc dung cho ho so nguoi cham soc',
+        'EMAIL_TAKEN_BY_CAREGIVER',
+        409,
+      );
+    }
+
+    let existingCaregiver = null;
+    if (accountType === 'NguoiChamSoc') {
+      if (caregiverMatch.recordset.length > 1) {
+        await transaction.rollback();
+        transaction = null;
+        return fail(res, 'Email dang gan voi nhieu ho so nguoi cham soc', 'DUPLICATE_CAREGIVER_EMAIL', 409);
+      }
+      existingCaregiver = caregiverMatch.recordset[0] || null;
+      if (existingCaregiver?.userId) {
+        await transaction.rollback();
+        transaction = null;
+        return fail(res, 'Email da duoc lien ket voi tai khoan nguoi cham soc', 'EMAIL_TAKEN', 409);
+      }
+    }
+
     const userResult = await new sql.Request(transaction)
       .input('tenDangNhap', sql.NVarChar, normalizedUsername)
       .input('matKhauHash', sql.NVarChar, matKhauHash)
@@ -241,19 +276,32 @@ const register = async (req, res, next) => {
         nguoiCaoTuoiId: profileResult.recordset[0].nguoiCaoTuoiId,
       };
     } else {
-      const caregiverResult = await new sql.Request(transaction)
+      const caregiverRequest = new sql.Request(transaction)
         .input('userId', sql.Int, userId)
         .input('hoTen', sql.NVarChar(100), hoTen.trim())
         .input('soDienThoai', sql.VarChar(15), soDienThoai.trim())
-        .input('email', sql.VarChar(100), normalizedEmail || null)
-        .input('diaChi', sql.NVarChar(255), diaChi?.trim() || null)
-        .query(`
-          INSERT INTO NguoiChamSoc
-            (UserID, HoTen, SoDienThoai, Email, DiaChi)
-          OUTPUT INSERTED.NguoiChamSocID AS nguoiChamSocId
-          VALUES
-            (@userId, @hoTen, @soDienThoai, @email, @diaChi)
-        `);
+        .input('email', sql.VarChar(100), normalizedEmail)
+        .input('diaChi', sql.NVarChar(255), diaChi?.trim() || null);
+      const caregiverResult = existingCaregiver
+        ? await caregiverRequest
+          .input('caregiverId', sql.Int, existingCaregiver.id)
+          .query(`
+            UPDATE NguoiChamSoc
+            SET UserID=@userId, HoTen=@hoTen, SoDienThoai=@soDienThoai,
+                Email=@email, DiaChi=COALESCE(@diaChi, DiaChi)
+            OUTPUT INSERTED.NguoiChamSocID AS nguoiChamSocId
+            WHERE NguoiChamSocID=@caregiverId AND UserID IS NULL
+          `)
+        : await caregiverRequest.query(`
+            INSERT INTO NguoiChamSoc
+              (UserID, HoTen, SoDienThoai, Email, DiaChi)
+            OUTPUT INSERTED.NguoiChamSocID AS nguoiChamSocId
+            VALUES
+              (@userId, @hoTen, @soDienThoai, @email, @diaChi)
+          `);
+      if (!caregiverResult.recordset.length) {
+        throw new Error('Khong the lien ket ho so nguoi cham soc');
+      }
       linkedProfile = {
         nguoiChamSocId: caregiverResult.recordset[0].nguoiChamSocId,
       };
@@ -542,6 +590,40 @@ const googleLogin = async (req, res, next) => {
       );
     }
 
+    const caregiverMatch = await new sql.Request(transaction)
+      .input('email', sql.VarChar(100), identity.email.toLowerCase())
+      .query(`
+        SELECT TOP (2) NguoiChamSocID AS id, UserID AS userId
+        FROM NguoiChamSoc WITH (UPDLOCK, HOLDLOCK)
+        WHERE LOWER(LTRIM(RTRIM(Email)))=@email
+        ORDER BY NguoiChamSocID
+      `);
+    if (accountType !== 'NguoiChamSoc' && caregiverMatch.recordset.length) {
+      await transaction.rollback();
+      transaction = null;
+      return fail(
+        res,
+        'Email da duoc dung cho ho so nguoi cham soc',
+        'EMAIL_TAKEN_BY_CAREGIVER',
+        409,
+      );
+    }
+
+    let existingCaregiver = null;
+    if (accountType === 'NguoiChamSoc') {
+      if (caregiverMatch.recordset.length > 1 || caregiverMatch.recordset[0]?.userId) {
+        await transaction.rollback();
+        transaction = null;
+        return fail(
+          res,
+          'Email nguoi cham soc da duoc lien ket hoac bi trung. Vui long lien he quan tri vien.',
+          'CAREGIVER_EMAIL_CONFLICT',
+          409,
+        );
+      }
+      existingCaregiver = caregiverMatch.recordset[0] || null;
+    }
+
     const userResult = await new sql.Request(transaction)
       .input('tenDangNhap', sql.VarChar(50), username)
       .input('matKhauHash', sql.VarChar(255), unusablePasswordHash)
@@ -575,15 +657,27 @@ const googleLogin = async (req, res, next) => {
           VALUES (@userId,@hoTen,@ngaySinh,@gioiTinh,@soDienThoai,@userId)
         `);
     } else {
-      await new sql.Request(transaction)
+      const caregiverRequest = new sql.Request(transaction)
         .input('userId', sql.Int, userId)
         .input('hoTen', sql.NVarChar(100), hoTen)
         .input('soDienThoai', sql.VarChar(15), soDienThoai)
-        .input('email', sql.VarChar(100), identity.email)
-        .query(`
-          INSERT INTO NguoiChamSoc (UserID,HoTen,SoDienThoai,Email)
-          VALUES (@userId,@hoTen,@soDienThoai,@email)
-        `);
+        .input('email', sql.VarChar(100), identity.email.toLowerCase());
+      if (existingCaregiver) {
+        const linked = await caregiverRequest
+          .input('caregiverId', sql.Int, existingCaregiver.id)
+          .query(`
+            UPDATE NguoiChamSoc
+            SET UserID=@userId, HoTen=@hoTen, SoDienThoai=@soDienThoai, Email=@email
+            OUTPUT INSERTED.NguoiChamSocID AS id
+            WHERE NguoiChamSocID=@caregiverId AND UserID IS NULL
+          `);
+        if (!linked.recordset.length) throw new Error('Khong the lien ket ho so nguoi cham soc');
+      } else {
+        await caregiverRequest.query(`
+            INSERT INTO NguoiChamSoc (UserID,HoTen,SoDienThoai,Email)
+            VALUES (@userId,@hoTen,@soDienThoai,@email)
+          `);
+      }
     }
     await transaction.commit();
     transaction = null;
@@ -658,19 +752,31 @@ const me = async (req, res, next) => {
 const updateMe = async (req, res, next) => {
   try {
     const { hoTen, email, soDienThoai } = req.body;
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
     if (!hoTen?.trim()) {
       return fail(res, 'Ho ten la bat buoc', 'MISSING_FULL_NAME', 400);
+    }
+    if (!normalizedEmail) {
+      return fail(res, 'Email la bat buoc de khoi phuc mat khau', 'MISSING_EMAIL', 400);
+    }
+    if (normalizedEmail.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return fail(res, 'Email khong hop le', 'INVALID_EMAIL', 400);
     }
 
     const pool = await poolPromise;
     const duplicateEmail = await pool.request()
       .input('userId', sql.Int, req.user.userId)
-      .input('email', sql.VarChar, email?.trim() || null)
+      .input('email', sql.VarChar, normalizedEmail)
       .query(`
         SELECT UserID
         FROM NguoiDung
         WHERE Email = @email AND UserID <> @userId
+        UNION ALL
+        SELECT COALESCE(UserID, -1) AS UserID
+        FROM NguoiChamSoc
+        WHERE LOWER(LTRIM(RTRIM(Email)))=@email
+          AND (UserID IS NULL OR UserID<>@userId)
       `);
 
     if (duplicateEmail.recordset.length > 0) {
@@ -680,10 +786,14 @@ const updateMe = async (req, res, next) => {
     const result = await pool.request()
       .input('userId', sql.Int, req.user.userId)
       .input('hoTen', sql.NVarChar, hoTen.trim())
-      .input('email', sql.VarChar, email?.trim() || null)
+      .input('email', sql.VarChar, normalizedEmail)
       .input('soDienThoai', sql.VarChar, soDienThoai?.trim() || null)
       .query(`
         UPDATE NguoiDung
+        SET HoTen = @hoTen, Email = @email, SoDienThoai = @soDienThoai
+        WHERE UserID = @userId;
+
+        UPDATE NguoiChamSoc
         SET HoTen = @hoTen, Email = @email, SoDienThoai = @soDienThoai
         WHERE UserID = @userId;
 

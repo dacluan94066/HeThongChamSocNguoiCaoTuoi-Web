@@ -21,18 +21,21 @@ const caregiverScope = (req, alias) => {
 
 const mapCaregiver = (row) => ({
   id: row.id,
+  userId: row.userId || null,
   maNhanVien: `NCS${String(row.id).padStart(3, "0")}`,
   hoTen: row.hoTen,
   soDienThoai: row.soDienThoai,
   email: row.email,
+  diaChi: row.diaChi,
   trinhDoChuyenMon: row.ngheNghiep,
-  namKinhNghiem: 0,
-  trangThai: "DANG_LAM_VIEC",
-  trangThaiLabel: "Đang làm việc",
+  ghiChu: row.ghiChu,
+  trangThai: row.trangThai,
+  trangThaiLabel: ({ DangLamViec: 'Đang làm việc', TamNghi: 'Tạm nghỉ', NgungLamViec: 'Ngừng làm việc' })[row.trangThai] || row.trangThai,
   soNguoiPhuTrach: row.soNguoiPhuTrach || 0,
   nguoiCaoTuoiTen: row.nguoiCaoTuoiTen
     ? row.nguoiCaoTuoiTen.split("||").filter(Boolean)
     : [],
+  phuTrach: row.phuTrach || [],
 });
 
 // GET /api/elderly/me/caregivers
@@ -132,15 +135,22 @@ const getAll = async (req, res, next) => {
     let query = `
       SELECT
         ncs.NguoiChamSocID AS id,
+        ncs.UserID AS userId,
         ncs.HoTen AS hoTen,
         ncs.SoDienThoai AS soDienThoai,
         ncs.Email AS email,
+        ncs.DiaChi AS diaChi,
         ncs.NgheNghiep AS ngheNghiep,
-        COUNT(DISTINCT lk.NguoiCaoTuoiID) AS soNguoiPhuTrach,
-        MAX(nct.HoTen) AS nguoiCaoTuoiTen
+        ncs.GhiChu AS ghiChu,
+        ncs.TrangThai AS trangThai,
+        nct.NguoiCaoTuoiID AS nguoiCaoTuoiId,
+        nct.HoTen AS nguoiCaoTuoiTen,
+        lk.MoiQuanHe AS moiQuanHe,
+        lk.LaChinh AS laChinh
       FROM NguoiChamSoc ncs
       LEFT JOIN NguoiCaoTuoi_NguoiChamSoc lk
         ON ncs.NguoiChamSocID = lk.NguoiChamSocID
+        AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
         AND (lk.NgayKetThuc IS NULL
           OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
         ${
@@ -164,6 +174,7 @@ const getAll = async (req, res, next) => {
         AND (
           ncs.HoTen LIKE @kw
           OR ncs.SoDienThoai LIKE @kw
+          OR CONCAT(N'NCS-', RIGHT(CONCAT('00000', ncs.NguoiChamSocID), 5)) LIKE @kw
         )
       `;
 
@@ -172,34 +183,43 @@ const getAll = async (req, res, next) => {
 
     query += caregiverScope(req, "ncs");
 
-    query += `
-      GROUP BY
-        ncs.NguoiChamSocID,
-        ncs.HoTen,
-        ncs.SoDienThoai,
-        ncs.Email,
-        ncs.NgheNghiep
-      ORDER BY ncs.HoTen
-    `;
+    query += ` ORDER BY ncs.HoTen, lk.LaChinh DESC, nct.HoTen`;
 
     const result = await req2.query(query);
+    const grouped = new Map();
+    result.recordset.forEach((row) => {
+      if (!grouped.has(row.id)) {
+        grouped.set(row.id, {
+          id: row.id,
+          userId: row.userId || null,
+          maNhanVien: `NCS${String(row.id).padStart(3, "0")}`,
+          hoTen: row.hoTen,
+          soDienThoai: row.soDienThoai,
+          email: row.email,
+          diaChi: row.diaChi,
+          trinhDoChuyenMon: row.ngheNghiep,
+          ghiChu: row.ghiChu,
+          trangThai: row.trangThai,
+          trangThaiLabel: ({ DangLamViec: 'Đang làm việc', TamNghi: 'Tạm nghỉ', NgungLamViec: 'Ngừng làm việc' })[row.trangThai] || row.trangThai,
+          soNguoiPhuTrach: 0,
+          nguoiCaoTuoiTen: [],
+          phuTrach: [],
+        });
+      }
+      if (row.nguoiCaoTuoiId) {
+        const caregiver = grouped.get(row.id);
+        caregiver.phuTrach.push({
+          id: row.nguoiCaoTuoiId,
+          hoTen: row.nguoiCaoTuoiTen,
+          moiQuanHe: row.moiQuanHe,
+          laChinh: Boolean(row.laChinh),
+        });
+        caregiver.nguoiCaoTuoiTen.push(row.nguoiCaoTuoiTen);
+        caregiver.soNguoiPhuTrach += 1;
+      }
+    });
 
-    return ok(
-      res,
-      result.recordset.map((row) => ({
-        id: row.id,
-        maNhanVien: `NCS${String(row.id).padStart(3, "0")}`,
-        hoTen: row.hoTen,
-        soDienThoai: row.soDienThoai,
-        email: row.email,
-        trinhDoChuyenMon: row.ngheNghiep,
-        namKinhNghiem: 0,
-        trangThai: "DANG_LAM_VIEC",
-        trangThaiLabel: "Đang làm việc",
-        soNguoiPhuTrach: row.soNguoiPhuTrach || 0,
-        nguoiCaoTuoiTen: row.nguoiCaoTuoiTen ? [row.nguoiCaoTuoiTen] : [],
-      })),
-    );
+    return ok(res, Array.from(grouped.values()));
   } catch (err) {
     next(err);
   }
@@ -211,8 +231,9 @@ const getById = async (req, res, next) => {
     const pool = await poolPromise;
     const result = await pool.request().input("id", sql.Int, req.params.id)
       .query(`
-      SELECT NguoiChamSocID AS id, HoTen AS hoTen, SoDienThoai AS soDienThoai,
-        Email AS email, NgheNghiep AS ngheNghiep
+      SELECT NguoiChamSocID AS id, UserID AS userId, HoTen AS hoTen,
+        SoDienThoai AS soDienThoai, Email AS email, DiaChi AS diaChi,
+        NgheNghiep AS ngheNghiep, GhiChu AS ghiChu, TrangThai AS trangThai
       FROM NguoiChamSoc ncs WHERE NguoiChamSocID=@id ${caregiverScope(req, "ncs")}`);
     if (!result.recordset.length)
       return fail(res, "Khong tim thay", "NOT_FOUND", 404);
@@ -232,11 +253,24 @@ const getById = async (req, res, next) => {
 // POST /api/caregivers - Tao NguoiChamSoc + NguoiDung moi
 const create = async (req, res, next) => {
   try {
-    const { hoTen, soDienThoai, email, ngheNghiep, ghiChu } = req.body;
-    if (!hoTen || !soDienThoai)
-      return fail(res, "hoTen, soDienThoai la bat buoc", "MISSING_FIELDS", 400);
+    const { hoTen, soDienThoai, email, diaChi, ngheNghiep, ghiChu } = req.body;
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (!hoTen || !soDienThoai || !normalizedEmail)
+      return fail(res, "hoTen, soDienThoai, email la bat buoc", "MISSING_FIELDS", 400);
+    if (normalizedEmail.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+      return fail(res, "Email khong hop le", "INVALID_EMAIL", 400);
 
     const pool = await poolPromise;
+    const duplicateEmail = await pool.request()
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .query(`
+        SELECT Email FROM NguoiChamSoc WHERE LOWER(LTRIM(RTRIM(Email)))=@email
+        UNION ALL
+        SELECT Email FROM NguoiDung WHERE LOWER(LTRIM(RTRIM(Email)))=@email
+      `);
+    if (duplicateEmail.recordset.length) {
+      return fail(res, 'Email da duoc su dung', 'EMAIL_TAKEN', 409);
+    }
     // Them thang vao NguoiChamSoc (khong bat buoc co UserID)
     const r =
       await // UserID = NULL (NCS chua co tai khoan), can cap nhat sau neu muon
@@ -244,12 +278,13 @@ const create = async (req, res, next) => {
         .request()
         .input("hoTen", sql.NVarChar, hoTen)
         .input("sdt", sql.NVarChar, soDienThoai)
-        .input("email", sql.NVarChar, email || null)
+        .input("email", sql.NVarChar, normalizedEmail)
+        .input("diaChi", sql.NVarChar, diaChi || null)
         .input("ngheNghiep", sql.NVarChar, ngheNghiep || null)
         .input("ghiChu", sql.NVarChar, ghiChu || null)
-        .query(`INSERT INTO NguoiChamSoc (UserID,HoTen,SoDienThoai,Email,NgheNghiep,GhiChu)
+        .query(`INSERT INTO NguoiChamSoc (UserID,HoTen,SoDienThoai,Email,DiaChi,NgheNghiep,GhiChu)
               OUTPUT INSERTED.NguoiChamSocID AS id
-              VALUES (NULL,@hoTen,@sdt,@email,@ngheNghiep,@ghiChu)`);
+              VALUES (NULL,@hoTen,@sdt,@email,@diaChi,@ngheNghiep,@ghiChu)`);
     return ok(
       res,
       { id: r.recordset[0].id },
@@ -264,18 +299,38 @@ const create = async (req, res, next) => {
 // PUT /api/caregivers/:id
 const update = async (req, res, next) => {
   try {
-    const { hoTen, soDienThoai, email, ngheNghiep, ghiChu } = req.body;
+    const { hoTen, soDienThoai, email, diaChi, ngheNghiep, ghiChu } = req.body;
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (!hoTen || !soDienThoai || !normalizedEmail)
+      return fail(res, "hoTen, soDienThoai, email la bat buoc", "MISSING_FIELDS", 400);
+    if (normalizedEmail.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+      return fail(res, "Email khong hop le", "INVALID_EMAIL", 400);
     const pool = await poolPromise;
+    const duplicateEmail = await pool.request()
+      .input('id', sql.Int, req.params.id)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .query(`
+        SELECT Email FROM NguoiChamSoc
+        WHERE LOWER(LTRIM(RTRIM(Email)))=@email AND NguoiChamSocID<>@id
+        UNION ALL
+        SELECT Email FROM NguoiDung
+        WHERE LOWER(LTRIM(RTRIM(Email)))=@email
+          AND UserID<>COALESCE((SELECT UserID FROM NguoiChamSoc WHERE NguoiChamSocID=@id),-1)
+      `);
+    if (duplicateEmail.recordset.length) {
+      return fail(res, 'Email da duoc su dung', 'EMAIL_TAKEN', 409);
+    }
     await pool
       .request()
       .input("id", sql.Int, req.params.id)
       .input("hoTen", sql.NVarChar, hoTen)
       .input("sdt", sql.NVarChar, soDienThoai || null)
-      .input("email", sql.NVarChar, email || null)
+      .input("email", sql.NVarChar, normalizedEmail)
+      .input("diaChi", sql.NVarChar, diaChi || null)
       .input("ngheNghiep", sql.NVarChar, ngheNghiep || null)
       .input("ghiChu", sql.NVarChar, ghiChu || null)
       .query(
-        `UPDATE NguoiChamSoc SET HoTen=@hoTen,SoDienThoai=@sdt,Email=@email,NgheNghiep=@ngheNghiep,GhiChu=@ghiChu WHERE NguoiChamSocID=@id`,
+        `UPDATE NguoiChamSoc SET HoTen=@hoTen,SoDienThoai=@sdt,Email=@email,DiaChi=@diaChi,NgheNghiep=@ngheNghiep,GhiChu=@ghiChu WHERE NguoiChamSocID=@id`,
       );
     return ok(res, { id: parseInt(req.params.id) }, "Cap nhat thanh cong");
   } catch (err) {

@@ -1,326 +1,331 @@
-// Trang tổng quan Dashboard - Hiển thị thống kê và biểu đồ nhanh
-import React, { useState, useEffect, useCallback } from 'react';
-import { Row, Col, Progress, Card, Spin, Tag } from 'antd';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Empty, Progress, Spin } from 'antd';
 import {
-  TeamOutlined,
-  BellOutlined,
+  AlertOutlined,
+  ArrowRightOutlined,
   CalendarOutlined,
+  ClockCircleOutlined,
+  HeartOutlined,
   MedicineBoxOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  DashboardOutlined,
+  PlusOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
-import PageHeader from '../../components/PageHeader';
+import { useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
   BarElement,
-  LineElement,
-  PointElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
   Title,
   Tooltip,
-  Legend,
-  ArcElement,
 } from 'chart.js';
-import { Bar, Doughnut } from 'react-chartjs-2';
-import { getDashboardStats, getAlertsByMonth, getMedicationCompliance, getAlertsByLevel } from '../../services/reportService';
-import SmartAlertCenter from '../../components/SmartAlertCenter';
+import { Bar } from 'react-chartjs-2';
+import { getDashboardOverview } from '../../services/reportService';
+import usePermission from '../../hooks/usePermission';
+import StatusTag, {
+  getAlertLevelStatus,
+  getAlertStatusMap,
+  getAppointmentStatusMap,
+} from '../../components/StatusTag';
 
-// Đăng ký Chart.js
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement);
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-// Card thống kê
-const StatCard = ({ icon, value, label, color, bgColor, trend }) => (
-  <div
-    className="stat-card fade-in-up"
-    style={{ '--card-accent': color }}
-  >
-    <div className="stat-card-icon" style={{ background: bgColor }}>
-      {React.cloneElement(icon, { style: { color } })}
+const capitalize = (value) => (value ? `${value[0].toUpperCase()}${value.slice(1)}` : '');
+
+const DashboardKpi = ({ action, icon, label, tone = 'teal', value, children }) => (
+  <article className={`dashboard-kpi dashboard-kpi-${tone}`}>
+    <div className="dashboard-kpi-heading">
+      <span className="dashboard-kpi-icon">{icon}</span>
+      <span>{label}</span>
     </div>
-    <div className="stat-card-value" style={{ color }}>
-      {value}
-    </div>
-    <div className="stat-card-label">{label}</div>
-    {trend && (
-      <div style={{ marginTop: 8, fontSize: 12, color: '#667085' }}>
-        {trend}
-      </div>
-    )}
-  </div>
+    <div className="dashboard-kpi-value">{value}</div>
+    <div className="dashboard-kpi-detail">{children}</div>
+    {action && <div className="dashboard-kpi-action">{action}</div>}
+  </article>
 );
 
+const LatestAlertCard = ({ alert, onOpen }) => {
+  const level = getAlertLevelStatus(alert.mucDo);
+  const status = getAlertStatusMap(alert.trangThai);
+  return (
+    <article className={`dashboard-alert-card dashboard-alert-${String(alert.mucDo || '').toLowerCase()}`}>
+      <div className="dashboard-alert-topline">
+        <StatusTag {...level} size="small" />
+        <time>{alert.thoiGianPhatHien ? dayjs(alert.thoiGianPhatHien).format('HH:mm · DD/MM/YYYY') : '—'}</time>
+      </div>
+      <div className="dashboard-alert-person">
+        <span className="dashboard-alert-initial">
+          {(alert.nguoiCaoTuoiTen || '?').trim().charAt(0).toUpperCase()}
+        </span>
+        <span>
+          <strong>{alert.nguoiCaoTuoiTen || 'Chưa có tên'}</strong>
+          <small>{alert.loaiCanhBaoLabel || 'Cảnh báo sức khỏe'}</small>
+        </span>
+      </div>
+      <p>{alert.moTa || 'Không có nội dung cảnh báo.'}</p>
+      <div className="dashboard-alert-footer">
+        <StatusTag {...status} size="small" />
+        <Button type="link" onClick={onOpen}>
+          Xem chi tiết <ArrowRightOutlined />
+        </Button>
+      </div>
+    </article>
+  );
+};
+
 const DashboardPage = () => {
-  const [stats, setStats] = useState(null);
-  const [alertsByMonth, setAlertsByMonth] = useState([]);
-  const [compliance, setCompliance] = useState([]);
-  const [alertsByLevel, setAlertsByLevel] = useState([]);
+  const navigate = useNavigate();
+  const { hasPermission } = usePermission();
+  const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => new Date());
 
   const loadData = useCallback(async () => {
     try {
-      const [s, abm, comp, abl] = await Promise.all([
-        getDashboardStats(),
-        getAlertsByMonth(),
-        getMedicationCompliance(),
-        getAlertsByLevel(),
-      ]);
-      setStats(s);
-      setAlertsByMonth(abm);
-      setCompliance(comp);
-      setAlertsByLevel(abl);
+      setOverview(await getDashboardOverview());
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-  if (loading) {
-    return (
-      <div className="page-loading">
-        <Spin size="large" tip="Đang tải dữ liệu..." />
-      </div>
-    );
-  }
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  // Cấu hình biểu đồ cột - Cảnh báo theo tháng
-  const barChartData = {
-    labels: alertsByMonth.map((d) => d.thang),
-    datasets: [
-      {
-        label: 'Số cảnh báo',
-        data: alertsByMonth.map((d) => d.soLuong),
-        backgroundColor: 'rgba(46, 125, 154, 0.2)',
-        borderColor: '#2E7D9A',
-        borderWidth: 2,
-        borderRadius: 6,
-      },
-    ],
-  };
+  const stats = overview?.stats || {};
+  const medicationRate = stats.soLichUongThuocHomNay == null
+    ? null
+    : (stats.soLichUongThuocHomNay > 0
+      ? Math.round((stats.soLichUongThuocDaUong / stats.soLichUongThuocHomNay) * 100)
+      : 0);
+  const canCreateProfile = hasPermission('QLHOSONCT', 'them');
+  const canCreateMetric = hasPermission('QLCHISOSK', 'them');
 
-  const barChartOptions = {
+  const currentDate = capitalize(new Intl.DateTimeFormat('vi-VN', {
+    weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(now));
+  const currentTime = new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(now);
+
+  const chartData = useMemo(() => ({
+    labels: (overview?.alertsByMonth || []).map((item) => item.thang),
+    datasets: [{
+      label: 'Số cảnh báo',
+      data: (overview?.alertsByMonth || []).map((item) => item.soLuong),
+      backgroundColor: '#7BC7C1',
+      borderColor: '#0F5C63',
+      borderWidth: 1,
+      borderRadius: 8,
+      borderSkipped: false,
+      maxBarThickness: 52,
+    }],
+  }), [overview?.alertsByMonth]);
+
+  const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
-      title: { display: false },
+      tooltip: {
+        backgroundColor: '#172B34',
+        padding: 12,
+        displayColors: false,
+        callbacks: { label: (context) => `${context.parsed.y} cảnh báo` },
+      },
     },
     scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.04)' } },
-      x: { grid: { display: false } },
-    },
-  };
-
-  // Biểu đồ tròn - Phân loại cảnh báo
-  const doughnutData = {
-    labels: alertsByLevel.map((d) => d.mucDo),
-    datasets: [
-      {
-        data: alertsByLevel.map((d) => d.soLuong),
-        backgroundColor: ['#4CAF93', '#F5A623', '#E15554', '#C0392B'],
-        borderWidth: 0,
+      y: {
+        beginAtZero: true,
+        ticks: { precision: 0, color: '#70838C' },
+        grid: { color: '#EAF0F2' },
+        border: { display: false },
       },
-    ],
-  };
-
-  const doughnutOptions = {
-    responsive: true,
-    cutout: '65%',
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 16 } },
+      x: {
+        ticks: { color: '#70838C' },
+        grid: { display: false },
+        border: { display: false },
+      },
     },
   };
 
-  // Tỉ lệ uống thuốc hôm nay
-  const medicationRate = stats
-    ? Math.round((stats.soLichUongThuocDaUong / stats.soLichUongThuocHomNay) * 100)
-    : 0;
+  if (loading) {
+    return <div className="page-loading"><Spin size="large" tip="Đang tải tổng quan..." /></div>;
+  }
 
   return (
-    <div>
-      <PageHeader
-        title="Tổng quan hệ thống"
-        subtitle="Theo dõi toàn diện tình trạng sức khỏe người cao tuổi"
-        icon={<DashboardOutlined />}
-        extra={
-          <Tag color="blue" style={{ fontSize: 13, padding: '5px 12px', borderRadius: 8 }}>
-            📅 {new Date().toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </Tag>
-        }
-      />
+    <div className="dashboard-page">
+      <section className="dashboard-hero">
+        <div className="dashboard-hero-copy">
+          <span className="dashboard-hero-eyebrow"><HeartOutlined /> Hệ thống quản lý sức khỏe</span>
+          <h1>Trung tâm Giám sát &amp; Quản lý Sức khỏe CareSenior</h1>
+          <p className="dashboard-current-time"><ClockCircleOutlined /> {currentDate} · {currentTime}</p>
+          <div className="dashboard-hero-summary">
+            {stats.tongNguoiCaoTuoi != null && (
+              <span><strong>{stats.tongNguoiCaoTuoi}</strong> người cao tuổi đang theo dõi</span>
+            )}
+            {stats.soCanhBaoChuaXuLy != null && (
+              <span><strong>{stats.soCanhBaoChuaXuLy}</strong> cảnh báo cần xử lý</span>
+            )}
+          </div>
+        </div>
+        {(canCreateProfile || canCreateMetric) && (
+          <div className="dashboard-hero-actions">
+            {canCreateProfile && (
+              <Button icon={<PlusOutlined />} onClick={() => navigate('/ho-so-nguoi-cao-tuoi')}>
+                Thêm hồ sơ
+              </Button>
+            )}
+            {canCreateMetric && (
+              <Button icon={<HeartOutlined />} onClick={() => navigate('/chi-so-suc-khoe')}>
+                Nhập chỉ số
+              </Button>
+            )}
+          </div>
+        )}
+        <span className="dashboard-hero-decoration" aria-hidden="true"><HeartOutlined /></span>
+      </section>
 
-      {/* Thống kê nhanh */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
+      <section className="dashboard-kpi-grid" aria-label="Chỉ số tổng quan">
+        {stats.tongNguoiCaoTuoi != null && (
+          <DashboardKpi
             icon={<TeamOutlined />}
-            value={stats?.tongNguoiCaoTuoi || 0}
-            label="Người cao tuổi đang theo dõi"
-            color="#2E7D9A"
-            bgColor="#EBF5FB"
-            trend={`${stats?.soNguoiCanChamSocDacBiet || 0} người cần chăm sóc đặc biệt`}
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            icon={<BellOutlined />}
-            value={stats?.soCanhBaoChuaXuLy || 0}
+            label="NCT đang theo dõi"
+            value={stats.tongNguoiCaoTuoi}
+          >
+            Hồ sơ có trạng thái đang theo dõi
+          </DashboardKpi>
+        )}
+
+        {stats.soCanhBaoChuaXuLy != null && (
+          <DashboardKpi
+            icon={<AlertOutlined />}
             label="Cảnh báo chưa xử lý"
-            color="#E15554"
-            bgColor="#FDEEEE"
-            trend="⚠️ Cần xử lý ngay"
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            icon={<CalendarOutlined />}
-            value={stats?.soLichKhamSapToi || 0}
-            label="Lịch khám sắp tới"
-            color="#F5A623"
-            bgColor="#FEF6E6"
-            trend="Trong vòng 7 ngày"
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
+            tone="danger"
+            value={stats.soCanhBaoChuaXuLy}
+            action={(
+              <Button danger size="small" onClick={() => navigate('/canh-bao')}>
+                Xử lý ngay
+              </Button>
+            )}
+          >
+            Cần được kiểm tra và tiếp nhận
+          </DashboardKpi>
+        )}
+
+        {stats.soLichUongThuocHomNay != null && (
+          <DashboardKpi
             icon={<MedicineBoxOutlined />}
-            value={`${stats?.soLichUongThuocDaUong || 0}/${stats?.soLichUongThuocHomNay || 0}`}
             label="Lịch uống thuốc hôm nay"
-            color="#4CAF93"
-            bgColor="#E8F8F5"
-            trend={`Đã uống ${medicationRate}%`}
-          />
-        </Col>
-      </Row>
-
-      {/* Trung tâm điều phối cảnh báo theo mức ưu tiên */}
-      <div style={{ marginBottom: 24 }}>
-        <SmartAlertCenter onChanged={loadData} />
-      </div>
-
-      {/* Thanh tiến trình uống thuốc */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24}>
-          <Card
-            title="📊 Tình trạng uống thuốc hôm nay"
-            bordered={false}
-            style={{ borderRadius: 12 }}
+            tone="success"
+            value={stats.soLichUongThuocHomNay}
           >
-            <Row gutter={32}>
-              <Col xs={24} md={8}>
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13 }}>
-                      <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 6 }} />
-                      Đã uống
-                    </span>
-                    <span style={{ fontWeight: 600, color: '#52c41a' }}>
-                      {stats?.soLichUongThuocDaUong || 0} lịch
-                    </span>
-                  </div>
-                  <Progress
-                    percent={medicationRate}
-                    strokeColor="#52c41a"
-                    showInfo={false}
-                    strokeWidth={10}
-                    style={{ borderRadius: 10 }}
-                  />
-                </div>
-              </Col>
-              <Col xs={24} md={8}>
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13 }}>
-                      <ExclamationCircleOutlined style={{ color: '#ff4d4f', marginRight: 6 }} />
-                      Bỏ lỡ
-                    </span>
-                    <span style={{ fontWeight: 600, color: '#ff4d4f' }}>
-                      {stats?.soLichUongThuocBoLo || 0} lịch
-                    </span>
-                  </div>
-                  <Progress
-                    percent={Math.round(((stats?.soLichUongThuocBoLo || 0) / (stats?.soLichUongThuocHomNay || 1)) * 100)}
-                    strokeColor="#ff4d4f"
-                    showInfo={false}
-                    strokeWidth={10}
-                  />
-                </div>
-              </Col>
-              <Col xs={24} md={8}>
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: '#667085' }}>⏰ Chưa đến giờ</span>
-                    <span style={{ fontWeight: 600, color: '#8c8c8c' }}>
-                      {stats?.soLichUongThuocChuaDenGio || 0} lịch
-                    </span>
-                  </div>
-                  <Progress
-                    percent={Math.round(((stats?.soLichUongThuocChuaDenGio || 0) / (stats?.soLichUongThuocHomNay || 1)) * 100)}
-                    strokeColor="#bfbfbf"
-                    showInfo={false}
-                    strokeWidth={10}
-                  />
-                </div>
-              </Col>
-            </Row>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Biểu đồ */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={14}>
-          <div className="chart-container">
-            <div className="chart-title">📈 Số lượng cảnh báo theo tháng</div>
-            <Bar data={barChartData} options={barChartOptions} height={85} />
-          </div>
-        </Col>
-        <Col xs={24} lg={10}>
-          <div className="chart-container" style={{ height: '100%' }}>
-            <div className="chart-title">🔔 Phân loại cảnh báo theo mức độ</div>
-            <div style={{ maxWidth: 280, margin: '0 auto' }}>
-              <Doughnut data={doughnutData} options={doughnutOptions} />
+            <div className="dashboard-medication-progress">
+              <span>{stats.soLichUongThuocDaUong}/{stats.soLichUongThuocHomNay} đã uống</span>
+              <strong>{medicationRate}%</strong>
             </div>
-          </div>
-        </Col>
-      </Row>
+            <Progress percent={medicationRate} showInfo={false} strokeColor="#16A34A" trailColor="#DDEBE5" />
+          </DashboardKpi>
+        )}
 
-      {/* Tỉ lệ tuân thủ uống thuốc */}
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24}>
-          <Card
-            title="💊 Tỉ lệ tuân thủ uống thuốc theo từng người"
-            bordered={false}
-            style={{ borderRadius: 12 }}
+        {stats.soLichKhamTuanNay != null && (
+          <DashboardKpi
+            icon={<CalendarOutlined />}
+            label="Lịch khám tuần này"
+            tone="warning"
+            value={stats.soLichKhamTuanNay}
           >
-            {compliance.map((item) => (
-              <div key={item.ten} style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>{item.ten}</span>
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: item.tyLe >= 80 ? '#52c41a' : item.tyLe >= 60 ? '#faad14' : '#ff4d4f',
-                    }}
-                  >
-                    {item.tyLe}%
-                  </span>
-                </div>
-                <Progress
-                  percent={item.tyLe}
-                  showInfo={false}
-                  strokeColor={
-                    item.tyLe >= 80 ? '#52c41a' : item.tyLe >= 60 ? '#faad14' : '#ff4d4f'
-                  }
-                  strokeWidth={8}
-                />
+            Lịch chưa hủy trong 7 ngày tới
+          </DashboardKpi>
+        )}
+      </section>
+
+      <section className="dashboard-main-grid">
+        {overview?.latestAlerts != null && (
+          <div className="dashboard-panel dashboard-alert-panel">
+            <div className="dashboard-panel-header">
+              <span>
+                <small>CẬP NHẬT TỪ HỆ THỐNG</small>
+                <h2><AlertOutlined /> Cảnh báo mới nhất</h2>
+              </span>
+              <Button type="link" onClick={() => navigate('/canh-bao')}>Xem tất cả</Button>
+            </div>
+            {overview.latestAlerts.length > 0 ? (
+              <div className="dashboard-alert-grid">
+                {overview.latestAlerts.map((alert) => (
+                  <LatestAlertCard
+                    key={alert.id}
+                    alert={alert}
+                    onOpen={() => navigate(`/canh-bao?highlight=${encodeURIComponent(alert.id)}`)}
+                  />
+                ))}
               </div>
-            ))}
-          </Card>
-        </Col>
-      </Row>
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có cảnh báo" />
+            )}
+          </div>
+        )}
+
+        {overview?.todayAppointments != null && (
+          <aside className="dashboard-panel dashboard-appointments-panel">
+            <div className="dashboard-panel-header">
+              <span>
+                <small>LỊCH TRONG NGÀY</small>
+                <h2><CalendarOutlined /> Lịch khám hôm nay</h2>
+              </span>
+              <strong className="dashboard-panel-count">{overview.todayAppointments.length}</strong>
+            </div>
+            {overview.todayAppointments.length > 0 ? (
+              <div className="dashboard-timeline">
+                {overview.todayAppointments.map((appointment) => {
+                  const status = getAppointmentStatusMap(appointment.trangThai);
+                  return (
+                    <article className="dashboard-timeline-item" key={appointment.id}>
+                      <time>{appointment.gioKham || '—'}</time>
+                      <div>
+                        <strong>{appointment.nguoiCaoTuoiTen || 'Chưa có tên'}</strong>
+                        {appointment.noiKham && <span>{appointment.noiKham}</span>}
+                        {appointment.lyDoKham && <small>{appointment.lyDoKham}</small>}
+                        <StatusTag {...status} size="small" />
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Hôm nay chưa có lịch khám" />
+            )}
+            <Button block onClick={() => navigate('/lich-kham-benh')}>Xem lịch khám</Button>
+          </aside>
+        )}
+      </section>
+
+      {overview?.alertsByMonth != null && (
+        <section className="dashboard-panel dashboard-chart-panel">
+          <div className="dashboard-panel-header">
+            <span>
+              <small>DỮ LIỆU 6 THÁNG GẦN NHẤT</small>
+              <h2><AlertOutlined /> Cảnh báo theo tháng</h2>
+            </span>
+          </div>
+          <div className="dashboard-chart-canvas">
+            <Bar data={chartData} options={chartOptions} />
+          </div>
+        </section>
+      )}
+
+      {overview && Object.values(stats).every((value) => value == null) && (
+        <div className="dashboard-no-data">
+          <Empty description="Bạn chưa có quyền truy cập các nguồn dữ liệu tổng quan." />
+        </div>
+      )}
     </div>
   );
 };

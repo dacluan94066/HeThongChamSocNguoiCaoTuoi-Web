@@ -51,7 +51,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (name.isEmpty ||
         username.isEmpty ||
         phone.isEmpty ||
-        (isElderly && email.isEmpty) ||
+        email.isEmpty ||
         (isElderly && birthController.text.isEmpty) ||
         password.isEmpty ||
         confirmPassword.isEmpty) {
@@ -281,11 +281,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
             const SizedBox(height: 18),
 
-            Text(
-              selectedAccountType == 'NguoiCaoTuoi'
-                  ? 'Email (dùng để khôi phục mật khẩu)'
-                  : 'Email',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            const Text(
+              'Email (dùng để khôi phục mật khẩu)',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
             ),
 
             const SizedBox(height: 8),
@@ -295,9 +293,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               keyboardType: TextInputType.emailAddress,
               autocorrect: false,
               decoration: InputDecoration(
-                hintText: selectedAccountType == 'NguoiCaoTuoi'
-                    ? 'Nhập email để khôi phục mật khẩu'
-                    : 'Nhập email nếu có',
+                hintText: 'Nhập email chưa được tài khoản khác sử dụng',
                 prefixIcon: const Icon(Icons.email_outlined),
                 filled: true,
                 fillColor: Colors.white,

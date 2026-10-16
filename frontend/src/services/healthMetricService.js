@@ -9,6 +9,11 @@ export const getHealthMetrics = async (params = {}) => {
   return res.data?.data ?? [];
 };
 
+export const getHealthMetricTypes = async () => {
+  const res = await axiosClient.get('/health-metric-types');
+  return res.data?.data ?? [];
+};
+
 export const createHealthMetric = async (data) => {
   const res = await axiosClient.post('/health-metrics', data);
   return res.data?.data ?? res.data;

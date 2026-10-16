@@ -1,15 +1,51 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
-const {scopedWhere,isMobileRole}=require('../middlewares/mobile-scope.middleware');
+const {scopedWhere}=require('../middlewares/mobile-scope.middleware');
 const { emitToAdmin } = require('../socket');
 const getMine=async(req,res,next)=>{
  try{
-  if(!isMobileRole(req))return fail(res,'Đường dẫn này chỉ dành cho tài khoản mobile.','FORBIDDEN',403);
   const pool=await poolPromise;
-  const result=await pool.request().query(`SELECT CanhBaoKhanCapID AS id,NguoiCaoTuoiID AS nguoiCaoTuoiId,NoiDung AS noiDung,TrangThai AS trangThai,
-    CONVERT(VARCHAR(19),NgayGui,126) AS ngayGui,NguoiXuLyID AS nguoiXuLyId,
-    CONVERT(VARCHAR(19),NgayXuLy,126) AS ngayXuLy FROM CanhBaoKhanCap WHERE 1=1 ${scopedWhere(req,'NguoiCaoTuoiID')} ORDER BY NgayGui DESC,CanhBaoKhanCapID DESC`);
-  return ok(res,result.recordset);
+  const result=await pool.request().query(`
+    SELECT sos.CanhBaoKhanCapID AS id,
+      linked.CanhBaoID AS canhBaoId,
+      sos.NguoiCaoTuoiID AS nguoiCaoTuoiId,
+      nct.HoTen AS nguoiCaoTuoiTen,
+      sos.NoiDung AS noiDung,
+      sos.ViDo AS viDo,
+      sos.KinhDo AS kinhDo,
+      sos.TrangThai AS trangThai,
+      CONVERT(VARCHAR(19),sos.NgayGui,126) AS ngayGui,
+      sos.NguoiXuLyID AS nguoiXuLyId,
+      nd.HoTen AS nguoiXuLy,
+      CONVERT(VARCHAR(19),sos.NgayXuLy,126) AS ngayXuLy,
+      CONVERT(VARCHAR(19),linked.NgayTao,126) AS ngayTao,
+      linked.GhiChuXuLy AS ghiChuXuLy
+    FROM CanhBaoKhanCap sos
+    INNER JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID = sos.NguoiCaoTuoiID
+    LEFT JOIN NguoiDung nd ON nd.UserID = sos.NguoiXuLyID
+    OUTER APPLY (
+      SELECT TOP 1 c.CanhBaoID, c.NgayTao, c.GhiChuXuLy
+      FROM CanhBao c
+      WHERE c.NguonBang = N'CanhBaoKhanCap'
+        AND c.NguonID = sos.CanhBaoKhanCapID
+      ORDER BY c.CanhBaoID DESC
+    ) linked
+    WHERE 1=1 ${scopedWhere(req,'sos.NguoiCaoTuoiID')}
+    ORDER BY sos.NgayGui DESC, sos.CanhBaoKhanCapID DESC
+  `);
+  const statusMap={DangGui:'CHUA_XU_LY',DaTiepNhan:'DA_XEM',DaXuLy:'DA_XU_LY'};
+  return ok(res,result.recordset.map(row=>({
+    ...row,
+    trangThai:statusMap[row.trangThai]||row.trangThai,
+    mucDo:'KHAN_CAP',
+    loaiCanhBao:'KhanCap',
+    loaiCanhBaoLabel:'SOS khẩn cấp',
+    moTa:row.noiDung||'Người cao tuổi đã gửi cảnh báo SOS.',
+    thoiGianPhatHien:row.ngayGui,
+    thoiGianXuLy:row.ngayXuLy,
+    nguonBang:'CanhBaoKhanCap',
+    nguonId:row.id,
+  })));
  }catch(error){next(error);}
 };
 

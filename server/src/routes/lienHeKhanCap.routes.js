@@ -7,6 +7,7 @@ router.use(auth);
 router.use(loadMobileScope);
 router.get('/',    ctrl.getAll);
 router.post('/',   caregiverOnlyWrite, ctrl.create);
+router.patch('/priorities', caregiverOnlyWrite, ctrl.reorder);
 router.put('/:id', caregiverOnlyWrite, guardResource('LienHeKhanCap', 'LienHeID'), ctrl.update);
 router.delete('/:id', caregiverOnlyWrite, guardResource('LienHeKhanCap', 'LienHeID'), ctrl.remove);
 module.exports = router;

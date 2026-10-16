@@ -1,35 +1,41 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Button, Col, DatePicker, Descriptions, Form, Input, message, Modal,
-  Popconfirm, Row, Select, Space, Tag,
+  Button, Col, DatePicker, Form, Input, message, Modal,
+  Row, Select, Space, Spin, Tag,
 } from 'antd';
 import {
-  DeleteOutlined, EditOutlined, EyeOutlined, HeartOutlined, PlusOutlined, UserAddOutlined,
+  CheckCircleOutlined, EditOutlined, EyeOutlined, HeartOutlined, IdcardOutlined,
+  MedicineBoxOutlined, PhoneOutlined, PlusOutlined, SearchOutlined, StopOutlined,
+  UserAddOutlined, UsergroupAddOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
-  assignElderCaregiver, createElder, deleteElder, getElders, updateElder,
+  assignElderCaregiver, createElder, getElderById, getElders, updateElder,
 } from '../../services/elderlyService';
-import { getCaregivers } from '../../services/caregiverService';
-import PageHeader from '../../components/PageHeader';
-import TableToolbar from '../../components/TableToolbar';
+import { getCaregiverById, getCaregivers } from '../../services/caregiverService';
+import { getPrescriptions } from '../../services/scheduleService';
 import DataTable from '../../components/DataTable';
 import StatusTag, { getElderStatusMap } from '../../components/StatusTag';
 import TableAvatar from '../../components/TableAvatar';
 import TableActionButton from '../../components/TableActionButton';
 import usePermission from '../../hooks/usePermission';
 import ModalForm, { FormSection } from '../../components/ModalForm';
+import { formatEntityCode } from '../../utils/displayUtils';
 
 const ElderlyProfilesPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryKeyword = searchParams.get('keyword')?.trim() || '';
   const { hasPermission } = usePermission();
   const canCreate = hasPermission('QLHOSONCT', 'them');
   const canEdit = hasPermission('QLHOSONCT', 'sua');
-  const canDelete = hasPermission('QLHOSONCT', 'xoa');
   const [elders, setElders] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('all');
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [activeMedications, setActiveMedications] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -43,19 +49,89 @@ const ElderlyProfilesPage = () => {
   const loadElders = async () => {
     setLoading(true);
     try {
-      setElders(await getElders({ search }));
+      setElders(await getElders());
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadElders();
-  }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+    let active = true;
+    getElders()
+      .then((data) => { if (active) setElders(data); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
-  const handleView = (record) => {
+  const filteredElders = useMemo(() => {
+    const keyword = queryKeyword.toLocaleLowerCase('vi');
+    return elders.filter((elder) => {
+      const matchesKeyword = !keyword || [
+        elder.hoTen,
+        formatEntityCode('NCT', elder.id),
+        elder.cmnd,
+      ].some((value) => String(value || '').toLocaleLowerCase('vi').includes(keyword));
+      const matchesStatus = statusFilter === 'all' || elder.trangThai === statusFilter;
+      return matchesKeyword && matchesStatus;
+    });
+  }, [elders, queryKeyword, statusFilter]);
+
+  const profileStats = useMemo(() => ({
+    total: elders.length,
+    active: elders.filter((item) => item.trangThai === 'DangTheoDoi').length,
+    inactive: elders.filter((item) => item.trangThai === 'NgungTheoDoi').length,
+  }), [elders]);
+
+  const handleSearch = (value) => {
+    const nextParams = new URLSearchParams(searchParams);
+    const keyword = value.trim();
+    if (keyword) nextParams.set('keyword', keyword);
+    else nextParams.delete('keyword');
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const handleView = async (record) => {
     setSelected(record);
+    setActiveMedications([]);
     setDetailOpen(true);
+    setDetailLoading(true);
+
+    try {
+      const detail = await getElderById(record.id) || record;
+      const [caregiverResult, prescriptionResult] = await Promise.allSettled([
+        detail.nguoiChamSocId ? getCaregiverById(detail.nguoiChamSocId) : Promise.resolve(null),
+        getPrescriptions(record.id),
+      ]);
+      const caregiver = caregiverResult.status === 'fulfilled' ? caregiverResult.value : null;
+      const prescriptions = prescriptionResult.status === 'fulfilled' && Array.isArray(prescriptionResult.value)
+        ? prescriptionResult.value
+        : [];
+      const today = dayjs().startOf('day');
+      const currentMedications = prescriptions
+        .filter((item) => {
+          const startsOn = item.ngayBatDau ? dayjs(item.ngayBatDau).startOf('day') : null;
+          const endsOn = item.ngayKetThuc ? dayjs(item.ngayKetThuc).endOf('day') : null;
+          return (!startsOn || !today.isBefore(startsOn)) && (!endsOn || !today.isAfter(endsOn));
+        })
+        .flatMap((item) => (item.danhSachThuoc || []).map((medicine) => ({
+          ...medicine,
+          prescriptionId: item.id,
+        })));
+
+      setSelected({
+        ...record,
+        ...detail,
+        nguoiChamSocSoDienThoai: caregiver?.soDienThoai || '',
+        nguoiChamSocMoiQuanHe: caregiver?.moiQuanHe || caregiver?.quanHe || '',
+      });
+      setActiveMedications(currentMedications);
+    } catch {
+      // Danh sách đã có đủ dữ liệu cơ bản; giữ modal sử dụng bản ghi đó nếu API chi tiết tạm lỗi.
+      setSelected(record);
+      setActiveMedications([]);
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const handleAdd = () => {
@@ -101,12 +177,6 @@ const ElderlyProfilesPage = () => {
     }
   };
 
-  const handleDelete = async (record) => {
-    await deleteElder(record.id);
-    message.success('Đã ngừng theo dõi hồ sơ');
-    await loadElders();
-  };
-
   const openAssignModal = async (record) => {
     setAssigningElder(record);
     assignForm.setFieldValue('nguoiChamSocId', record.nguoiChamSocId || undefined);
@@ -132,20 +202,13 @@ const ElderlyProfilesPage = () => {
 
   const columns = [
     {
-      title: 'Mã hồ sơ',
-      dataIndex: 'maHoSo',
-      key: 'maHoSo',
-      width: 125,
-      render: (value) => <span className="entity-code-badge">{value}</span>,
-    },
-    {
-      title: 'Họ và tên',
+      title: 'Họ tên / Tuổi',
       key: 'hoTen',
-      width: 250,
+      width: 260,
       sorter: (a, b) => a.hoTen.localeCompare(b.hoTen, 'vi'),
       render: (_, record) => (
         <div className="table-person-cell">
-          <TableAvatar name={record.hoTen} src={record.anhDaiDien} />
+          <TableAvatar name={record.hoTen} />
           <div className="table-person-copy">
             <div className="table-person-name">{record.hoTen}</div>
             <div className="table-person-meta">
@@ -158,25 +221,25 @@ const ElderlyProfilesPage = () => {
       ),
     },
     {
-      title: 'Nhóm máu',
-      dataIndex: 'nhomMau',
-      key: 'nhomMau',
-      width: 105,
-      align: 'center',
-      render: (value) => value
-        ? <span className="blood-type-badge">{value}</span>
-        : <span className="muted-value">Chưa rõ</span>,
+      title: 'Mã hồ sơ',
+      key: 'maHoSo',
+      width: 130,
+      render: (_, record) => <span className="entity-code-badge">{formatEntityCode('NCT', record.id)}</span>,
     },
     {
-      title: 'Bệnh nền',
-      dataIndex: 'benhNen',
-      key: 'benhNen',
-      width: 260,
-      render: (values = []) => values.length > 0 ? (
-        <Space size={[4, 5]} wrap>
-          {values.map((item) => <Tag className="disease-tag" key={item}>{item}</Tag>)}
-        </Space>
-      ) : <span className="muted-value">Không có</span>,
+      title: 'Bệnh nền & Dị ứng',
+      key: 'medicalNotes',
+      width: 310,
+      render: (_, record) => (
+        <div className="elderly-medical-tags">
+          {record.benhNen?.length > 0
+            ? record.benhNen.map((item) => <Tag className="disease-tag" key={`disease-${item}`}>{item}</Tag>)
+            : <span className="muted-value">Không ghi nhận bệnh nền</span>}
+          {record.diUng?.map((item) => (
+            <Tag className="allergy-tag" icon={<WarningOutlined />} key={`allergy-${item}`}>{item}</Tag>
+          ))}
+        </div>
+      ),
     },
     {
       title: 'Người chăm sóc',
@@ -190,7 +253,7 @@ const ElderlyProfilesPage = () => {
           onClick={(event) => { event.stopPropagation(); if (canEdit) openAssignModal(record); }}
         >
           <TableAvatar name={value} size={30} />
-          <span>{value}</span>
+          <span><strong>{value}</strong><small>Người chăm sóc chính</small></span>
         </button>
       ) : (
         <button
@@ -224,41 +287,76 @@ const ElderlyProfilesPage = () => {
         <Space size={6} onClick={(event) => event.stopPropagation()}>
           <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => handleView(record)} />
           {canEdit && <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(record)} />}
-          {canDelete && (
-            <Popconfirm
-              title="Ngừng theo dõi hồ sơ này?"
-              description="Hồ sơ sẽ được chuyển sang trạng thái ngừng theo dõi."
-              okText="Xác nhận"
-              cancelText="Hủy"
-              onConfirm={() => handleDelete(record)}
-            >
-              <TableActionButton type="delete" tooltip="Xóa" icon={<DeleteOutlined />} />
-            </Popconfirm>
-          )}
-          {!canEdit && !canDelete && null}
         </Space>
       ),
     },
   ];
 
   return (
-    <div>
-      <PageHeader
-        title="Hồ sơ người cao tuổi"
-        subtitle="Quản lý thông tin cá nhân và bệnh lý của người cao tuổi"
-        icon={<HeartOutlined />}
-        count={elders.length}
-        countLabel="người cao tuổi"
-        extra={canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={handleAdd}>Thêm hồ sơ mới</Button>
+    <div className="elderly-page">
+      <section className="elderly-page-heading">
+        <div>
+          <span className="elderly-page-eyebrow"><span /> Cơ sở dữ liệu hồ sơ chăm sóc</span>
+          <h1>Hồ sơ người cao tuổi</h1>
+          <p>Quản lý thông tin hành chính, liên hệ và hồ sơ y tế của người cao tuổi.</p>
+        </div>
+        {canCreate && (
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={handleAdd}>Thêm hồ sơ</Button>
         )}
-      />
+      </section>
 
-      <TableToolbar search={search} onSearch={setSearch} searchPlaceholder="Tìm theo tên, mã hồ sơ..." />
+      <section className="elderly-kpi-grid" aria-label="Thống kê hồ sơ người cao tuổi">
+        <article className="elderly-kpi-card is-total">
+          <span className="elderly-kpi-icon"><UsergroupAddOutlined /></span>
+          <div><small>Tổng hồ sơ</small><strong>{profileStats.total}</strong><span>hồ sơ</span></div>
+        </article>
+        <article className="elderly-kpi-card is-active">
+          <span className="elderly-kpi-icon"><CheckCircleOutlined /></span>
+          <div><small>Đang theo dõi</small><strong>{profileStats.active}</strong><span>hồ sơ</span></div>
+        </article>
+        <article className="elderly-kpi-card is-inactive">
+          <span className="elderly-kpi-icon"><StopOutlined /></span>
+          <div><small>Ngừng theo dõi</small><strong>{profileStats.inactive}</strong><span>hồ sơ</span></div>
+        </article>
+      </section>
+
+      <section className="elderly-filter-panel">
+        <Input.Search
+          key={queryKeyword}
+          className="elderly-search"
+          prefix={<SearchOutlined />}
+          placeholder="Tìm theo họ tên, mã NCT hoặc CCCD"
+          defaultValue={queryKeyword}
+          allowClear
+          enterButton="Tìm kiếm"
+          onChange={(event) => {
+            if (!event.target.value) handleSearch('');
+          }}
+          onSearch={handleSearch}
+        />
+        <div className="elderly-status-filters" aria-label="Lọc theo trạng thái">
+          {[
+            { value: 'all', label: 'Tất cả', count: profileStats.total },
+            { value: 'DangTheoDoi', label: 'Đang theo dõi', count: profileStats.active },
+            { value: 'NgungTheoDoi', label: 'Ngừng theo dõi', count: profileStats.inactive },
+          ].map((item) => (
+            <button
+              type="button"
+              className={statusFilter === item.value ? 'is-active' : ''}
+              onClick={() => setStatusFilter(item.value)}
+              key={item.value}
+            >
+              <span className={`filter-dot ${item.value}`} />
+              {item.label}
+              <b>{item.count}</b>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <DataTable
         columns={columns}
-        dataSource={elders}
+        dataSource={filteredElders}
         rowKey="id"
         loading={loading}
         onRow={(record) => ({ onClick: () => handleView(record) })}
@@ -267,33 +365,127 @@ const ElderlyProfilesPage = () => {
       />
 
       <Modal
-        title={`Chi tiết hồ sơ — ${selected?.hoTen || ''}`}
+        className="elderly-detail-modal"
+        title={null}
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
-        footer={<Button onClick={() => setDetailOpen(false)}>Đóng</Button>}
-        width={720}
+        footer={(
+          <div className="elderly-detail-footer">
+            <Button onClick={() => setDetailOpen(false)}>Đóng</Button>
+            {canEdit && selected && (
+              <Button
+                type="primary"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setDetailOpen(false);
+                  handleEdit(selected);
+                }}
+              >
+                Chỉnh sửa hồ sơ
+              </Button>
+            )}
+          </div>
+        )}
+        width={980}
         centered
       >
         {selected && (
-          <Descriptions bordered column={2} size="middle" style={{ marginTop: 16 }}>
-            <Descriptions.Item label="Mã hồ sơ">{selected.maHoSo}</Descriptions.Item>
-            <Descriptions.Item label="Họ và tên"><strong>{selected.hoTen}</strong></Descriptions.Item>
-            <Descriptions.Item label="Ngày sinh">{selected.ngaySinh ? dayjs(selected.ngaySinh).format('DD/MM/YYYY') : 'Chưa cập nhật'}</Descriptions.Item>
-            <Descriptions.Item label="Tuổi">{selected.tuoi !== null ? `${selected.tuoi} tuổi` : 'Chưa rõ'}</Descriptions.Item>
-            <Descriptions.Item label="Giới tính">{selected.gioiTinh || 'Chưa cập nhật'}</Descriptions.Item>
-            <Descriptions.Item label="CCCD">{selected.cmnd || 'Chưa cập nhật'}</Descriptions.Item>
-            <Descriptions.Item label="Nhóm máu">{selected.nhomMau || 'Chưa rõ'}</Descriptions.Item>
-            <Descriptions.Item label="Số điện thoại">{selected.soDienThoai || 'Chưa cập nhật'}</Descriptions.Item>
-            <Descriptions.Item label="Người chăm sóc">{selected.nguoiChamSocTen || 'Chưa gán'}</Descriptions.Item>
-            <Descriptions.Item label="Địa chỉ" span={2}>{selected.diaChiThuongTru || 'Chưa cập nhật'}</Descriptions.Item>
-            <Descriptions.Item label="Bệnh nền" span={2}>
-              {selected.benhNen?.length ? selected.benhNen.map((item) => <Tag className="disease-tag" key={item}>{item}</Tag>) : <span className="muted-value">Không có</span>}
-            </Descriptions.Item>
-            <Descriptions.Item label="Dị ứng" span={2}>
-              {selected.diUng?.length ? selected.diUng.map((item) => <Tag color="red" key={item}>{item}</Tag>) : <span className="muted-value">Không có</span>}
-            </Descriptions.Item>
-            <Descriptions.Item label="Trạng thái" span={2}><StatusTag {...getElderStatusMap(selected.trangThai)} /></Descriptions.Item>
-          </Descriptions>
+          <Spin spinning={detailLoading}>
+            <header className="elderly-detail-header">
+              <span className="elderly-detail-header-icon"><IdcardOutlined /></span>
+              <div>
+                <small>Chi tiết hồ sơ người cao tuổi</small>
+                <h2>{formatEntityCode('NCT', selected.id)} · {selected.hoTen}</h2>
+              </div>
+              <StatusTag {...getElderStatusMap(selected.trangThai)} />
+            </header>
+
+            <div className="elderly-detail-grid">
+              <section className="elderly-detail-column">
+                <h3><IdcardOutlined /> Thông tin hành chính & liên hệ</h3>
+                <div className="elderly-identity-card">
+                  <TableAvatar name={selected.hoTen} size={58} />
+                  <div>
+                    <strong>{selected.hoTen}</strong>
+                    <span>{formatEntityCode('NCT', selected.id)}</span>
+                    <small>{selected.tuoi !== null ? `${selected.tuoi} tuổi` : 'Chưa rõ tuổi'} · {selected.gioiTinh || 'Chưa cập nhật giới tính'}</small>
+                  </div>
+                </div>
+                <div className="elderly-info-card">
+                  <dl>
+                    <div><dt>Ngày sinh</dt><dd>{selected.ngaySinh ? `${dayjs(selected.ngaySinh).format('DD/MM/YYYY')} (${selected.tuoi ?? '—'} tuổi)` : 'Chưa cập nhật'}</dd></div>
+                    <div><dt>Giới tính</dt><dd>{selected.gioiTinh || 'Chưa cập nhật'}</dd></div>
+                    <div><dt>CCCD</dt><dd>{selected.cmnd || 'Chưa cập nhật'}</dd></div>
+                    <div><dt>Số điện thoại</dt><dd>{selected.soDienThoai || 'Chưa cập nhật'}</dd></div>
+                    <div><dt>Địa chỉ</dt><dd>{selected.diaChiThuongTru || 'Chưa cập nhật'}</dd></div>
+                  </dl>
+                </div>
+                <div className="elderly-primary-caregiver">
+                  <div>
+                    <small>Người chăm sóc chính</small>
+                    <strong>{selected.nguoiChamSocTen || 'Chưa gán người chăm sóc'}</strong>
+                    {selected.nguoiChamSocMoiQuanHe && <span>{selected.nguoiChamSocMoiQuanHe}</span>}
+                  </div>
+                  {selected.nguoiChamSocSoDienThoai && (
+                    <Button
+                      type="primary"
+                      icon={<PhoneOutlined />}
+                      href={`tel:${selected.nguoiChamSocSoDienThoai.replace(/[^+\d]/g, '')}`}
+                    >
+                      {selected.nguoiChamSocSoDienThoai}
+                    </Button>
+                  )}
+                </div>
+              </section>
+
+              <section className="elderly-detail-column">
+                <h3><MedicineBoxOutlined /> Hồ sơ y tế</h3>
+                <div className="elderly-medical-overview">
+                  <div className="elderly-blood-card">
+                    <small>Nhóm máu</small>
+                    <strong>{selected.nhomMau || 'Chưa rõ'}</strong>
+                  </div>
+                  <div className={`elderly-allergy-card ${selected.diUng?.length ? 'has-allergy' : ''}`}>
+                    <small><WarningOutlined /> Dị ứng</small>
+                    {selected.diUng?.length
+                      ? <div>{selected.diUng.map((item) => <Tag className="allergy-tag" key={item}>{item}</Tag>)}</div>
+                      : <span>Không ghi nhận dị ứng</span>}
+                  </div>
+                </div>
+                <div className="elderly-medical-card">
+                  <small>Bệnh nền</small>
+                  <div className="elderly-tag-list">
+                    {selected.benhNen?.length
+                      ? selected.benhNen.map((item) => <Tag className="disease-tag" key={item}>{item}</Tag>)
+                      : <span className="muted-value">Không ghi nhận bệnh nền</span>}
+                  </div>
+                </div>
+                <div className="elderly-medical-card">
+                  <small>Danh sách người chăm sóc</small>
+                  {selected.nguoiChamSocTen ? (
+                    <div className="elderly-caregiver-item">
+                      <TableAvatar name={selected.nguoiChamSocTen} size={38} />
+                      <div><strong>{selected.nguoiChamSocTen}</strong><span>Người chăm sóc chính</span></div>
+                      <StatusTag status="success" label="Chính" size="small" />
+                    </div>
+                  ) : <span className="muted-value">Chưa gán người chăm sóc</span>}
+                </div>
+                {activeMedications.length > 0 && (
+                  <div className="elderly-medical-card">
+                    <small>Thuốc đang dùng</small>
+                    <div className="elderly-medication-list">
+                      {activeMedications.map((medicine) => (
+                        <div key={`${medicine.prescriptionId}-${medicine.id || medicine.thuocId}`}>
+                          <MedicineBoxOutlined />
+                          <span><strong>{medicine.tenThuoc}</strong><small>{medicine.lieuDung || 'Chưa cập nhật liều dùng'}{medicine.soLanMoiNgay ? ` · ${medicine.soLanMoiNgay} lần/ngày` : ''}</small></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+          </Spin>
         )}
       </Modal>
 

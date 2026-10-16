@@ -56,12 +56,19 @@ const mapMetric = (row) => {
     id:              row.id,
     nguoiCaoTuoiId:  row.nguoiCaoTuoiId,
     nguoiCaoTuoiTen: row.nguoiCaoTuoiTen,
+    loaiChiSoId:     row.loaiChiSoId,
     loaiChiSo:       loaiInfo.ma,
     loaiChiSoLabel:  row.tenChiSo,
     giaTri,
+    giaTriChinh:     Number(row.giaTri),
+    giaTriPhu:       row.giaTriPhu == null ? null : Number(row.giaTriPhu),
     donVi:           row.donVi || loaiInfo.donVi,
+    thoiGianDo:      wallTime || null,
     ngayDo:          wallTime?.slice(0, 10) || '',
     gioDo:           wallTime?.slice(11, 16) || '',
+    nguoiDoId:       row.nguoiDoId,
+    nguoiDoTen:      row.nguoiDoTen,
+    laBatThuong:     Boolean(row.laBatThuong),
     binhThuong:      !row.laBatThuong,
     ghiChu:          row.ghiChu,
   };
@@ -369,12 +376,15 @@ const getAll = async (req, res, next) => {
 
     let query = `
       SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
-        nct.HoTen AS nguoiCaoTuoiTen, l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
+        nct.HoTen AS nguoiCaoTuoiTen, c.LoaiChiSoID AS loaiChiSoId,
+        l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
         c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu, c.ThoiGianDo AS thoiGianDo,
+        c.NguoiDoID AS nguoiDoId, nd.HoTen AS nguoiDoTen,
         c.LaBatThuong AS laBatThuong, c.GhiChu AS ghiChu
       FROM ChiSoSucKhoe c
       JOIN HoSoNguoiCaoTuoi nct ON c.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
       JOIN LoaiChiSoSucKhoe l ON c.LoaiChiSoID = l.LoaiChiSoID
+      LEFT JOIN NguoiDung nd ON nd.UserID = c.NguoiDoID
       WHERE 1=1
     `;
     const req2 = pool.request();

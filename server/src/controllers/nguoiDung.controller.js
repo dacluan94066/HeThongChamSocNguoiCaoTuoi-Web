@@ -1,6 +1,7 @@
 // controllers/nguoiDung.controller.js - CRUD nguoi dung - dung dung schema
 // Bang NguoiDung: UserID, TenDangNhap, MatKhauHash, HoTen, Email,
-//   SoDienThoai, VaiTroID, TrangThai (HoatDong|KhoaTaiKhoan|ChoDuyet), NgayTao
+//   SoDienThoai, VaiTroID, TrangThai (HoatDong|KhoaTaiKhoan|ChoDuyet),
+//   NgayTao, LanDangNhapCuoi
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const bcrypt = require('bcryptjs');
@@ -34,14 +35,23 @@ const changeMyPassword = async (req, res, next) => {
 };
 
 const VAI_TRO_MAP = {
-  1: { ma: 'QUAN_TRI',      label: 'Quản trị viên' },
-  2: { ma: 'BAC_SI',        label: 'Bác sĩ' },
-  3: { ma: 'NGUOI_CHAM_SOC',label: 'Người chăm sóc' },
-  4: { ma: 'NGUOI_CAO_TUOI',label: 'Người cao tuổi' },
+  QuanTriVien: { ma: 'QUAN_TRI', label: 'Quản trị viên' },
+  BacSi: { ma: 'BAC_SI', label: 'Bác sĩ' },
+  NguoiChamSoc: { ma: 'NGUOI_CHAM_SOC', label: 'Người chăm sóc' },
+  NguoiCaoTuoi: { ma: 'NGUOI_CAO_TUOI', label: 'Người cao tuổi' },
 };
 
+const findRoleNameByCode = (code) => Object.entries(VAI_TRO_MAP)
+  .find(([, value]) => value.ma === code)?.[0];
+
 const mapUser = (row) => {
-  const vt = VAI_TRO_MAP[row.vaiTroId] || { ma: '', label: '' };
+  const vt = VAI_TRO_MAP[row.tenVaiTro] || { ma: '', label: row.tenVaiTro || '' };
+  const statusMap = {
+    HoatDong: { value: 'HOAT_DONG', label: 'Hoạt động' },
+    KhoaTaiKhoan: { value: 'KHOA', label: 'Đã khóa' },
+    ChoDuyet: { value: 'CHO_DUYET', label: 'Chờ duyệt' },
+  };
+  const status = statusMap[row.trangThai] || { value: row.trangThai, label: row.trangThai };
   return {
     id:            row.id,
     username:      row.tenDangNhap,
@@ -50,10 +60,11 @@ const mapUser = (row) => {
     soDienThoai:   row.soDienThoai,
     vaiTroId:      row.vaiTroId,
     vaiTro:        vt.ma,
-    vaiTroLabel:   row.tenVaiTro || vt.label,
-    trangThai:     row.trangThai === 'HoatDong' ? 'HOAT_DONG' : 'KHOA',
-    trangThaiLabel: row.trangThai === 'HoatDong' ? 'Hoạt động' : 'Đã khóa',
+    vaiTroLabel:   vt.label,
+    trangThai:     status.value,
+    trangThaiLabel: status.label,
     ngayTao:       row.ngayTao ? new Date(row.ngayTao).toISOString().slice(0, 10) : '',
+    lanDangNhapCuoi: row.lanDangNhapCuoi ? new Date(row.lanDangNhapCuoi).toISOString() : null,
     avatar:        null,
   };
 };
@@ -67,7 +78,8 @@ const getAll = async (req, res, next) => {
     let query = `
       SELECT nd.UserID AS id, nd.TenDangNhap AS tenDangNhap, nd.HoTen AS hoTen,
         nd.Email AS email, nd.SoDienThoai AS soDienThoai, nd.VaiTroID AS vaiTroId,
-        vt.TenVaiTro AS tenVaiTro, nd.TrangThai AS trangThai, nd.NgayTao AS ngayTao
+        vt.TenVaiTro AS tenVaiTro, nd.TrangThai AS trangThai, nd.NgayTao AS ngayTao,
+        nd.LanDangNhapCuoi AS lanDangNhapCuoi
       FROM NguoiDung nd
       LEFT JOIN VaiTro vt ON nd.VaiTroID = vt.VaiTroID
       WHERE 1=1
@@ -79,12 +91,19 @@ const getAll = async (req, res, next) => {
       req2.input('kw', sql.NVarChar, `%${keyword.trim()}%`);
     }
     if (vaiTro) {
-      const vaiTroId = Object.entries(VAI_TRO_MAP).find(([, v]) => v.ma === vaiTro)?.[0];
-      if (vaiTroId) { query += ` AND nd.VaiTroID = @vaiTroId`; req2.input('vaiTroId', sql.Int, parseInt(vaiTroId)); }
+      const roleName = findRoleNameByCode(vaiTro);
+      if (roleName) {
+        query += ' AND vt.TenVaiTro = @tenVaiTro';
+        req2.input('tenVaiTro', sql.NVarChar, roleName);
+      }
     }
     if (trangThai) {
-      const dbVal = trangThai === 'HOAT_DONG' ? 'HoatDong' : 'KhoaTaiKhoan';
-      query += ` AND nd.TrangThai = @trangThai`; req2.input('trangThai', sql.NVarChar, dbVal);
+      const statusMap = { HOAT_DONG: 'HoatDong', KHOA: 'KhoaTaiKhoan', CHO_DUYET: 'ChoDuyet' };
+      const dbVal = statusMap[trangThai];
+      if (dbVal) {
+        query += ' AND nd.TrangThai = @trangThai';
+        req2.input('trangThai', sql.NVarChar, dbVal);
+      }
     }
     query += ` ORDER BY nd.NgayTao DESC`;
     const result = await req2.query(query);
@@ -99,7 +118,8 @@ const getById = async (req, res, next) => {
     const result = await pool.request().input('id', sql.Int, req.params.id).query(`
       SELECT nd.UserID AS id, nd.TenDangNhap AS tenDangNhap, nd.HoTen AS hoTen,
         nd.Email AS email, nd.SoDienThoai AS soDienThoai, nd.VaiTroID AS vaiTroId,
-        vt.TenVaiTro AS tenVaiTro, nd.TrangThai AS trangThai, nd.NgayTao AS ngayTao
+        vt.TenVaiTro AS tenVaiTro, nd.TrangThai AS trangThai, nd.NgayTao AS ngayTao,
+        nd.LanDangNhapCuoi AS lanDangNhapCuoi
       FROM NguoiDung nd LEFT JOIN VaiTro vt ON nd.VaiTroID = vt.VaiTroID
       WHERE nd.UserID = @id`);
     if (!result.recordset.length) return fail(res, 'Khong tim thay nguoi dung', 'NOT_FOUND', 404);
@@ -119,7 +139,12 @@ const create = async (req, res, next) => {
       .query(`SELECT UserID FROM NguoiDung WHERE TenDangNhap = @u`);
     if (exists.recordset.length) return fail(res, 'Ten dang nhap da ton tai', 'DUPLICATE', 409);
 
-    const vaiTroId = parseInt(Object.entries(VAI_TRO_MAP).find(([, v]) => v.ma === vaiTro)?.[0] || 3);
+    const roleName = findRoleNameByCode(vaiTro);
+    if (!roleName) return fail(res, 'Vai tro khong hop le', 'INVALID_ROLE', 400);
+    const roleResult = await pool.request().input('tenVaiTro', sql.NVarChar, roleName)
+      .query('SELECT VaiTroID AS id FROM VaiTro WHERE TenVaiTro=@tenVaiTro');
+    if (!roleResult.recordset.length) return fail(res, 'Khong tim thay vai tro', 'ROLE_NOT_FOUND', 400);
+    const vaiTroId = roleResult.recordset[0].id;
     const hash = await bcrypt.hash(password, 10);
 
     const r = await pool.request()
@@ -138,7 +163,15 @@ const update = async (req, res, next) => {
   try {
     const { hoTen, email, soDienThoai, vaiTro } = req.body;
     const pool = await poolPromise;
-    const vaiTroId = vaiTro ? parseInt(Object.entries(VAI_TRO_MAP).find(([, v]) => v.ma === vaiTro)?.[0] || 3) : undefined;
+    let vaiTroId;
+    if (vaiTro) {
+      const roleName = findRoleNameByCode(vaiTro);
+      if (!roleName) return fail(res, 'Vai tro khong hop le', 'INVALID_ROLE', 400);
+      const roleResult = await pool.request().input('tenVaiTro', sql.NVarChar, roleName)
+        .query('SELECT VaiTroID AS id FROM VaiTro WHERE TenVaiTro=@tenVaiTro');
+      if (!roleResult.recordset.length) return fail(res, 'Khong tim thay vai tro', 'ROLE_NOT_FOUND', 400);
+      vaiTroId = roleResult.recordset[0].id;
+    }
     const r = pool.request().input('id', sql.Int, req.params.id)
       .input('hoTen', sql.NVarChar, hoTen).input('email', sql.NVarChar, email || null)
       .input('sdt', sql.NVarChar, soDienThoai || null);

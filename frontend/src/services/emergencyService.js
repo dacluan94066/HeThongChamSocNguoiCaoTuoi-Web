@@ -22,3 +22,11 @@ export const deleteContact = async (id) => {
   await axiosClient.delete(`/emergency-contacts/${id}`);
   return true;
 };
+
+export const reorderEmergencyContacts = async (nguoiCaoTuoiId, orderedIds) => {
+  const res = await axiosClient.patch('/emergency-contacts/priorities', {
+    nguoiCaoTuoiId,
+    orderedIds,
+  });
+  return res.data?.data ?? res.data;
+};

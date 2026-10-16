@@ -165,6 +165,12 @@ CREATE UNIQUE INDEX UX_NguoiChamSoc_UserID
     WHERE UserID IS NOT NULL;
 GO
 
+-- Moi nguoi cham soc dung mot email rieng de dang nhap va khoi phuc mat khau.
+CREATE UNIQUE INDEX UX_NguoiChamSoc_Email
+    ON NguoiChamSoc(Email)
+    WHERE Email IS NOT NULL;
+GO
+
 -- Bang trung gian: 1 NCT co the co nhieu nguoi cham soc, 1 nguoi cham soc phu trach nhieu NCT
 -- Cot MoiQuanHe phan biet than nhan ('Con ruot', 'Nguoi than'...) hay nhan vien ('Dieu duong'...)
 CREATE TABLE NguoiCaoTuoi_NguoiChamSoc (

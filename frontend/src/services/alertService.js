@@ -18,3 +18,18 @@ export const resolveAlert = async (id, nguoiXuLy, ghiChu) => {
   const res = await axiosClient.patch(`/alerts/${id}/resolve`, { nguoiXuLy, ghiChu });
   return res.data?.data ?? res.data;
 };
+
+export const getEmergencyAlerts = async () => {
+  const res = await axiosClient.get('/emergency-alerts');
+  return res.data?.data ?? [];
+};
+
+export const markEmergencyAlertSeen = async (id) => {
+  const res = await axiosClient.patch(`/emergency-alerts/${id}/seen`);
+  return res.data?.data ?? res.data;
+};
+
+export const resolveEmergencyAlert = async (id, ghiChu) => {
+  const res = await axiosClient.patch(`/emergency-alerts/${id}/resolve`, { ghiChu });
+  return res.data?.data ?? res.data;
+};
