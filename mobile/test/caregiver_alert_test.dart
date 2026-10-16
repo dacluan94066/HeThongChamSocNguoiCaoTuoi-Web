@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:elderly_care_app/services/api_client.dart';
+import 'support/notification_platform_fake.dart';
 import 'package:elderly_care_app/services/caregiver_dashboard_service.dart';
 import 'package:elderly_care_app/screens/caregiver/caregiver_elderly_detail_screen.dart';
 import 'mobile_flows_test.dart' show FlowAdapter;
@@ -72,6 +73,7 @@ void main() {
   late List<Interceptor> interceptors;
   late AlertAdapter adapter;
   setUp(() async {
+    NotificationPlatformFake().install();
     FlutterSecureStorage.setMockInitialValues({});
     await ApiClient.clearSession();
     previous = ApiClient.instance.dio.httpClientAdapter;

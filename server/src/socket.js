@@ -59,4 +59,12 @@ const emitToAdmin = (eventName, data) => {
   return true;
 };
 
-module.exports = { initSocket, emitToAdmin, ADMIN_ROOM };
+const emitToUser = (userId, eventName, data) => {
+  if (!io || !Number.isInteger(Number(userId)) || Number(userId) < 1) {
+    return false;
+  }
+  io.to(`user:${Number(userId)}`).emit(eventName, data);
+  return true;
+};
+
+module.exports = { initSocket, emitToAdmin, emitToUser, ADMIN_ROOM };

@@ -10,6 +10,8 @@ import 'services/auth_service.dart';
 import 'services/google_sign_in_service.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/caregiver/caregiver_home_screen.dart';
+import 'screens/appointments/appointment_screen.dart';
+import 'widgets/appointment_reminder_scope.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +40,7 @@ class ElderlyCareApp extends StatelessWidget {
         '/welcome': (_) => const WelcomeScreen(),
         '/login': (_) => const LoginScreen(),
         '/home': (_) => const SessionHomeScreen(),
+        '/appointments': (_) => const AppointmentScreen(),
       },
       home: const SplashScreen(),
     );
@@ -46,7 +49,7 @@ class ElderlyCareApp extends StatelessWidget {
 
 Widget homeForRole(String? role) => switch (role) {
   'NguoiChamSoc' => const CaregiverHomeScreen(),
-  'NguoiCaoTuoi' => const HomeScreen(),
+  'NguoiCaoTuoi' => const AppointmentReminderScope(child: HomeScreen()),
   _ => const LoginScreen(),
 };
 

@@ -2,7 +2,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
-const { emitToAdmin } = require('../socket');
+const { emitToAdmin, emitToUser } = require('../socket');
 
 const STATUS = {
   ChuaDen: { ma: 'CHUA_DEN', label: 'Chưa đến' },
@@ -95,6 +95,46 @@ const getMyElderlyId = async (pool, userId) => {
             FROM HoSoNguoiCaoTuoi
             WHERE UserID=@userId AND TrangThai=N'DangTheoDoi'`);
   return result.recordset[0]?.id || null;
+};
+
+const getAppointmentElderlyId = async (pool, appointmentId) => {
+  try {
+    const result = await pool.request()
+      .input('appointmentId', sql.Int, appointmentId)
+      .query(`SELECT NguoiCaoTuoiID AS id FROM LichKhamBenh
+              WHERE LichKhamID=@appointmentId`);
+    return result.recordset[0]?.id || null;
+  } catch (error) {
+    console.error('[SOCKET] Khong tim duoc chu lich kham:', error.message);
+    return null;
+  }
+};
+
+const emitAppointmentUpdate = async (pool, elderlyIds, data) => {
+  emitToAdmin('lichkham:updated', data);
+  const ids = [...new Set(elderlyIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) return;
+  try {
+    const request = pool.request();
+    const placeholders = ids.map((id, index) => {
+      request.input(`elderlyId${index}`, sql.Int, id);
+      return `@elderlyId${index}`;
+    });
+    const result = await request.query(`
+      SELECT NguoiCaoTuoiID AS elderlyId, UserID AS userId
+      FROM HoSoNguoiCaoTuoi
+      WHERE NguoiCaoTuoiID IN (${placeholders.join(',')}) AND UserID IS NOT NULL`);
+    for (const row of result.recordset) {
+      emitToUser(row.userId, 'lichkham:updated', {
+        ...data,
+        nguoiCaoTuoiId: row.elderlyId,
+      });
+    }
+  } catch (error) {
+    // The database mutation already succeeded. Realtime is best-effort and the
+    // Mobile polling fallback will still reconcile the authoritative API data.
+    console.error('[SOCKET] Khong the gui lich kham toi Mobile:', error.message);
+  }
 };
 
 // GET /api/appointments?nguoiCaoTuoiId=&trangThai=&keyword=
@@ -257,7 +297,7 @@ const create = async (req, res, next) => {
            @thoiGian,
            @lyDo, N'ChuaDen', @nguoiTaoId)`);
     const eventData = { id: result.recordset[0].id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'created' };
-    emitToAdmin('lichkham:updated', eventData);
+    await emitAppointmentUpdate(pool, [Number(nguoiCaoTuoiId)], eventData);
     return ok(res, { id: result.recordset[0].id }, 'Thêm lịch khám thành công', 201);
   } catch (error) { next(error); }
 };
@@ -272,6 +312,7 @@ const update = async (req, res, next) => {
     const { nguoiCaoTuoiId, ngayKham, gioKham, noiKham, lyDoKham, bacSiTen, ghiChu } = req.body;
     const thoiGianKham = new Date(`${ngayKham}T${gioKham}:00Z`);
     const pool = await poolPromise;
+    const previousElderlyId = await getAppointmentElderlyId(pool, id);
     const result = await pool.request()
       .input('id', sql.Int, id)
       .input('nctId', sql.Int, Number(nguoiCaoTuoiId))
@@ -287,9 +328,18 @@ const update = async (req, res, next) => {
           ThoiGianKham=@thoiGian,
           LyDoKham=@lyDo
         WHERE LichKhamID=@id;
-        SELECT @@ROWCOUNT AS affectedRows`);
+        DECLARE @affectedRows INT=@@ROWCOUNT;
+        IF @affectedRows > 0
+          DELETE FROM ThongBao
+          WHERE LienKetID=@id AND LoaiThongBao=N'NhacLichKham'
+            AND LienKetBang LIKE N'LichKhamBenh:%' AND DaDoc=0;
+        SELECT @affectedRows AS affectedRows`);
     if (!result.recordset[0]?.affectedRows) return fail(res, 'Không tìm thấy lịch khám', 'NOT_FOUND', 404);
-    emitToAdmin('lichkham:updated', { id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'updated' });
+    await emitAppointmentUpdate(
+      pool,
+      [previousElderlyId, Number(nguoiCaoTuoiId)],
+      { id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'updated' },
+    );
     return ok(res, { id }, 'Cập nhật lịch khám thành công');
   } catch (error) { next(error); }
 };
@@ -300,14 +350,24 @@ const cancel = async (req, res, next) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id < 1) return fail(res, 'ID lịch khám không hợp lệ', 'INVALID_ID', 400);
     const pool = await poolPromise;
+    const elderlyId = await getAppointmentElderlyId(pool, id);
     const result = await pool.request().input('id', sql.Int, id)
       .query(`UPDATE LichKhamBenh SET TrangThai=N'Huy'
               WHERE LichKhamID=@id AND TrangThai<>N'DaKham';
-              SELECT @@ROWCOUNT AS affectedRows`);
+              DECLARE @affectedRows INT=@@ROWCOUNT;
+              IF @affectedRows > 0
+                DELETE FROM ThongBao
+                WHERE LienKetID=@id AND LoaiThongBao=N'NhacLichKham'
+                  AND LienKetBang LIKE N'LichKhamBenh:%' AND DaDoc=0;
+              SELECT @affectedRows AS affectedRows`);
     if (!result.recordset[0]?.affectedRows) {
       return fail(res, 'Không tìm thấy lịch khám hoặc lịch đã khám', 'APPOINTMENT_NOT_CANCELLABLE', 404);
     }
-    emitToAdmin('lichkham:updated', { id, trangThai: 'HUY', action: 'cancelled' });
+    await emitAppointmentUpdate(
+      pool,
+      [elderlyId],
+      { id, nguoiCaoTuoiId: elderlyId, trangThai: 'HUY', action: 'cancelled' },
+    );
     return ok(res, { id }, 'Đã hủy lịch khám');
   } catch (error) { next(error); }
 };
@@ -321,18 +381,27 @@ const recordResult = async (req, res, next) => {
     if (!resultText) return fail(res, 'Kết quả khám là bắt buộc', 'MISSING_RESULT', 400);
     if (resultText.length > 500) return fail(res, 'Kết quả khám không được quá 500 ký tự', 'RESULT_TOO_LONG', 400);
     const pool = await poolPromise;
+    const elderlyId = await getAppointmentElderlyId(pool, id);
     const result = await pool.request()
       .input('id', sql.Int, id)
       .input('result', sql.NVarChar, resultText)
       .query(`UPDATE LichKhamBenh
               SET KetQuaKham=@result, TrangThai=N'DaKham'
               WHERE LichKhamID=@id AND TrangThai<>N'Huy';
-              SELECT @@ROWCOUNT AS affectedRows`);
+              DECLARE @affectedRows INT=@@ROWCOUNT;
+              IF @affectedRows > 0
+                DELETE FROM ThongBao
+                WHERE LienKetID=@id AND LoaiThongBao=N'NhacLichKham'
+                  AND LienKetBang LIKE N'LichKhamBenh:%' AND DaDoc=0;
+              SELECT @affectedRows AS affectedRows`);
     if (!result.recordset[0]?.affectedRows) {
       return fail(res, 'Không tìm thấy lịch khám hoặc lịch đã bị hủy', 'APPOINTMENT_NOT_UPDATABLE', 404);
     }
     const eventData = { id, trangThai: 'DA_KHAM', ketQua: resultText, action: 'result-recorded' };
-    emitToAdmin('lichkham:updated', eventData);
+    await emitAppointmentUpdate(pool, [elderlyId], {
+      ...eventData,
+      nguoiCaoTuoiId: elderlyId,
+    });
     return ok(res, eventData, 'Đã ghi kết quả khám');
   } catch (error) { next(error); }
 };

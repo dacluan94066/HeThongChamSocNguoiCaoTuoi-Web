@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:elderly_care_app/services/api_client.dart';
+import 'support/notification_platform_fake.dart';
 import 'package:elderly_care_app/services/care_notes_service.dart';
 import 'package:elderly_care_app/screens/caregiver/care_notes_screen.dart';
 
@@ -64,6 +65,7 @@ class FakeNotes extends CareNotesService {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() async {
+    NotificationPlatformFake().install();
     FlutterSecureStorage.setMockInitialValues({});
     await ApiClient.clearSession();
   });

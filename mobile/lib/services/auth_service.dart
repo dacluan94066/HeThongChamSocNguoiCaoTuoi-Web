@@ -12,6 +12,7 @@ import 'health_metric_service.dart';
 import 'google_sign_in_service.dart';
 import 'local_notification_service.dart';
 import 'medication_schedule_service.dart';
+import 'mobile_realtime_service.dart';
 
 class AuthService {
   AuthService._();
@@ -21,6 +22,7 @@ class AuthService {
   Dio get _dio => ApiClient.instance.dio;
 
   Future<Map<String, dynamic>> login(String tenDangNhap, String matKhau) async {
+    MobileRealtimeService.instance.disconnect();
     // Huy du lieu cua tai khoan truoc ngay khi bat dau lan dang nhap moi.
     // Response ho so dang chay cua phien cu cung bi danh dau het hieu luc.
     ElderlyService.instance.clearCache();
@@ -140,6 +142,7 @@ class AuthService {
   }
 
   Future<int> _prepareForLogin() async {
+    MobileRealtimeService.instance.disconnect();
     ElderlyService.instance.clearCache();
     AlertService.instance.clearCache();
     AppointmentService.instance.clearCache();
@@ -275,6 +278,7 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    MobileRealtimeService.instance.disconnect();
     ElderlyService.instance.clearCache();
     AlertService.instance.clearCache();
     AppointmentService.instance.clearCache();

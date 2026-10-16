@@ -1,9 +1,13 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { materializeDueAppointmentReminders } = require('../services/appointmentReminder.service');
 
 const getMine = async (req, res, next) => {
   try {
     const pool = await poolPromise;
+    // Also covers appointments created before the worker was introduced or a
+    // reminder that became due while the server was temporarily stopped.
+    await materializeDueAppointmentReminders(pool);
     const result = await pool.request().input('userId', sql.Int, req.user.userId).query(`
       SELECT ThongBaoID AS id, TieuDe AS tieuDe, NoiDung AS noiDung,
         LoaiThongBao AS loaiThongBao, LienKetBang AS lienKetBang,

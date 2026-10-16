@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import 'api_client.dart';
+import 'local_notification_service.dart';
 
 class AppointmentService {
   AppointmentService._();
@@ -61,15 +63,52 @@ class AppointmentService {
 
     late final Future<List<Map<String, dynamic>>> request;
     request = _fetch(path, queryParameters)
-        .then((items) {
+        .then((items) async {
           if (_generation == generation &&
               ApiClient.sessionVersion == version &&
               _revisions[key] == revision) {
             if (_cacheSessionVersion != version) _cache.clear();
             _cacheSessionVersion = version;
             _cache[key] = _copyList(items);
+            if (key == 'all') {
+              bool current() =>
+                  _generation == generation &&
+                  ApiClient.sessionVersion == version &&
+                  _revisions[key] == revision;
+              try {
+                final raw = await ApiClient.storage.read(
+                  key: ApiClient.userKey,
+                );
+                final user = raw == null ? null : jsonDecode(raw);
+                if (current() &&
+                    user is Map &&
+                    user['tenVaiTro'] == 'NguoiCaoTuoi' &&
+                    user['userId'] != null) {
+                  await LocalNotificationService.syncAppointmentReminders(
+                    owner: user['userId'].toString(),
+                    appointments: items,
+                    isCurrent: current,
+                  );
+                }
+              } catch (_) {
+                if (current()) {
+                  LocalNotificationService.appointmentState.value =
+                      AppointmentReminderState.error;
+                }
+              }
+            }
           }
           return _copyList(items);
+        })
+        .catchError((Object error, StackTrace stack) {
+          if (key == 'all' &&
+              _generation == generation &&
+              ApiClient.sessionVersion == version &&
+              _revisions[key] == revision) {
+            LocalNotificationService.appointmentState.value =
+                AppointmentReminderState.error;
+          }
+          Error.throwWithStackTrace(error, stack);
         })
         .whenComplete(() {
           if (identical(_inFlight[key], request)) _inFlight.remove(key);

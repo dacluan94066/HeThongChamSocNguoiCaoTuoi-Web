@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:elderly_care_app/services/api_client.dart';
+import 'package:elderly_care_app/widgets/appointment_reminder_scope.dart';
+import 'support/notification_platform_fake.dart';
 import 'package:elderly_care_app/screens/home/home_screen.dart';
 import 'package:elderly_care_app/main.dart'
     show LoginScreen, SessionHomeScreen, homeForRole;
@@ -61,7 +63,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('Authenticated role chooses its actual home screen', () {
     expect(homeForRole('NguoiChamSoc'), isA<CaregiverHomeScreen>());
-    expect(homeForRole('NguoiCaoTuoi'), isA<HomeScreen>());
+    expect(
+      homeForRole('NguoiCaoTuoi'),
+      isA<AppointmentReminderScope>().having(
+        (scope) => scope.child,
+        'elderly home',
+        isA<HomeScreen>(),
+      ),
+    );
     expect(homeForRole(null), isA<LoginScreen>());
   });
   final screens = <String, Widget>{
@@ -79,6 +88,7 @@ void main() {
   late FlowAdapter adapter;
   late List<Interceptor> interceptors;
   setUp(() async {
+    NotificationPlatformFake().install();
     FlutterSecureStorage.setMockInitialValues({'jwt_token': 'test-session'});
     await ApiClient.clearSession();
     FlutterSecureStorage.setMockInitialValues({'jwt_token': 'test-session'});

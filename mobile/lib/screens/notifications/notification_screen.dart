@@ -37,7 +37,9 @@ class _NotificationScreenState extends State<NotificationScreen>
   @override
   void initState() {
     super.initState();
-    _load();
+    // Do not reuse Home's cached count/list: a reminder may have become due
+    // between opening Home and opening this screen.
+    _load(refresh: true);
   }
 
   bool _truthy(Object? value) =>

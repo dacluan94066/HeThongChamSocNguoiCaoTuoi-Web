@@ -5,6 +5,7 @@ require('dotenv').config({ path: require('node:path').resolve(__dirname, '../.en
 const http = require('http');
 const app = require('./app');
 const { initSocket } = require('./socket');
+const { startAppointmentReminderWorker } = require('./services/appointmentReminder.service');
 
 // Ket noi DB ngay khi server khoi dong (poolPromise tu dong chay)
 require('./config/db');
@@ -13,6 +14,7 @@ const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 
 initSocket(server);
+startAppointmentReminderWorker();
 
 server.listen(PORT, () => {
   console.log('='.repeat(50));

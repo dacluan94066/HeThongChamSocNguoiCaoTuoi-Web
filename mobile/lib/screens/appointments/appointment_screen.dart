@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../services/api_client.dart';
 import '../../widgets/foreground_refresh.dart';
 import '../../services/appointment_service.dart';
+import '../../widgets/appointment_reminder_banner.dart';
+import '../../services/mobile_realtime_service.dart';
 
 class AppointmentScreen extends StatefulWidget {
   const AppointmentScreen({super.key});
@@ -33,7 +37,23 @@ class _AppointmentScreenState extends State<AppointmentScreen>
   @override
   void initState() {
     super.initState();
+    MobileRealtimeService.instance.appointmentRevision.addListener(
+      _onRealtimeAppointment,
+    );
     _loadAppointments(refresh: true);
+  }
+
+  void _onRealtimeAppointment() {
+    if (!mounted) return;
+    unawaited(_loadAppointments(silent: true));
+  }
+
+  @override
+  void dispose() {
+    MobileRealtimeService.instance.appointmentRevision.removeListener(
+      _onRealtimeAppointment,
+    );
+    super.dispose();
   }
 
   Future<void> _loadAppointments({
@@ -230,6 +250,10 @@ class _AppointmentScreenState extends State<AppointmentScreen>
       ),
       body: Column(
         children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14),
+            child: AppointmentReminderBanner(),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
             child: Container(

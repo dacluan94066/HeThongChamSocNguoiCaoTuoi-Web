@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../assistant/care_assistant_screen.dart';
 
@@ -7,6 +9,9 @@ import '../../services/health_metric_service.dart';
 import '../../services/medication_schedule_service.dart';
 import '../../services/api_client.dart';
 import '../../services/elderly_service.dart';
+import '../../widgets/appointment_reminder_banner.dart';
+import '../../widgets/foreground_refresh.dart';
+import '../../services/mobile_realtime_service.dart';
 
 import '../appointments/appointment_screen.dart';
 import '../caregiver/caregiver_screen.dart';
@@ -22,7 +27,16 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with ForegroundRefresh<HomeScreen> {
+  @override
+  Future<void> refreshForeground() async {
+    await Future.wait([
+      loadUnreadNotificationCount(refresh: true),
+      loadNextAppointment(refresh: true),
+    ]);
+  }
+
   int selectedIndex = 0;
   int unreadNotificationCount = 0;
 
@@ -42,7 +56,28 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    MobileRealtimeService.instance.appointmentRevision.addListener(
+      _onRealtimeAppointment,
+    );
     loadAllData();
+  }
+
+  void _onRealtimeAppointment() {
+    if (!mounted) return;
+    unawaited(
+      Future.wait([
+        loadNextAppointment(),
+        loadUnreadNotificationCount(refresh: true),
+      ]),
+    );
+  }
+
+  @override
+  void dispose() {
+    MobileRealtimeService.instance.appointmentRevision.removeListener(
+      _onRealtimeAppointment,
+    );
+    super.dispose();
   }
 
   // =====================================================
@@ -217,6 +252,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> loadNextAppointment({bool refresh = false}) async {
     try {
+      // Upcoming is limited to five rows. Reconcile alarms from the full list.
+      await AppointmentService.instance.getAppointments(refresh: refresh);
       final appointments = await AppointmentService.instance
           .getUpcomingAppointments(refresh: refresh);
       if (!mounted) return;
@@ -851,6 +888,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 // =========================================
                 // APPOINTMENT
                 // =========================================
+                const AppointmentReminderBanner(),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [

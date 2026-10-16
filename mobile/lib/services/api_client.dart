@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'local_notification_service.dart';
 
 class ApiClient {
   ApiClient._() {
@@ -142,8 +143,11 @@ class ApiClient {
   static Future<void> clearSession() {
     _sessionVersion++;
     sessionChanges.value = _sessionVersion;
+    final clearReminders =
+        LocalNotificationService.cancelAppointmentReminders();
     return _enqueueStorage(() async {
       await Future.wait([
+        clearReminders,
         storage.delete(key: tokenKey),
         storage.delete(key: userKey),
       ]);

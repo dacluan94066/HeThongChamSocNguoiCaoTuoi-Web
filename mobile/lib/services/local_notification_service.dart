@@ -2,8 +2,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'appointment_reminder_plan.dart';
+
+enum AppointmentReminderState { loading, ready, approximate, denied, error }
 
 class LocalNotificationService {
+  static final appointmentState = ValueNotifier(
+    AppointmentReminderState.loading,
+  );
+  static Future<void> _appointmentQueue = Future.value();
+  static int _appointmentEpoch = 0;
   static final ValueNotifier<String?> pendingPayload = ValueNotifier(null);
   static Future<void>? _initializing;
   static bool _initialized = false;
@@ -29,6 +37,13 @@ class LocalNotificationService {
         description: 'Thông báo nhắc người dùng uống thuốc đúng giờ',
         importance: Importance.high,
       );
+
+  static const appointmentChannel = AndroidNotificationChannel(
+    'appointment_reminder_channel',
+    'Nhắc lịch khám',
+    description: 'Nhắc trước lịch khám 24 giờ và 2 giờ',
+    importance: Importance.high,
+  );
 
   static Future<void> initialize() async {
     if (_initialized) return;
@@ -70,6 +85,7 @@ class LocalNotificationService {
         >();
 
     await androidPlugin?.createNotificationChannel(medicationChannel);
+    await androidPlugin?.createNotificationChannel(appointmentChannel);
     final launch = await _notificationsPlugin.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp == true) {
       pendingPayload.value = launch?.notificationResponse?.payload;
@@ -227,6 +243,107 @@ class LocalNotificationService {
     if (!_supportsNotifications) return;
     await initialize();
     await _notificationsPlugin.cancel(id: id);
+  }
+
+  static Future<void> _queueAppointments(Future<void> Function() action) {
+    final operation = _appointmentQueue.then((_) => action());
+    _appointmentQueue = operation.then<void>((_) {}, onError: (Object _) {});
+    return operation;
+  }
+
+  /// Serialized with logout so a late API response cannot restore old alarms.
+  static Future<void> syncAppointmentReminders({
+    required String owner,
+    required List<Map<String, dynamic>> appointments,
+    required bool Function() isCurrent,
+  }) {
+    final epoch = _appointmentEpoch;
+    bool valid() => epoch == _appointmentEpoch && isCurrent();
+    return _queueAppointments(() async {
+      if (!supportsNotifications || !valid()) return;
+      await initialize();
+      final enabled = await areNotificationsEnabled();
+      final exact = await canScheduleExactNotifications();
+      if (!valid()) return;
+      final plans = enabled
+          ? AppointmentReminderPlan.build(appointments, now: DateTime.now())
+          : <AppointmentReminderPlan>[];
+      final wanted = {
+        for (final plan in plans) plan.payload(owner, exact): plan,
+      };
+      final pending = await _notificationsPlugin.pendingNotificationRequests();
+      final retained = <String>{};
+      final usedIds = pending.map((p) => p.id).toSet();
+      for (final request in pending) {
+        if (!valid()) return;
+        final payload = request.payload;
+        if (payload?.startsWith('appointment:') != true) continue;
+        if (wanted.containsKey(payload) && retained.add(payload!)) continue;
+        await _notificationsPlugin.cancel(id: request.id);
+      }
+      var id = -1; // Medication notifications use non-negative IDs.
+      for (final entry in wanted.entries) {
+        if (!valid()) return;
+        if (retained.contains(entry.key)) continue;
+        if (!entry.value.fireAt.isAfter(DateTime.now())) continue;
+        while (usedIds.contains(id)) {
+          id--;
+        }
+        usedIds.add(id);
+        await _notificationsPlugin.zonedSchedule(
+          id: id--,
+          title: 'Nhắc lịch khám — trước ${entry.value.hoursBefore} giờ',
+          body: entry.value.body,
+          scheduledDate: entry.value.fireAt,
+          notificationDetails: const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'appointment_reminder_channel',
+              'Nhắc lịch khám',
+              channelDescription: 'Nhắc trước lịch khám 24 giờ và 2 giờ',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+          ),
+          androidScheduleMode: exact
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: entry.key,
+        );
+      }
+      if (valid()) {
+        appointmentState.value = !enabled
+            ? AppointmentReminderState.denied
+            : exact
+            ? AppointmentReminderState.ready
+            : AppointmentReminderState.approximate;
+      }
+    });
+  }
+
+  static Future<void> cancelAppointmentReminders() {
+    _appointmentEpoch++;
+    appointmentState.value = AppointmentReminderState.loading;
+    if (pendingPayload.value?.startsWith('appointment:') == true) {
+      pendingPayload.value = null;
+    }
+    return _queueAppointments(() async {
+      if (!supportsNotifications) return;
+      await initialize();
+      final pending = await _notificationsPlugin.pendingNotificationRequests();
+      for (final request in pending) {
+        if (request.payload?.startsWith('appointment:') == true) {
+          await _notificationsPlugin.cancel(id: request.id);
+        }
+      }
+      // Also remove already-delivered personal reminders from the tray on logout.
+      final active = await _notificationsPlugin.getActiveNotifications();
+      for (final notification in active) {
+        if (notification.channelId == appointmentChannel.id &&
+            notification.id != null) {
+          await _notificationsPlugin.cancel(id: notification.id!);
+        }
+      }
+    });
   }
 
   static Future<void> cancelAll() async {
