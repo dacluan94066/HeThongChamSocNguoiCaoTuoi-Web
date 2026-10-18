@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_client.dart';
 import '../../services/health_metric_service.dart';
+import '../../widgets/health_trend.dart';
 
 class HealthScreen extends StatefulWidget {
-  const HealthScreen({super.key});
+  const HealthScreen({super.key, this.profileId});
+  final int? profileId;
 
   @override
   State<HealthScreen> createState() => _HealthScreenState();
@@ -15,23 +17,33 @@ class _HealthScreenState extends State<HealthScreen> {
   List<Map<String, dynamic>> _metrics = [];
   bool _loading = true;
   String? _error;
+  BuildContext? _sheetContext;
+  final _session = ApiClient.sessionVersion;
+  int _sequence = 0;
+  bool get _valid => mounted && _session == ApiClient.sessionVersion;
 
   @override
   void initState() {
     super.initState();
+    ApiClient.sessionChanges.addListener(_invalidate);
     _loadData();
   }
+  void _invalidate() { _sequence++; final sheet=_sheetContext; _sheetContext=null; if(sheet!=null && sheet.mounted && ModalRoute.of(sheet)?.isCurrent==true) Navigator.of(sheet).pop(); if(mounted)setState((){_metrics=[];_metricTypes=[];_loading=false;_error='Phiên đã thay đổi. Hãy đăng nhập lại.';}); }
+  @override void dispose() { ApiClient.sessionChanges.removeListener(_invalidate); super.dispose(); }
+  @override void didUpdateWidget(covariant HealthScreen old) { super.didUpdateWidget(old); if(old.profileId!=widget.profileId){_metrics=[];_metricTypes=[];_loadData(refresh:true);} }
 
   Future<void> _loadData({bool refresh = false}) async {
+    if(!_valid)return;
+    final sequence = ++_sequence;
     if (mounted && (_metricTypes.isEmpty || _metrics.isEmpty)) {
       setState(() => _loading = true);
     }
     try {
       final results = await Future.wait<List<Map<String, dynamic>>>([
         HealthMetricService.instance.getMetricTypes(refresh: refresh),
-        HealthMetricService.instance.getMyHealthMetrics(refresh: refresh),
+        widget.profileId == null ? HealthMetricService.instance.getMyHealthMetrics(refresh: refresh) : HealthMetricService.instance.getProfileMetrics(widget.profileId!),
       ]);
-      if (!mounted) return;
+      if (!_valid || sequence != _sequence) return;
       setState(() {
         _metricTypes = results[0];
         _metrics = results[1];
@@ -39,13 +51,13 @@ class _HealthScreenState extends State<HealthScreen> {
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!_valid || sequence != _sequence) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!_valid || sequence != _sequence) return;
       setState(() {
         _error = 'Không thể tải dữ liệu sức khỏe.';
         _loading = false;
@@ -63,7 +75,7 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   Future<void> _openUpdateSheet() async {
-    if (_metricTypes.isEmpty) return;
+    if (!_valid || _metricTypes.isEmpty) return;
     var selectedId = _asInt(_metricTypes.first['id']);
     var saving = false;
     var primaryText = '';
@@ -79,6 +91,7 @@ class _HealthScreenState extends State<HealthScreen> {
       ),
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) {
+          _sheetContext = sheetContext;
           final selectedType = _metricTypes
               .cast<Map<String, dynamic>?>()
               .firstWhere(
@@ -91,6 +104,7 @@ class _HealthScreenState extends State<HealthScreen> {
           final unit = selectedType?['donVi']?.toString() ?? '';
 
           Future<void> save() async {
+            if(saving || !_valid)return;
             final primary = double.tryParse(
               primaryText.trim().replaceAll(',', '.'),
             );
@@ -113,6 +127,7 @@ class _HealthScreenState extends State<HealthScreen> {
                 giaTri: primary,
                 giaTriPhu: needsSecondary ? secondary : null,
                 ghiChu: noteText,
+                profileId: widget.profileId,
               );
               if (!sheetContext.mounted) return;
               Navigator.pop(sheetContext, result);
@@ -246,7 +261,8 @@ class _HealthScreenState extends State<HealthScreen> {
         },
       ),
     );
-    if (!mounted || result == null) return;
+    _sheetContext=null;
+    if (!_valid || result == null) return;
     await _loadData(refresh: true);
     if (!mounted) return;
     if (result['laBatThuong'] == true) {
@@ -266,7 +282,7 @@ class _HealthScreenState extends State<HealthScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) => FractionallySizedBox(
+      builder: (context) => Builder(builder: (modalContext) { _sheetContext = modalContext; return FractionallySizedBox(
         heightFactor: 0.78,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
@@ -294,10 +310,9 @@ class _HealthScreenState extends State<HealthScreen> {
               const SizedBox(height: 14),
               Expanded(
                 child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: HealthMetricService.instance.getMyHealthMetrics(
-                    loaiChiSoId: typeId,
-                  ),
+                  future: Future.value(_metrics.where((r)=>_asInt(r['loaiChiSoId'])==typeId).toList()),
                   builder: (context, snapshot) {
+                    if(!_valid)return const Center(child:Text('Phiên đã thay đổi. Hãy đóng lịch sử.'));
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
@@ -381,8 +396,9 @@ class _HealthScreenState extends State<HealthScreen> {
             ],
           ),
         ),
-      ),
+      ); }),
     );
+    _sheetContext=null;
   }
 
   Future<void> _showAbnormalWarning(Map<String, dynamic> metric) {
@@ -413,6 +429,86 @@ class _HealthScreenState extends State<HealthScreen> {
     );
   }
 
+  Future<void> _showAbnormalHistory() async {
+    final abnormalList = _metrics
+        .where((m) => m['laBatThuong'] == true || m['laBatThuong'] == 1)
+        .toList();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Color(0xffd94b32), size: 26),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Lịch sử cảnh báo (${abnormalList.length})',
+                      style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (abnormalList.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 32),
+                  child: Center(child: Text('Tất cả chỉ số đều trong ngưỡng an toàn.')),
+                )
+              else
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: abnormalList.length,
+                    separatorBuilder: (context, index) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final item = abnormalList[index];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xffffebee),
+                          child: Icon(Icons.warning_amber_rounded, color: Color(0xffd94b32)),
+                        ),
+                        title: Text(
+                          '${item['tenChiSo'] ?? 'Chỉ số'}: ${_displayValue(item)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xffd94b32)),
+                        ),
+                        subtitle: Text(
+                          '${_formatDateTime(item['thoiGianDo'])}${item['ghiChu'] != null ? '\nGhi chú: ${item['ghiChu']}' : ''}',
+                        ),
+                        isThreeLine: item['ghiChu'] != null,
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -432,6 +528,13 @@ class _HealthScreenState extends State<HealthScreen> {
           'Theo dõi sức khỏe',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Lịch sử cảnh báo',
+            icon: const Icon(Icons.notifications_active_outlined),
+            onPressed: _showAbnormalHistory,
+          ),
+        ],
       ),
       floatingActionButton: _loading || _error != null || _metricTypes.isEmpty
           ? null
@@ -440,7 +543,7 @@ class _HealthScreenState extends State<HealthScreen> {
               backgroundColor: const Color(0xff07856d),
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('CẬP NHẬT'),
+              label: Text(widget.profileId != null ? 'GHI SỐ ĐO' : 'CẬP NHẬT'),
             ),
       body: _buildBody(),
     );
@@ -476,28 +579,38 @@ class _HealthScreenState extends State<HealthScreen> {
 
     final latest = _latestByType;
     final newest = _metrics.isEmpty ? null : _metrics.first;
+    final abnormalCount = latest.values
+        .where((m) => m['laBatThuong'] == true || m['laBatThuong'] == 1)
+        .length;
     return RefreshIndicator(
       onRefresh: () => _loadData(refresh: true),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 100),
         children: [
+          HealthTrend(metrics: _metrics),
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xffe9fff6), Color(0xffffffe8)],
+              gradient: LinearGradient(
+                colors: abnormalCount > 0
+                    ? [const Color(0xfffff0ed), const Color(0xfffff8e7)]
+                    : [const Color(0xffe9fff6), const Color(0xffffffe8)],
               ),
               borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: abnormalCount > 0 ? const Color(0xffffcdd2) : const Color(0xffc8e6c9),
+              ),
             ),
             child: Row(
               children: [
-                const CircleAvatar(
-                  radius: 33,
+                CircleAvatar(
+                  radius: 30,
                   backgroundColor: Colors.white,
                   child: Icon(
-                    Icons.favorite_rounded,
-                    color: Color(0xffe45050),
-                    size: 34,
+                    abnormalCount > 0 ? Icons.warning_amber_rounded : Icons.favorite_rounded,
+                    color: abnormalCount > 0 ? const Color(0xffd94b32) : const Color(0xffe45050),
+                    size: 32,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -505,23 +618,32 @@ class _HealthScreenState extends State<HealthScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Dữ liệu sức khỏe gần nhất',
-                        style: TextStyle(color: Colors.black54),
+                      Text(
+                        abnormalCount > 0
+                            ? 'Cần lưu ý: $abnormalCount chỉ số vượt ngưỡng'
+                            : 'Tất cả chỉ số ổn định',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: abnormalCount > 0 ? const Color(0xffd94b32) : const Color(0xff07856d),
+                        ),
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 4),
                       Text(
                         newest == null
                             ? 'Chưa có chỉ số'
-                            : _formatDateTime(newest['thoiGianDo']),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                            : 'Đo gần nhất: ${_formatDateTime(newest['thoiGianDo'])}',
+                        style: const TextStyle(fontSize: 13, color: Colors.black54),
                       ),
                     ],
                   ),
                 ),
+                if (abnormalCount > 0)
+                  IconButton.filledTonal(
+                    onPressed: _showAbnormalHistory,
+                    icon: const Icon(Icons.history_rounded, size: 20),
+                    tooltip: 'Xem cảnh báo',
+                  ),
               ],
             ),
           ),

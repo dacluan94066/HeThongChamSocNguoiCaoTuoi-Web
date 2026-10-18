@@ -235,4 +235,22 @@ class LocalNotificationService {
     await initialize();
     await _notificationsPlugin.cancelAll();
   }
+  static Future<void> cancelCareReminders() async {
+    if (pendingPayload.value?.startsWith('care:') == true) pendingPayload.value = null;
+    if (!_supportsNotifications) return;
+    await initialize();
+    for (final request in await _notificationsPlugin.pendingNotificationRequests()) {
+      if (request.payload?.startsWith('care:') == true) await _notificationsPlugin.cancel(id: request.id);
+    }
+  }
+  static Future<void> scheduleCareActivity({required int id, required int profileId, required DateTime time, required String title}) async {
+    if (!_supportsNotifications) return;
+    await initialize();
+    if (!await areNotificationsEnabled()) throw StateError('NOTIFICATION_PERMISSION_REQUIRED');
+    if (!time.isAfter(DateTime.now())) return;
+    await _notificationsPlugin.zonedSchedule(id: id, title: 'Hoạt động chăm sóc', body: title,
+      scheduledDate: tz.TZDateTime.from(time, tz.local),
+      notificationDetails: const NotificationDetails(android: AndroidNotificationDetails('care_activity_channel','Nhắc hoạt động chăm sóc',channelDescription:'Nhắc cục bộ theo kế hoạch sinh hoạt',importance:Importance.defaultImportance,priority:Priority.defaultPriority)),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, payload:'care:$profileId');
+  }
 }

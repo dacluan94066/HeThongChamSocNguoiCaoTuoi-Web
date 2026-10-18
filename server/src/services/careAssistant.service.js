@@ -11,7 +11,7 @@ const time = (raw) => {
 };
 const medication = (r) => `• ${value(r.tenThuoc)} — liều đã lưu: ${value(r.lieuDung)}; lịch ${time(r.thoiGianDuKien)}; ${({ChuaDenGio:'Chưa có xác nhận uống',DaUong:'Đã xác nhận uống',BoLo:'Đã ghi nhận bỏ lỡ',TuChoi:'Đã ghi nhận từ chối'})[r.trangThai] || value(r.trangThai)}${r.thoiGianThucTe ? ' lúc ' + time(r.thoiGianThucTe) : ''}`;
 const appointment = (r) => `• ${time(r.thoiGianKham)} — ${value(r.tenBenhVien)}, bác sĩ: ${value(r.bacSiPhuTrach)}${r.trangThai ? '; ' + (({ChuaDen:'Chưa đến',DaKham:'Đã khám',DaHuy:'Đã hủy',Huy:'Đã hủy',DaDoiLich:'Đã đổi lịch'})[r.trangThai] || 'Chưa rõ trạng thái') : ''}`;
-const allowedActions = new Set(['medications','appointments','health','caregivers','notifications','notes','sos']);
+const allowedActions = new Set(['medications','appointments','health','caregivers','notifications','notes','sos','today','plans','report']);
 async function answer({ question, history = [], profile, user, repository, resolved, now = new Date() }) {
   const context = resolved || resolveQuestion(question, history);
   const intent = context.intent;
@@ -137,16 +137,31 @@ async function answer({ question, history = [], profile, user, repository, resol
       rows = await load('notes');
       text = displayed(rows, r => `• ${time(r.ngayGhi)} — ${value(r.hoatDong)}\n${value(r.moTaChiTiet)}`, 'Chưa có nhật ký chăm sóc được lưu cho hồ sơ này.'); actions = ['notes']; break;
     case 'today': {
-      const meds = await load('medications');
-      const appointments = await load('todayAppointments');
+      let meds = await load('medications');
+      let appointments = await load('todayAppointments');
       const notes = await load('todayNotes');
+      let care = await load('careActivities');
+      if (/chua xong|chua hoan thanh/.test(normalize(question))) {
+        care=care.filter(r=>r.trangThai!=='completed');
+        meds=meds.filter(r=>r.trangThai!=='DaUong');
+        appointments=appointments.filter(r=>r.trangThai!=='DaKham');
+      }
       text = 'Việc theo lịch đã lưu trong ngày bạn hỏi:\n' +
         displayed(meds, medication, '• Chưa có lịch thuốc trong ngày này.') + '\n' +
         displayed(appointments, appointment, '• Chưa có lịch khám trong ngày này.') +
         `\nNhật ký đã ghi hôm nay: ${notes.length}${truncated ? ' (danh sách có giới hạn)' : ''} mục.` +
+        '\nHoạt động chăm sóc:\n'+displayed(care,r=>`• ${time(r.thoiGian)} — ${value(r.ten)} (${r.trangThai==='completed'?'đã hoàn thành':r.trangThai==='upcoming'?'sắp tới':'chưa có xác nhận'})`,'• Chưa có hoạt động phù hợp trong ngày này.')+
         '\nĐây là tổng hợp lịch đã lưu, không phải kế hoạch điều trị mới.';
-      actions = ['medications','appointments','notes']; break;
+      actions = ['today','plans','medications','appointments']; break;
     }
+    case 'plans':
+      rows=await load('weeklyCare');
+      text=displayed(rows,r=>`• ${time(r.thoiGian)} — ${value(r.keHoachTen)}: ${value(r.ten)} (${r.trangThai==='completed'?'đã hoàn thành':'chưa có xác nhận'})`,'Chưa có hoạt động chăm sóc trong 7 ngày từ ngày bạn hỏi.');
+      actions=['plans'];break;
+    case 'report':
+      rows=await load('report');
+      text=rows.length ? `Báo cáo chăm sóc ${dateOnly(rows[0].tuNgay)}–${dateOnly(rows[0].denNgay)}, tạo lúc ${time(rows[0].thoiDiemTao)}:\n• Thuốc: ${rows[0].soXacNhanUong}/${rows[0].soLichThuoc} lịch có xác nhận uống.\n• Lịch khám: ${rows[0].soLichKham}; hoạt động: ${rows[0].soHoanThanh}/${rows[0].soHoatDong} đã xác nhận.\n• Sinh hoạt: ${rows[0].soBanGhiSinhHoat} bản ghi; cảnh báo: ${rows[0].soCanhBao}.\nThiếu xác nhận không chứng minh đã bỏ thuốc; báo cáo không đánh giá sức khỏe tổng thể.` : 'Chưa lấy được báo cáo. Hãy tải lại.';
+      actions=['report'];break;
     case 'clarification':
       text = 'Bạn cần mình hỗ trợ việc gì? Bạn có thể nói rõ về lịch thuốc, lịch khám, chỉ số hoặc cách dùng ứng dụng nhé.';
       break;

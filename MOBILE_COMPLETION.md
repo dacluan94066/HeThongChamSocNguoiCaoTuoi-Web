@@ -1,5 +1,188 @@
 # Hoàn thiện mobile và chatbot
 
+## Chốt PDF và kiểm tra máy thật — 11/10/2026
+
+Kết quả trong mục này mới hơn các lần kiểm tra bên dưới. Giữ nguyên các thay đổi có sẵn trên nhánh minh; không reset, stage, commit, merge, push hoặc sửa .env. Không thêm API, migration hay khối chức năng mới.
+
+- Thêm nút **Chia sẻ PDF đã xuất** trên báo cáo Android. PrintManager không trả URI file người dùng lưu, nên luồng dùng Storage Access Framework: xác nhận trong app → chọn PDF đã xuất → xác nhận tên file → bảng chia sẻ Android. Không dựng lại báo cáo, không tự gửi hay chọn người nhận, không xin quyền đọc toàn bộ bộ nhớ hoặc quyền đọc file vĩnh viễn. Người dùng phải kiểm tra file đúng hồ sơ/khoảng ngày; app không tự chứng minh nội dung một PDF do người dùng chọn khớp báo cáo đang xem. Ứng dụng nhận có quyền đọc URI tạm thời do Android quản lý; app không thể thu hồi bản sao nếu người dùng đã chủ động gửi.
+- Native chỉ nhận content URI, kiểm tra đầu file %PDF-, bắt lỗi mở/đọc/mở bảng chia sẻ; Dart hiển thị thông báo dễ hiểu. Hủy chọn file/hủy xác nhận/đóng bảng chia sẻ không báo thành công và không retry. Đổi tài khoản hoặc hồ sơ hủy luồng chọn/chia sẻ đang chờ. File đã lưu thuộc người dùng, không bị xóa khi đăng xuất.
+- Giữ luồng xuất PDF hiện có và xem trước Android. Bắt lỗi ghi đồng bộ vào PrintDocumentAdapter.onWriteFailed; lỗi lưu do hệ thống/file provider được hiển thị trong hộp thoại Android. Không coi việc mở preview là đã tạo file thành công. Chưa gây lỗi hết dung lượng hoặc provider chết trên máy thật.
+- Cơ chế chia sẻ theo [Android Sharesheet](https://developer.android.com/develop/ui/compose/sharing/send) và [Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files). Đóng chooser không chứng minh ứng dụng nhận đã gửi file, nên không hiện thông báo “đã gửi”.
+
+### Kết quả mới
+
+| Tình huống | Kết quả | Môi trường |
+|---|---|---|
+| flutter analyze | Không lỗi/cảnh báo | Phân tích tĩnh |
+| Flutter regression | 90 PASS, 1 opt-in API test bỏ qua; 5 test PDF PASS | Unit/widget, native channel mock |
+| Cài lại 51330c42 | Bản có sẵn cài Success; integration A–D và device test cài được. Lần cài share test sau đó lại INSTALL_FAILED_USER_RESTRICTED; đã dừng cài tiếp | Điện thoại 23129RAA4G, Android 15/API 35; chia sẻ máy thật còn bị chặn |
+| A–D qua API đang phục vụ app | Tạo kế hoạch, hoàn thành công việc, ghi sinh hoạt, bàn giao, báo cáo 7/30 ngày và hồ sơ B khớp API; lần đầu dừng ở assert quyền thông báo chưa cấp | Máy thật + Express/SQL giả lập riêng |
+| Chữ lớn và đổi hồ sơ | Report profileId 1 → 2 trên cùng State, textScaler 2×; không exception/overflow | Máy thật, mô phỏng chữ lớn trong Flutter; không đổi cài đặt chữ của điện thoại |
+| Bàn phím | Ô nhập sinh hoạt mở bàn phím; dumpsys input_method xác nhận mInputShown=true; không exception bố cục; không lưu bản ghi cho bước này | Máy thật |
+| Local notification lúc app mở | Quyền cấp qua hộp thoại hệ thống; getActiveNotifications thấy đúng ID kiểm thử | Máy thật |
+| Local notification lúc app nền | Hẹn công việc TEST ONLY sau 30 giây, đưa app ra Home; sau 90 giây getActiveNotifications thấy đúng ID đã hẹn | Máy thật; schedule inexact, không cam kết đúng từng giây |
+| care_android_device_test.dart | PASS | Máy thật + API giả lập thật, không mock transport/plugin |
+| Emulator cũ Pixel_2 | Mất kết nối, khởi động lại báo không đủ dung lượng ổ C; giữ nguyên AVD cũ | Điều kiện môi trường bị chặn |
+| Emulator chia sẻ mới | Tạo CareShareOnly trên ổ D trong mobile/build/share-avds, Android 11/API 30; chọn PDF qua bộ nhớ trong bằng bàn phím; native xác nhận hiện đúng tên, ChooserActivity mở đúng PDF, Back quay về MainActivity | Luồng native thật + API SQL giả lập; chưa chọn ứng dụng/người nhận để gửi |
+| care_android_share_test.dart, bản cuối | PASS 00:35; chờ native return thật, nút chia sẻ bật lại, không SnackBar/exception hoặc báo gửi thành công | Emulator CareShareOnly, không mock plugin/API; mở rồi hủy Sharesheet, không gửi file |
+| APK cuối entrypoint lib/main.dart | Build debug PASS, apksigner verify PASS, cài Success và mở WelcomeScreen trên emulator | Chưa cài APK cuối này trên máy thật; đã dừng sau USER_RESTRICTED |
+
+### Giới hạn nhắc việc
+
+Đã kiểm tra foreground và background thông thường; chưa kiểm tra nhiều giờ Doze, tiết kiệm pin của Xiaomi, khởi động lại điện thoại hoặc buộc dừng. Nhắc việc là local notification đã hẹn, không phải push. Trên Android 15, buộc dừng hủy pending intents; người dùng phải mở lại app và tải lịch để có cơ hội lập lại nhắc việc. Không tuyên bố luôn hoạt động, không dùng làm kênh cảnh báo khẩn cấp duy nhất. Tham khảo [Android 15: thay đổi stopped state](https://developer.android.com/about/versions/15/behavior-changes-all?hl=en).
+
+### Bằng chứng chia sẻ và phần còn bị chặn
+
+File TEST_ONLY_CARE_REPORT_20261011.pdf lấy từ PDF báo cáo giả lập đã xuất ở lượt trước; 15.480 byte, SHA256 194BCC74417D8EE6F68B1F5E45BF6AAAD21BF4C4F9CCB6FF82316D84422DCDEB giống file trên emulator. Không dùng tài liệu người thật. Ảnh trong mobile/build/care-share-native-confirm.png và care-share-sheet.png chứng minh xác nhận tên file và bảng chia sẻ Android; build/ bị Git bỏ qua. Không đưa nội dung sức khỏe hoặc thông tin đăng nhập vào tài liệu này.
+
+APK mới: mobile/build/app/outputs/flutter-apk/app-care-pdf-share-debug.apk; 220.356.870 byte; SHA256 6B4194C4C915C444FD6F7B07996EB5B61F674DC951F89FF723D4750562B5D1B8. API kiểm thử http://127.0.0.1:5059/api, cần adb reverse khi chạy; không phải cấu hình production. Giữ các APK cũ; không clean/reset để đóng gói lại. Android/Java gặp lỗi đường dẫn Unicode khi verify, đã verify đúng bản cùng hash qua junction ASCII; không sửa nguồn hoặc .env để né lỗi.
+
+Bài share integration cũ đợi 90 giây có thể kết thúc trước khi người thao tác hoàn tất; đã thay bằng chờ nút chia sẻ được mở lại sau native return, timeout 240 lượt đợi và dọn widget cuối bài. Lần chạy cũ gặp SemanticsHandle từ công cụ UIAutomator, lần kế tiếp dùng lifecycle của test binding bị bỏ qua và đã dừng để sửa; không tính hai lần này là PASS. Bản cuối bỏ điều kiện lifecycle đó, dọn widget sau khi kết thúc và PASS; dùng screenshot/dumpsys thay UIAutomator giữa bài. Trong emulator, chạm danh sách DocumentsUI không mở được mục; dùng DPAD/Enter để thao tác, không khẳng định đã kiểm chứng chạm trực tiếp trên máy thật. Hash toàn bộ lib và Kotlin trong bản sao ASCII so với workspace: 0 file khác.
+
+Điện thoại đã cài được một số lần rồi lại báo USER_RESTRICTED khi cài share test, nên không kết luận người dùng chưa bật tùy chọn. Đã dừng cài liên tục. Khi người dùng muốn thử lại ở lượt khác: Cài đặt → Cài đặt bổ sung → Tùy chọn nhà phát triển → kiểm tra **Cài đặt qua USB**, giữ máy mở khóa và xác nhận hộp thoại cài đúng app; **Gỡ lỗi USB** là tùy chọn riêng. Nếu máy hiện thêm **Gỡ lỗi USB (Cài đặt bảo mật)**, kiểm tra mô tả quyền trước khi bật; không tắt Play Protect, MIUI optimization hoặc bỏ qua kiểm soát quản trị. [Xiaomi: mở Developer options](https://www.mi.com/global/support/faq/details/KA-168765/). Nguyên nhân cụ thể của lần chặn lại chưa xác minh; native share trên điện thoại và việc gửi/đọc file trong ứng dụng nhận chưa được kiểm chứng.
+
+### File của lượt này và cách chạy
+
+- mobile/lib/screens/care/care_report_screen.dart; mobile/lib/services/care_report_export_service.dart.
+- mobile/android/app/src/main/kotlin/com/example/elderly_care_app/MainActivity.kt, CareReportPrint.kt, CareReportShare.kt.
+- mobile/test/care_report_export_test.dart; mobile/integration_test/care_android_device_test.dart, care_android_share_test.dart.
+- MOBILE_COMPLETION.md.
+
+Khởi động server/scripts/serve_care_android_test.js với MOBILE_TEST_DATABASE=CareAssistant_Test_1791618532545_240159 như mục hướng dẫn bên dưới; bootstrap thông tin đăng nhập giả lập chỉ tồn tại trong bộ nhớ trên loopback. Chạy mobile/tools/run_android_usb.ps1 -DeviceId 51330c42 -ApiBaseUrl http://127.0.0.1:5059/api -IntegrationTest care_android_device_test.dart. Cấp quyền thông báo qua hộp thoại; khi marker BACKGROUND_REMINDER_SCHEDULED xuất hiện, đưa app về Home. care_android_share_test.dart cần người thao tác chọn PDF TEST ONLY đã xuất, xác nhận mở bảng chia sẻ và hủy; tuyệt đối không chọn người nhận thật.
+
+Kết thúc lượt: 62 file thay đổi gồm các phần cũ được giữ lại, Git index 0 file; scan mẫu khóa/token/private key trên file thay đổi: 0 file khớp, không in giá trị. Không có thay đổi .env. Đóng server/bootstrap kiểm thử và gỡ các reverse 5059/15060 do lượt này tạo; giữ app/dữ liệu điện thoại và emulator để xem lại. Các thông báo kiểm thử được hủy theo đúng ID sau bài device test.
+
+## Tiếp tục phần thiếu — 11/10/2026 (kết quả mới hơn phần A–D bên dưới)
+
+Giữ toàn bộ thay đổi đã có trên nhánh `minh`; không làm lại A–D, không reset/stage/commit/push, không sửa `.env`. Không có migration mới trong lượt này. Mọi thao tác ghi kiểm thử vẫn chỉ dùng SQL Server `CareAssistant_Test_1791618532545_240159`, kiểm tra hai CCCD TEST-ONLY-A/B và đúng ba tài khoản giả lập trước khi ghi.
+
+### Sửa và bổ sung
+
+- Lịch sử sinh hoạt/bàn giao và hộp thoại xác nhận có thể giữ nội dung phiên cũ dù màn hình phía dưới đã xóa dữ liệu. Đóng modal khi đổi tài khoản; sinh hoạt/bàn giao cũng đóng khi đổi hồ sơ. Bản nháp sinh hoạt/bàn giao xóa các ô nội dung khi đổi phiên, vẫn chặn ghi bằng sessionVersion. Kế hoạch thêm tải lại khi profileId đổi, xóa tên/mục tiêu/hoạt động bản nháp khi đổi phiên, đóng dialog con và không nhận hoạt động trả về của phiên cũ.
+- Xuất PDF **đã triển khai trên Android**, thay thế ghi chú “chưa có PDF” bên dưới. Báo cáo đang xem → nút PDF → xác nhận → hộp thoại in của Android → chọn “Save as PDF” → chọn vị trí → Save. Dùng PrintManager/WebView hệ thống, không thêm thư viện/phông tải qua mạng. HTML escape tên hồ sơ; WebView tắt JavaScript/network/file/content access, giới hạn tài liệu 200 KB, thời gian mở 20 giây và một phiên in tại một thời điểm. Không tự lưu/chia sẻ; đổi phiên hủy tác vụ in. Chưa có nút chia sẻ trực tiếp từ app; người dùng có thể chủ động chia sẻ file đã lưu bằng Files của Android. Nút chỉ xuất hiện trên Android; không tuyên bố hỗ trợ iOS/Web.
+- Công cụ Android có sẵn `run_android_usb.ps1` thêm `-ApiBaseUrl` và `-IntegrationTest`, giữ mặc định API 5000 cho các hướng dẫn cũ. Với khối chăm sóc kiểm thử phải chọn API 5059. Không sửa .env để đổi API. PowerShell parser: 0 lỗi. Các lệnh Flutter/adb tương đương đã chạy thật từ bản sao ASCII; chưa chạy toàn bộ script mới với mỗi tổ hợp tham số.
+- Lỗi thiếu schema vẫn trả 503 và mã nội bộ cho chương trình; thông báo người dùng không còn nói tên database/cấu trúc kỹ thuật.
+
+### Bằng chứng thật và mock
+
+| Kiểm tra | Kết quả | Môi trường |
+|---|---|---|
+| Backend regression | 151/151 PASS | Unit/mock |
+| Flutter regression | 88/88 PASS, 1 integration opt-in skip | Unit/widget/mock; không gọi đây là Android thật |
+| Flutter analyze | No issues found | Code hiện tại |
+| Báo cáo 7/30 | PASS đối chiếu SQL, API kế hoạch/sinh hoạt; lỗi pool thật trả 503 | Express + SQL giả lập thật |
+| Dịch vụ Flutter Dio | PASS đăng nhập, ghi/xác nhận kế hoạch, sinh hoạt/chống trùng, bàn giao, báo cáo, sức khỏe hai hồ sơ, chat, phân quyền/đổi phiên | HTTP và SQL thật; secure storage kiểm thử trên host |
+| Giao diện A–D Android | PASS Hôm nay/kế hoạch/sinh hoạt/bàn giao/báo cáo 7/30, A→B, vai trò người cao tuổi và quyền backend | Emulator Pixel_2 / emulator-5554, API thật 5059, keystore/native plugins thật |
+| Thao tác ghi UI Android | PASS tạo kế hoạch, xác nhận đúng một lần, ghi nước 17.25 ml, tạo bàn giao; mỗi thao tác đối chiếu API nguồn | Emulator + SQL giả lập; không mock CareTodayService |
+| Đổi phiên khi đang xác nhận | PASS dialog đang mở đóng, API nguồn vẫn chưa completed; đăng nhập lại mới xác nhận | Emulator + API/keystore thật |
+| Lịch nhắc native | PASS số pending bằng các hoạt động tương lai (giới hạn 200), tải lại giữ cùng tập ID, đổi sang B hủy hết lịch chăm sóc A | Plugin/AlarmManager trên emulator; quyền thông báo cấp cho emulator, không đổi quyền điện thoại thật |
+| PDF native Android | PASS xem trước, lưu PDF 2 trang, tiếng Việt có dấu; trích PDF đối chiếu hồ sơ/khoảng ngày/thuốc/lịch khám/hoạt động/nước/cảnh báo với API lúc xuất | Android PrintSpooler trên emulator, file giả lập |
+| Groq cho báo cáo mới | 4 câu API thật đều khớp nguồn; 3 lượt `grounded_data`, 1 lỗi HTTP 400/tool_use_failed dự phòng đúng | Model/key đang có, không đổi .env/model hoặc dịch vụ trả phí |
+
+Groq chọn công cụ rồi dữ liệu được diễn đạt tại backend: `grounded_data` vẫn mang mode functional theo thiết kế, không ép nhãn AI. Lượt lỗi có AI_TOOL_GENERATION_FAILED, modeReason ai_unavailable và diagnostic bước provider_request; không biến lỗi model thành thiếu dữ liệu. Lệnh kiểm tra `node server/scripts/verify_care_report_sql.js --live-ai` có opt-in rõ ràng; mặc định script vẫn kiểm thử theo chức năng.
+
+PDF/bằng chứng giả lập nằm trong `mobile/build/TEST_ONLY_CARE_REPORT.pdf` và `mobile/build/care-pdf-preview.png` (Git ignore). Không chứa hồ sơ người thật, không đưa artifact vào source control. PDF giữ khoảng 2026-10-05–2026-10-11 và thời điểm tạo; các số đối chiếu là snapshot lúc xuất, không coi bản PDF cũ là dữ liệu mới sau những lượt ghi tiếp theo.
+
+Lượt Android A–D cuối **PASS toàn bộ**, gồm cả ghi UI/đổi phiên/pending reminders (1 integration test, 1 phút 9 giây; build 75.2 giây). Lượt PDF native riêng PASS (1 integration test, 1 phút 38 giây, có 90 giây chờ thao tác hệ thống). Không chỉ chạy widget mock. Chưa xác minh giao alarm đúng giờ/Doze; pending đúng không đồng nghĩa đã nhận thông báo đúng giờ.
+
+Kiểm tra cuối: 59 file thay đổi, không phát hiện mẫu Groq/OpenAI key, JWT hoặc private key; không có .env/log/APK/database/keystore trong danh sách thay đổi; index 0 file. `git diff --check` sạch. Scanner chỉ báo mẫu/tên file, không in giá trị bí mật. Không reset/commit/push.
+
+APK ứng dụng cuối: `mobile/build/app/outputs/flutter-apk/app-care-completion-usb-debug.apk`, **159083838 byte**, SHA256 **9E6AD6382815D7206C115CF43BD3F21876A9857ABBBD24FF4047FB3463B9A4D7**, API `http://127.0.0.1:5059/api` (cần reverse khi chạy). Build debug main 72.1 giây, vòng đóng gói cuối 54.2 giây, gồm arm64-v8a/armeabi-v7a/x86_64; apksigner verify PASS. So sánh hash toàn bộ mobile/lib và hai file Kotlin với nguồn đã build: khớp, 0 file lệch. Loại khoảng trống do đóng gói tăng dần bằng cách tạo lại **chỉ hai file APK scratch**, sau khi xác minh junction build trỏ trong workspace; không flutter clean/git clean, không xóa source hoặc các APK cũ. Đã cài/chạy entrypoint main trên emulator, thấy màn chào “An Tâm Tuổi Già”, giữ riêng ảnh `mobile/build/care-final-app.png`; không dùng kết quả này để nhận là máy thật đã cài. Đã dừng server/bootstrap kiểm thử và gỡ đúng reverse 5059/15060 đã thêm; không đổi kết nối khác.
+
+### Điện thoại thật và phần còn giới hạn
+
+Flutter/adb nhận **23129RAA4G / 51330c42, Android 15/API 35**. Đã thử Flutter run, Flutter integration và adb install chuẩn sau khi người dùng cho phép thử lại. Cả ba lần cài bị `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`. Lượt đọc trạng thái ngay sau cài chỉ thấy launcher, không thấy hộp thoại installer; không kết luận người dùng chưa bật cài qua USB. Restriction `no_install_unknown_sources` tìm thấy thuộc user 999, trong khi user đang dùng là 0, nên không coi đây là nguyên nhân đã chứng minh. Không gỡ app, xóa dữ liệu hoặc tắt bảo vệ Android để vượt lỗi. **Giao diện mới và giao nhận alarm trên điện thoại thật vẫn chưa xác minh.**
+
+### Chạy lại Android với cấu hình tách biệt
+
+```powershell
+# Terminal 1, thư mục gốc. Harness chỉ phục vụ loopback và tự hết hạn 20 phút.
+$env:MOBILE_TEST_DATABASE = 'CareAssistant_Test_1791618532545_240159'
+node server/scripts/serve_care_android_test.js
+
+# Terminal 2, chọn đúng ID trong flutter devices.
+powershell -NoProfile -ExecutionPolicy Bypass -File mobile/tools/run_android_usb.ps1 -DeviceId emulator-5554 -ApiBaseUrl http://127.0.0.1:5059/api -IntegrationTest integration_test/care_android_api_test.dart
+```
+
+Harness chỉ mở credential bootstrap ở 127.0.0.1:5060 sau khi fixture đã được xác minh; mật khẩu ngẫu nhiên ở bộ nhớ, không compile vào APK/file hoặc log. Reverse cổng thiết bị 15060→5060 (cổng 5060 trên điện thoại bị từ chối bind), API 5059→5059. Route bootstrap không được gắn vào app production. Test dùng AuthService/secure storage/Dio thật của Android, xóa phiên khi kết thúc; Ctrl+C dừng harness. Bài `care_android_pdf_test.dart` chờ 90 giây sau mở preview để người kiểm thử chọn lưu/hủy, không tự gửi file. Có thể chọn ID 51330c42 khi máy cho phép cài, chưa ghi PASS máy thật.
+
+Phần integration kiểm tra pending reminders cần quyền thông báo đã được cấp. Lượt này cấp bằng `adb -s emulator-5554 shell pm grant com.example.elderly_care_app android.permission.POST_NOTIFICATIONS` **chỉ trên emulator**; khi chạy máy thật cần người dùng cấp quyền trong app trước, không tự sửa quyền bằng adb. Demo app thường dùng `verify_mobile_flows.js --serve` và mật khẩu riêng do người dùng nhập như hướng dẫn bên dưới; harness mật khẩu ngẫu nhiên dành cho integration. Sau khi dừng server, cần khởi động API giả lập/reverse lại để đăng nhập APK 5059.
+
+File bổ sung/sửa trong lượt tiếp tục: các màn `care_today_screen.dart`, `care_plan_screen.dart`, `care_lifestyle_screen.dart`, `care_handoff_screen.dart`, `care_report_screen.dart`; `care_report_export_service.dart`; Android `MainActivity.kt`, `CareReportPrint.kt`; `care_today_test.dart`, `care_handoff_test.dart`, `care_report_export_test.dart`; hai integration `care_android_api_test.dart`, `care_android_pdf_test.dart`; `run_android_usb.ps1`; `serve_care_android_test.js`, `verify_care_report_sql.js`, `careToday.routes.js` và báo cáo này. Android export tham chiếu [tài liệu PrintManager/WebView chính thức](https://developer.android.com/training/printing/html-docs).
+
+## Chăm sóc hôm nay — hoàn thiện A–D 11/10/2026
+
+Giữ nguyên thay đổi có sẵn trên minh; không có AGENTS.md trong repository hoặc ba thư mục cha đã kiểm tra. Không sửa .env, không chạy migration/database app, không commit/push.
+
+- A: API thật trên SQL Server riêng `CareAssistant_Test_1791618532545_240159`, kiểm tra trước mọi ghi: đúng hai hồ sơ CCCD TEST-ONLY-A/B và đúng ba tài khoản test. Migration `20261010_care_today.sql` chạy hai lần, không mất dữ liệu. PASS lịch lặp 7 ngày, ngày tương lai, hồ sơ khác, xác nhận đồng thời 200/409, đối chiếu tác giả/ngày/thời điểm SQL, rollback transaction sau lỗi FK, hủy phân công và chatbot today/plans. Không cần quyền tạo trigger để thử rollback. Kế hoạch được tạo bất biến; xác nhận mỗi lần là bản ghi riêng có người/thời điểm, không ghi đè cả lịch.
+- B: migration `20261011_care_lifestyle.sql` thêm bảng đồng hành SinhHoatChamSoc và lịch sử vào NhatKyChamSoc, không tạo hai nhật ký. API thật PASS năm loại sinh hoạt, 0 khác null, mã gửi trùng trả cùng ID, sửa đồng thời 200/409, giấc ngủ 23:00–01:00 tính 60 phút cho mỗi ngày, version cũ 409, xóa mềm giữ ba phiên bản, hủy phân công 403. Nhật ký cũ vẫn xem bản ghi sinh hoạt; chỉ sửa qua API sinh hoạt để giữ đơn vị/lịch sử. Người chăm sóc được phân công ghi; chỉ người viết sửa/xóa; người cao tuổi chỉ xem hồ sơ mình.
+- Flutter: analyze không lỗi; 8 test bổ sung A/B (widget/mock, không phải thiết bị): đổi hồ sơ, dữ liệu rỗng, lỗi mạng/thử lại, đổi phiên khi còn truy vấn, xác nhận xóa, giữ bản nháp/mã gửi khi mạng lỗi, màn hình 320x640/chữ 1.6/bàn phím, khung ngày VN của biểu đồ và nhắc việc.
+- Android: flutter devices hiện chỉ thấy Windows/Chrome/Edge. Chưa xác minh khối này trên máy Android thật trong lượt 11/10; kết quả thiết bị 10/10 phía dưới thuộc phiên bản trước.
+
+- C: migration riêng `20261011_care_handoff.sql`, không lưu vào nhật ký người cao tuổi. API thật PASS tạo/chống gửi trùng, tác giả sửa/version cũ 409, tác giả không tự xác nhận đọc, người chăm sóc khác xác nhận thủ công (gửi lại vẫn một bản ghi), sửa sang phiên bản 2 không tự coi người đọc bản 1 đã đọc bản 2, lịch sử hai phiên bản, hủy phân công chặn đọc/ghi/lịch sử 403. Kiểm tra nhật ký/chat người cao tuổi không chứa nội dung bàn giao. Tạm chuyển **tài khoản giả lập B** thành người chăm sóc thứ hai và thêm phân công kiểm thử; `finally` xóa phân công/người chăm sóc tạm, khôi phục vai trò B. Không có người chăm sóc thật tham gia. 5 widget test/mock PASS quyền, xác nhận đọc, phiên thay đổi, lỗi mạng/giữ bản nháp/mã gửi, chữ lớn/màn hình nhỏ.
+
+- D: báo cáo đọc trong app 7/30 ngày, khoảng ngày/hồ sơ/thời điểm tạo; transaction SERIALIZABLE giữ nguồn nhất quán. Thuốc đếm lịch và xác nhận DaUong riêng; lịch khám giữ nhóm trạng thái cả hủy/đổi lịch; hoạt động đếm từng lần lặp; sinh hoạt dùng cùng tổng hợp B; cảnh báo loại companion SOS khỏi CanhBao để mỗi SOS chỉ tính một lần. PASS SQL nguồn + API kế hoạch/sinh hoạt, tổng từng ngày bằng tổng báo cáo, hai hồ sơ, khoảng rỗng năm 2000, ngày tương lai/phạm vi sai 400, trái hồ sơ 403. 3 widget/mock PASS 7/30, chỉ GET, đổi hồ sơ/phiên, lỗi không thành dữ liệu rỗng, chữ lớn. Có màn xem trước; **chưa xuất PDF/chia sẻ** vì pubspec hiện không có pdf/printing/share, không thêm nút chưa có thực thi.
+- Nhắc hoạt động: tải các lần lặp **7 ngày tới**, chỉ lên lịch tương lai/chưa hoàn thành, giới hạn 200; cùng hồ sơ/hàng dữ liệu không tạo thêm thông báo. Bật phải được cấp quyền Android; dùng giờ Việt Nam và alarm cục bộ inexactAllowWhileIdle. Đổi hồ sơ/phiên hủy lịch chăm sóc cũ, tách khỏi nhắc thuốc hiện có. Cần mở/tải lại để đồng bộ thay đổi từ máy khác hoặc mở rộng cửa sổ 7 ngày; không có push/background sync mới, không thay cơ chế SOS. Regression widget/mock kiểm tra lấy lịch tuần đúng hồ sơ khi đổi A→B.
+- Chat: đúng endpoint app `POST /api/care-assistant/chat` đã PASS “hôm nay cần làm gì?”, “việc nào chưa xong?”, “kế hoạch tuần này?”, báo cáo 7/30, không dấu và chuyển từ chủ đề thuốc. Câu chưa xong lọc cả thuốc DaUong, khám DaKham và hoạt động completed. Nút today/plans/report mở đúng hồ sơ; báo cáo 30 ngày giữ đúng bộ lọc. AI chỉ tra cứu, không tạo/hoàn thành/chia sẻ. Kiểm thử SQL này chủ động chạy chế độ theo chức năng, không tuyên bố đã gọi Groq thật cho các chức năng mới; regression Groq/quota/tool calling hiện có vẫn dùng mock.
+- Lỗi nguồn thực tế: đóng riêng pool SQL của API kiểm thử, chat và report đều **503**, không trả “chưa có dữ liệu”. Gửi sinh hoạt đồng thời cùng requestId vẫn chỉ một nhật ký; 0.29 ml được lưu đúng (đã sửa so sánh số thập phân JS). Khi tranh chấp sửa, một yêu cầu lưu, yêu cầu còn lại 409; không tự retry vô hạn.
+- Chạy riêng `verify_care_mobile_dio.js`: **dịch vụ Dio Flutter thật → Express thật → SQL giả lập**, không mock transport hay repository. PASS đăng nhập, kế hoạch/xác nhận từng lần, sinh hoạt 123.5 ml và gửi trùng, bàn giao, báo cáo đối chiếu API, hai hồ sơ sức khỏe, chat report, người cao tuổi bị chặn bàn giao/hồ sơ khác và đổi phiên khi request đang chờ. Secure storage được thay bằng storage kiểm thử (không phải kiểm thử keystore Android). Mật khẩu/token chỉ ở bộ nhớ/biến môi trường tiến trình, không ghi file/log.
+- Sửa thêm lỗi màn lịch sử sức khỏe người chăm sóc gọi API “của tôi”: dùng số đo của hồ sơ đã tải, giữ đơn vị/thời điểm, đóng modal khi đổi phiên, không hiển thị phản hồi muộn. Biểu đồ 7/30 chỉ vẽ điểm đo, huyết áp có giá trị chính/phụ riêng, không nối khoảng trống, không thêm ngưỡng Flutter; chỉ hiển thị cờ backend.
+
+### Cách chạy lại trên database kiểm thử
+
+Từ thư mục gốc, không thay .env:
+
+```powershell
+$env:MOBILE_TEST_DATABASE = 'CareAssistant_Test_1791618532545_240159'
+node server/scripts/verify_care_today_sql.js
+node server/scripts/verify_care_lifestyle_sql.js
+node server/scripts/verify_care_handoff_sql.js
+node server/scripts/verify_care_report_sql.js
+node server/scripts/verify_care_mobile_dio.js
+```
+
+Các script kiểm tra tên DB khác DB trong .env, marker hai hồ sơ và ba tên tài khoản giả lập trước khi ghi. A/B/C chạy migration riêng/idempotent; không chạy file SQL thủ công vào DB app. D không cần schema riêng. Bản ghi giả lập mới được giữ để xem/demo; không seed ghi đè hồ sơ. Script bàn giao khôi phục vai trò/phân công tạm trong finally.
+
+Để chạy demo giữ API cổng 5059: đặt `MOBILE_TEST_PASSWORD` riêng trong phiên PowerShell bằng mật khẩu tự chọn (không ghi vào .env/tài liệu), rồi:
+
+```powershell
+$careTestPassword = Read-Host 'Mật khẩu riêng cho tài khoản giả lập (tối thiểu 8 ký tự)' -AsSecureString
+$env:MOBILE_TEST_PASSWORD = [System.Net.NetworkCredential]::new('', $careTestPassword).Password
+node server/scripts/verify_mobile_flows.js --serve
+```
+
+Lệnh này chỉ dùng DB kiểm thử đã chỉ định, đặt mật khẩu cho ba tài khoản test và phục vụ cùng Express app. Đăng nhập `test.caregiver`, `test.elder.a`, `test.elder.b` bằng mật khẩu đó. Mặc định host 127.0.0.1, không đổi cấu hình server/app thật. Script kiểm tra Dio chạy server cổng ngẫu nhiên và dừng sau kiểm thử, không để server dùng secret ngẫu nhiên chạy nền.
+
+Build không cần điện thoại:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File mobile/tools/build_care_debug.ps1
+```
+
+APK kiểm thử dùng `http://10.0.2.2:5059/api` cho emulator Android. Script chép mã nguồn sang TEMP ASCII, build output junction trên ổ D để tránh lỗi aapt đường dẫn có dấu, không chép .env/keystore. Nếu có điện thoại được phép cài, chọn chính xác ID từ `flutter devices`, chạy `adb -s <ID> reverse tcp:5059 tcp:5059`, build lại với `-ApiBaseUrl http://127.0.0.1:5059/api`, rồi cài/chạy bản kiểm thử hoặc flutter run từ bản sao ASCII. Không dùng APK emulator với localhost điện thoại khi chưa reverse. Không cài bản mới lên máy nào trong lượt 11/10 vì chưa phát hiện thiết bị Android.
+
+### Kịch bản demo A→D
+
+1. Đăng nhập người chăm sóc giả lập → Chăm sóc hôm nay → chọn A. Xem ngày/hồ sơ, tiến độ và dữ liệu trống/lỗi nếu có; mở thuốc/lịch khám theo luồng hiện có (thuốc của hồ sơ khác chỉ đọc theo quyền hiện tại).
+2. Tạo kế hoạch 7 ngày “Sinh hoạt demo”, mục tiêu sinh hoạt, thêm giờ/ngày lặp cho ăn uống/nước/vệ sinh. Quay lại Hôm nay, xác nhận đúng một lần thực hiện; kiểm tra những ngày sau vẫn chưa có xác nhận. Bật/tắt nhắc cục bộ trên Android khi được cấp quyền.
+3. Ghi bữa ăn/nước (ml)/vận động (phút)/tâm trạng; ghi ngủ bắt đầu hôm qua 23:00, kết thúc hôm nay 01:00 nếu đã qua thời điểm đó. Lịch sử từng ngày tính phần giấc ngủ giao ngày; sửa rồi thử version cũ; xóa cần xác nhận và vẫn giữ lịch sử.
+4. Tạo bàn giao với ba phần. Tác giả chỉ sửa, không tự xác nhận đọc. Script C minh họa người chăm sóc giả lập thứ hai đọc phiên bản 1, sửa sang 2 thì cần xác nhận lại, hủy phân công trả 403. Tài khoản người cao tuổi không mở được bàn giao.
+5. Xem báo cáo 7/30, đối chiếu các số với kế hoạch/sinh hoạt/thuốc/lịch khám và script SQL. Hỏi chatbot “hôm nay cần làm gì”, “việc nào chưa xong”, “ke hoach tuan nay”, “bao cao 30 ngay”; mở nút đúng hồ sơ/khoảng ngày.
+6. Đổi sang B: dữ liệu, tiến độ và lịch nhắc đổi theo B. Đăng xuất/đăng nhập tài khoản khác khi đang tải: không nhận dữ liệu/nút của phiên cũ. Tắt API để thử lỗi mạng/thử lại. Không có thao tác SOS tới người thật.
+
+### File thuộc khối này
+
+- Backend: `src/routes/careToday.routes.js`, `routes/index.js`; `services/careToday.service.js`, `carePlan.repository.js`, `careLifestyle.service.js`, `careLifestyle.repository.js`, `careHandoff.repository.js`, `careReport.repository.js`; giữ tương thích nhật ký qua `controllers/nhatKyChamSoc.controller.js`, `services/careNoteMutation.service.js`; tích hợp `careAssistant.context/repository/tools/service/ai.js`; bảo vệ log/lỗi trong `app.js`, `middlewares/error.middleware.js`.
+- Schema: `server/migrations/20261010_care_today.sql`, `20261011_care_lifestyle.sql`, `20261011_care_handoff.sql`. Không sửa schema/API thuốc, khám, sức khỏe cũ.
+- Flutter: `screens/care/care_today_screen.dart`, `care_plan_screen.dart`, `care_lifestyle_screen.dart`, `care_handoff_screen.dart`, `care_report_screen.dart`; `services/care_today_service.dart`, `care_reminder_service.dart`, `local_notification_service.dart`, `health_metric_service.dart`; `widgets/health_trend.dart`; `models/care_assistant.dart`, `screens/assistant/care_assistant_screen.dart`, `screens/health/health_screen.dart`, `main.dart` và entry trong home/caregiver home/caregiver elderly detail hiện có.
+- Kiểm thử/công cụ: năm script `server/scripts/verify_care_*.js`; `server/test/care-today.test.js`, `care-lifestyle.test.js`, `mobile-write-workflows.test.js`; bốn `mobile/test/care_*_test.dart` mới; `mobile/tools/build_care_debug.ps1`. Trong đó script/fixture/API thật được phân biệt rõ với unit/widget mock bên trên.
+
+Kết quả cuối: **151/151 backend**, **81/81 Flutter** (1 test tích hợp được skip có chủ đích khi chạy suite thông thường và đã chạy riêng thành công bằng script Dio/SQL thật), `flutter analyze` **No issues found**. `git diff --check` sạch; kiểm tra 51 file thay đổi không phát hiện mẫu khóa/JWT/private key hoặc file .env/build/database/log trong danh sách thay đổi. Không stage/commit/push.
+
+Build Android debug cuối thành công (build ASCII; vòng cuối 61.1 giây), APK **mobile/build/app/outputs/flutter-apk/app-care-today-test-debug.apk**, **159081250 byte**, SHA256 **D6E7F9B6E02DC08F8EFD9FA4F7D6561743A155C5DCDEA66D741FC3A3CD7CA773**, API emulator **http://10.0.2.2:5059/api**. So sánh hash toàn bộ mobile/lib với bản sao nguồn đã build: **khớp tất cả**, không có file lệch. Không thay các APK debug cũ.
+
+Phần chưa xác minh: giao diện mới trên Android thật, giao nhận alarm/quyền thông báo Android thực tế, Groq thật cho intent mới. **Chưa triển khai PDF/chia sẻ**, chỉ có xem báo cáo trong app, vì chưa có thư viện tương ứng. Kết quả Android/Groq thật 10/10 phía dưới thuộc bản trước.
+
 ## Chatbot hướng dẫn trước khám — bản cập nhật mới nhất 10/10/2026
 
 Nguyên nhân: detectIntent bắt mọi câu chứa “khám” thành appointments; Groq bị ép gọi công cụ. Nếu tool generation lỗi, fallback vẫn tra lịch nên trả “Chưa có lịch khám” cho một câu hỏi hướng dẫn. Đã tách visit_preparation/visit_fasting, trả lời trực tiếp không cần công cụ/lịch cá nhân; thêm hướng dẫn cục bộ an toàn và thông báo dự phòng đúng loại câu hỏi.

@@ -5,7 +5,7 @@ const { fail } = require('../utils/response');
 const errorMiddleware = (err, req, res, next) => {
   // JSON parser/other unexpected errors may embed request content in message/stack.
   // Redact assistant errors before the general logger and response below.
-  if (/^\/api\/care-assistant(?:\/|$)/i.test(req.path)) {
+  if (/^\/api\/(?:care-assistant|care)(?:\/|$)/i.test((req.originalUrl||req.url).split('?')[0])) {
     const tooLarge = err.type === 'entity.too.large';
     const invalidJson = err.type === 'entity.parse.failed';
     return fail(res, tooLarge ? 'Yêu cầu quá lớn.' : invalidJson

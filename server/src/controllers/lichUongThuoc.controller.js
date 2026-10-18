@@ -4,7 +4,7 @@
 //   ThoiGianDuKien (DATETIME2), ThoiGianThucTe, TrangThai, NguoiXacNhanID, GhiChu
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
-const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+const { scopedWhere, ownsElderlyId } = require('../middlewares/mobile-scope.middleware');
 
 const STATUS_MAP = {
   ChuaDenGio: { ma: 'CHUA_DEN_GIO', label: 'Chưa đến giờ' },
@@ -45,6 +45,9 @@ const mapMySchedule = (row) => ({
   thoiGianThucTe: row.thoiGianThucTe,
   trangThai: row.trangThai,
   ghiChu: row.ghiChu,
+  ngayKetThucDon: row.ngayKetThucDon ?? null,
+  ngayBatDauDon: row.ngayBatDauDon ?? null,
+  donViTinh: row.donViTinh ?? null,
 });
 
 const isDateOnly = (value) => {
@@ -96,7 +99,10 @@ const getMine = async (req, res, next) => {
           CONVERT(VARCHAR(19), l.ThoiGianDuKien, 126) AS thoiGianDuKien,
           CONVERT(VARCHAR(19), l.ThoiGianThucTe, 126) AS thoiGianThucTe,
           l.TrangThai AS trangThai,
-          l.GhiChu AS ghiChu
+          l.GhiChu AS ghiChu,
+          CONVERT(VARCHAR(10), don.NgayKetThuc, 126) AS ngayKetThucDon,
+          CONVERT(VARCHAR(10), don.NgayBatDau, 126) AS ngayBatDauDon,
+          dm.DonViTinh AS donViTinh
         FROM LichUongThuoc l
         JOIN DonThuocChiTiet ct ON ct.DonThuocChiTietID=l.DonThuocChiTietID
         JOIN DonThuoc don ON don.DonThuocID=ct.DonThuocID AND don.NguoiCaoTuoiID=l.NguoiCaoTuoiID
@@ -111,29 +117,36 @@ const getMine = async (req, res, next) => {
 };
 
 // PATCH /api/medication-schedule/:id/confirm
-// Body: { trangThai: 'DaUong' | 'BoLo' }
+// Body: { trangThai: 'DaUong' | 'BoLo' | 'TuChoi', ghiChu?: string }
 const confirmMine = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { trangThai } = req.body || {};
+    const { trangThai, ghiChu } = req.body || {};
     if (!Number.isInteger(id) || id <= 0) {
       return fail(res, 'ID lich uong thuoc khong hop le', 'INVALID_ID', 400);
     }
-    if (!['DaUong', 'BoLo'].includes(trangThai)) {
-      return fail(res, 'trangThai chi nhan DaUong hoac BoLo', 'INVALID_STATUS', 400);
+    if (!['DaUong', 'BoLo', 'TuChoi'].includes(trangThai)) {
+      return fail(res, 'trangThai chi nhan DaUong, BoLo hoac TuChoi', 'INVALID_STATUS', 400);
     }
+    const noteText = ghiChu != null && String(ghiChu).trim().length > 0
+      ? String(ghiChu).trim().slice(0, 300)
+      : null;
 
     const pool = await poolPromise;
     const ownership = await pool.request()
       .input('id', sql.Int, id)
-      .query(`SELECT l.LichUongThuocID AS id, nct.UserID AS ownerUserId
+      .query(`SELECT l.LichUongThuocID AS id, nct.UserID AS ownerUserId, l.NguoiCaoTuoiID AS elderlyId
               FROM LichUongThuoc l
               JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID=l.NguoiCaoTuoiID
               WHERE l.LichUongThuocID=@id AND nct.TrangThai IN (N'DangTheoDoi',N'CanChamSocDacBiet')`);
     if (!ownership.recordset.length) {
       return fail(res, 'Khong tim thay lich uong thuoc', 'MEDICATION_SCHEDULE_NOT_FOUND', 404);
     }
-    if (Number(ownership.recordset[0].ownerUserId) !== Number(req.user.userId)) {
+    const record = ownership.recordset[0];
+    const isOwner = Number(record.ownerUserId) === Number(req.user.userId);
+    const isCaregiver = req.user.tenVaiTro === 'NguoiChamSoc' && ownsElderlyId(req, record.elderlyId);
+    const isPrivileged = ['QuanTriVien', 'BacSi'].includes(req.user.tenVaiTro);
+    if (!isOwner && !isCaregiver && !isPrivileged) {
       return fail(res, 'Ban khong duoc phep cap nhat lich uong thuoc cua nguoi khac', 'FORBIDDEN', 403);
     }
 
@@ -141,11 +154,13 @@ const confirmMine = async (req, res, next) => {
       .input('id', sql.Int, id)
       .input('trangThai', sql.NVarChar(20), trangThai)
       .input('nguoiXacNhanId', sql.Int, req.user.userId)
+      .input('ghiChu', sql.NVarChar(300), noteText)
       .query(`
         UPDATE LichUongThuoc
         SET TrangThai=@trangThai,
             ThoiGianThucTe=CASE WHEN @trangThai=N'DaUong' THEN DATEADD(HOUR,7,SYSUTCDATETIME()) ELSE NULL END,
-            NguoiXacNhanID=@nguoiXacNhanId
+            NguoiXacNhanID=@nguoiXacNhanId,
+            GhiChu=COALESCE(@ghiChu, GhiChu)
         WHERE LichUongThuocID=@id;
 
         SELECT l.LichUongThuocID AS id,
@@ -158,9 +173,13 @@ const confirmMine = async (req, res, next) => {
           CONVERT(VARCHAR(19), l.ThoiGianDuKien, 126) AS thoiGianDuKien,
           CONVERT(VARCHAR(19), l.ThoiGianThucTe, 126) AS thoiGianThucTe,
           l.TrangThai AS trangThai,
-          l.GhiChu AS ghiChu
+          l.GhiChu AS ghiChu,
+          CONVERT(VARCHAR(10), don.NgayKetThuc, 126) AS ngayKetThucDon,
+          CONVERT(VARCHAR(10), don.NgayBatDau, 126) AS ngayBatDauDon,
+          dm.DonViTinh AS donViTinh
         FROM LichUongThuoc l
         JOIN DonThuocChiTiet ct ON ct.DonThuocChiTietID=l.DonThuocChiTietID
+        JOIN DonThuoc don ON don.DonThuocID=ct.DonThuocID AND don.NguoiCaoTuoiID=l.NguoiCaoTuoiID
         JOIN DanhMucThuoc dm ON dm.ThuocID=ct.ThuocID
         WHERE l.LichUongThuocID=@id`);
 

@@ -15,14 +15,18 @@ class MedicationScheduleService {
 
   void beginSession() => clearCache();
 
-  Future<List<Map<String, dynamic>>> getTodaySchedule({bool refresh = false}) {
+  Future<List<Map<String, dynamic>>> getTodaySchedule({
+    int? profileId,
+    bool refresh = false,
+  }) {
     final now = DateTime.now();
-    return getScheduleByDateRange(now, now, refresh: refresh);
+    return getScheduleByDateRange(now, now, profileId: profileId, refresh: refresh);
   }
 
   Future<List<Map<String, dynamic>>> getScheduleByDateRange(
     DateTime tuNgay,
     DateTime denNgay, {
+    int? profileId,
     bool refresh = false,
   }) {
     final from = DateTime(tuNgay.year, tuNgay.month, tuNgay.day);
@@ -31,7 +35,7 @@ class MedicationScheduleService {
       throw const ApiException('Ngày bắt đầu không được sau ngày kết thúc.');
     }
 
-    final key = '${_date(from)}|${_date(to)}';
+    final key = '${profileId ?? 'me'}|${_date(from)}|${_date(to)}';
     final version = ApiClient.sessionVersion;
     final generation = _generation;
     if (!refresh &&
@@ -43,7 +47,7 @@ class MedicationScheduleService {
     if (!refresh && existing != null) return existing;
 
     late final Future<List<Map<String, dynamic>>> request;
-    request = _fetch(from, to)
+    request = _fetch(from, to, profileId: profileId)
         .then((items) {
           if (_generation == generation &&
               ApiClient.sessionVersion == version) {
@@ -62,15 +66,20 @@ class MedicationScheduleService {
 
   Future<Map<String, dynamic>> confirmMedication(
     int id,
-    String trangThai,
-  ) async {
-    if (!const {'DaUong', 'BoLo'}.contains(trangThai)) {
+    String trangThai, {
+    String? ghiChu,
+  }) async {
+    if (!const {'DaUong', 'BoLo', 'TuChoi'}.contains(trangThai)) {
       throw const ApiException('Trạng thái uống thuốc không hợp lệ.');
     }
     try {
+      final body = <String, dynamic>{'trangThai': trangThai};
+      if (ghiChu != null && ghiChu.trim().isNotEmpty) {
+        body['ghiChu'] = ghiChu.trim();
+      }
       final response = await ApiClient.instance.dio.patch<Map<String, dynamic>>(
         '/medication-schedule/$id/confirm',
-        data: {'trangThai': trangThai},
+        data: body,
       );
       final data = response.data?['data'];
       if (data is! Map) {
@@ -103,11 +112,15 @@ class MedicationScheduleService {
 
   Future<List<Map<String, dynamic>>> _fetch(
     DateTime tuNgay,
-    DateTime denNgay,
-  ) async {
+    DateTime denNgay, {
+    int? profileId,
+  }) async {
     try {
+      final path = profileId != null
+          ? '/elderly/$profileId/medication-schedule'
+          : '/elderly/me/medication-schedule';
       final response = await ApiClient.instance.dio.get<Map<String, dynamic>>(
-        '/elderly/me/medication-schedule',
+        path,
         queryParameters: {'tuNgay': _date(tuNgay), 'denNgay': _date(denNgay)},
       );
       final data = response.data?['data'];

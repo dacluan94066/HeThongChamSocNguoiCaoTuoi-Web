@@ -1,4 +1,7 @@
 enum AssistantAction {
+  today('Chăm sóc hôm nay'),
+  plans('Kế hoạch chăm sóc'),
+  report('Báo cáo chăm sóc'),
   medications('Lịch uống thuốc'),
   appointments('Lịch khám'),
   health('Chỉ số sức khỏe'),

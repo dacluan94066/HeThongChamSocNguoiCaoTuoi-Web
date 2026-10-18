@@ -117,7 +117,7 @@ async function chat({ question, history = [], profile, user, repository,
     const generalQuestion = context.general;
     const directGuidance = ['visit_preparation','visit_fasting'].includes(intent);
     const directReply = conversation || directGuidance;
-    const knownDataIntent = !generalQuestion && ['medications','appointments','health','caregivers','notifications','today','notes'].includes(intent);
+    const knownDataIntent = !generalQuestion && PERSONAL.includes(intent);
     const availableTools = generalQuestion ? toolSet.tools.filter(t => t.function.name === 'care_general_help') :
       knownDataIntent ? toolSet.tools.filter(t => t.function.name === 'care_' + intent) :
         toolSet.tools.filter(t => t.function.name === 'care_general_help');

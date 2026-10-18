@@ -19,6 +19,7 @@ class HealthMetricService {
   int _metricsInFlightGeneration = -1;
 
   void beginSession() => clearCache();
+  Future<List<Map<String,dynamic>>> getProfileMetrics(int id) => _getList('/elderly/$id/health-metrics');
 
   Future<List<Map<String, dynamic>>> getMetricTypes({bool refresh = false}) {
     final version = ApiClient.sessionVersion;
@@ -115,6 +116,7 @@ class HealthMetricService {
     required double giaTri,
     double? giaTriPhu,
     String? ghiChu,
+    int? profileId,
   }) async {
     final version = ApiClient.sessionVersion;
     final generation = _generation;
@@ -127,8 +129,11 @@ class HealthMetricService {
       if (ghiChu != null && ghiChu.trim().isNotEmpty) {
         body['ghiChu'] = ghiChu.trim();
       }
+      final path = profileId != null
+          ? '/elderly/$profileId/health-metrics'
+          : '/elderly/me/health-metrics';
       final response = await ApiClient.instance.dio.post<Map<String, dynamic>>(
-        '/elderly/me/health-metrics',
+        path,
         data: body,
       );
       final data = _extractMap(response);
@@ -166,12 +171,14 @@ class HealthMetricService {
     String path, {
     Map<String, dynamic>? queryParameters,
   }) async {
+    final version = ApiClient.sessionVersion;
     try {
       final response = await ApiClient.instance.dio.get<Map<String, dynamic>>(
         path,
         queryParameters: queryParameters,
       );
       final data = response.data?['data'];
+      if (version != ApiClient.sessionVersion) throw const ApiException('Phiên đã thay đổi. Hãy tải lại.');
       if (data is! List) {
         throw ApiException(
           response.data?['message']?.toString() ??

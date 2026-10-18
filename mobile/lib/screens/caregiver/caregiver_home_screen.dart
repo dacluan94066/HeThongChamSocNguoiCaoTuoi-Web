@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../care/care_today_screen.dart';
 import '../assistant/care_assistant_screen.dart';
 
 import '../../services/api_client.dart';
@@ -168,6 +169,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen>
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
                 children: [
+                  const CareTodayEntry(),
                   for (final emergency in emergencies)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),

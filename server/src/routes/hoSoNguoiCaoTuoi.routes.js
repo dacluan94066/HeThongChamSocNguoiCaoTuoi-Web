@@ -28,6 +28,12 @@ router.get('/me/medication-schedule', medicationScheduleController.getMine);
 for(const [suffix,section] of [['medication-schedule','medications'],['health-metrics','health'],['appointments/upcoming','appointments'],['alerts','alerts']]){
  router.get('/:id/'+suffix,scope.guardResource('HoSoNguoiCaoTuoi','NguoiCaoTuoiID'),mobileProfile.read(section));
 }
+router.post(
+  '/:id/health-metrics',
+  scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
+  scope.caregiverOnlyWrite,
+  healthMetricController.createForElderly
+);
 router.get(
   '/:id/prescriptions',
   scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),

@@ -4,6 +4,10 @@ import '../../services/api_client.dart';
 import '../../services/care_assistant_controller.dart';
 import '../../widgets/assistant_message_bubble.dart';
 import '../notifications/notification_screen.dart';
+import '../care/care_today_screen.dart';
+import '../care/care_plan_screen.dart';
+import '../care/care_report_screen.dart';
+import '../health/health_screen.dart';
 import '../caregiver/caregiver_screen.dart';
 import 'care_assistant_records_screen.dart';
 
@@ -127,7 +131,7 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
     if (accepted == true && mounted) _chat.clearConversation();
   }
 
-  Future<void> _navigate(AssistantAction action) async {
+  Future<void> _navigate(AssistantAction action, {AssistantReply? reply}) async {
     if (_chat.sessionExpired || _chat.busy) return;
     final version = ApiClient.sessionVersion;
     final profile = _chat.selected;
@@ -137,6 +141,25 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
     }
     final Widget screen;
     switch (action) {
+      case AssistantAction.report:
+        if (profile == null) return;
+        final row = reply?.rows.firstOrNull;
+        final from = DateTime.tryParse(row?['tuNgay']?.toString() ?? '');
+        final to = DateTime.tryParse(row?['denNgay']?.toString() ?? '');
+        final days = from != null && to != null ? to.difference(from).inDays + 1 : 7;
+        screen = CareReportScreen(profileId: profile.id, initialDays: days);
+        break;
+      case AssistantAction.health:
+        if (profile == null) return;
+        screen = HealthScreen(profileId: _chat.caregiver ? profile.id : null);
+        break;
+      case AssistantAction.today:
+        screen = CareTodayScreen(profileId: profile?.id);
+        break;
+      case AssistantAction.plans:
+        if (profile == null) return;
+        screen = CarePlanScreen(profileId: profile.id, canWrite: _chat.caregiver);
+        break;
       case AssistantAction.notifications:
         screen = const NotificationScreen();
         break;
@@ -342,7 +365,7 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
                             ..._chat.messages.map(
                               (m) => AssistantMessageBubble(
                                 message: m,
-                                onAction: _navigate,
+                                onAction: (action) => _navigate(action, reply: m.reply),
                                 onRetry: () => _chat.send(m.retryQuestion!),
                                 enabled: !_chat.busy && !_chat.sessionExpired,
                               ),

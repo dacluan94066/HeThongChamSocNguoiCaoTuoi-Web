@@ -7,7 +7,7 @@ const statements={
  allAppointments:`SELECT LichKhamID AS id,NguoiCaoTuoiID AS nguoiCaoTuoiId,TenBenhVien AS tenBenhVien,BacSiPhuTrach AS bacSiPhuTrach,ChuyenKhoa AS chuyenKhoa,
  CONVERT(VARCHAR(19),ThoiGianKham,126) AS thoiGianKham,TrangThai AS trangThai,LyDoKham AS lyDoKham,KetQuaKham AS ketQuaKham FROM LichKhamBenh WHERE NguoiCaoTuoiID=@id ORDER BY ThoiGianKham,LichKhamID`,
  medications:`SELECT l.LichUongThuocID AS id,l.NguoiCaoTuoiID AS nguoiCaoTuoiId,dm.TenThuoc AS tenThuoc,ct.LieuDung AS lieuDung,
- CONVERT(VARCHAR(19),l.ThoiGianDuKien,126) AS thoiGianDuKien,CONVERT(VARCHAR(19),l.ThoiGianThucTe,126) AS thoiGianThucTe,l.TrangThai AS trangThai
+ CONVERT(VARCHAR(19),l.ThoiGianDuKien,126) AS thoiGianDuKien,CONVERT(VARCHAR(19),l.ThoiGianThucTe,126) AS thoiGianThucTe,l.TrangThai AS trangThai,l.GhiChu AS ghiChu,ct.GhiChu AS cachDung,CONVERT(VARCHAR(10),d.NgayKetThuc,126) AS ngayKetThucDon,CONVERT(VARCHAR(10),d.NgayBatDau,126) AS ngayBatDauDon,dm.DonViTinh AS donViTinh
  FROM LichUongThuoc l JOIN DonThuocChiTiet ct ON ct.DonThuocChiTietID=l.DonThuocChiTietID
  JOIN DonThuoc d ON d.DonThuocID=ct.DonThuocID AND d.NguoiCaoTuoiID=l.NguoiCaoTuoiID
  JOIN DanhMucThuoc dm ON dm.ThuocID=ct.ThuocID WHERE l.NguoiCaoTuoiID=@id AND l.ThoiGianDuKien>=@from AND l.ThoiGianDuKien<DATEADD(DAY,1,@to) ORDER BY l.ThoiGianDuKien,l.LichUongThuocID`,

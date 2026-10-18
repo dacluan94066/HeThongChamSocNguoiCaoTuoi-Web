@@ -1,9 +1,11 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-function fixture({role='NguoiChamSoc',allowed=true,assigned=true,author=3,failUpdate=false}={}){
+function fixture({role='NguoiChamSoc',allowed=true,assigned=true,author=3,failUpdate=false,typed=false}={}){
  const trace={begun:0,committed:0,rolledBack:0,updates:0};
  const sql={Int:'int',NVarChar:()=>'',ISOLATION_LEVEL:{SERIALIZABLE:'serializable'},
   Transaction:class{async begin(){trace.begun++;}async commit(){trace.committed++;}async rollback(){trace.rolledBack++;}},
   Request:class{input(){return this;}async query(query){
+   if(query.includes("OBJECT_ID('dbo.SinhHoatChamSoc'"))return {recordset:[{id:typed?1:null}]};
+   if(query.includes('FROM SinhHoatChamSoc'))return {recordset:typed?[{NhatKyID:1}]:[]};
    if(query.includes('FROM NhatKyChamSoc'))return {recordset:[{elderlyId:1,status:'HOAN_THANH',author,version:'F'.repeat(64)}]};
    if(query.includes('SELECT v.TenVaiTro'))return {recordset:[{role}]};
    if(query.includes('SELECT p.ChoPhepSua'))return {recordset:[{allowed}]};
@@ -52,4 +54,9 @@ test('Soft deletion commits without deleting SQL rows',async()=>{
  const {notes,user,trace}=fixture();
  assert.equal((await notes.mutate({user,id:1,version:'F'.repeat(64),remove:true})).deleted,true);
  assert.equal(trace.updates,1);assert.equal(trace.committed,1);
+});
+test('Legacy journal mutations cannot desynchronize typed lifestyle quantities/history',async()=>{
+ const {notes,user,trace}=fixture({typed:true});
+ await assert.rejects(notes.mutate({user,id:1,version:'F'.repeat(64),title:'TEST',content:'TEST'}),e=>e.code==='LIFESTYLE_RECORD'&&e.status===409);
+ assert.equal(trace.updates,0);assert.equal(trace.rolledBack,1);
 });

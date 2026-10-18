@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'care_notes_screen.dart';
+import '../care/care_today_screen.dart';
+import '../health/health_screen.dart';
+import '../medication/medication_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/api_client.dart';
@@ -434,6 +437,7 @@ class _CaregiverElderlyDetailScreenState
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(14, 8, 14, 30),
                 children: [
+                  CareTodayEntry(profileId: _elderlyId),
                   if (_activeSos != null)
                     _EmergencyCard(
                       content: _text(
@@ -476,6 +480,20 @@ class _CaregiverElderlyDetailScreenState
                   _Section(
                     title: 'Lịch uống thuốc hôm nay',
                     icon: Icons.medication_outlined,
+                    trailing: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MedicationScreen(profileId: _elderlyId),
+                        ),
+                      ),
+                      icon: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                      label: const Text('Xem tất cả'),
+                    ),
                     child: _medications.isEmpty
                         ? const _EmptyLine(
                             text: 'Hôm nay không có lịch uống thuốc.',
@@ -510,6 +528,20 @@ class _CaregiverElderlyDetailScreenState
                   _Section(
                     title: 'Chỉ số sức khỏe gần nhất',
                     icon: Icons.monitor_heart_outlined,
+                    trailing: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => HealthScreen(profileId: _elderlyId),
+                        ),
+                      ),
+                      icon: const Icon(Icons.show_chart_rounded, size: 16),
+                      label: const Text('Biểu đồ & Ghi'),
+                    ),
                     child: _latestMetrics.isEmpty
                         ? const _EmptyLine(text: 'Chưa có chỉ số sức khỏe.')
                         : Column(
@@ -677,11 +709,13 @@ class _Section extends StatelessWidget {
     required this.title,
     required this.icon,
     required this.child,
+    this.trailing,
   });
 
   final String title;
   final IconData icon;
   final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -706,6 +740,7 @@ class _Section extends StatelessWidget {
                   ),
                 ),
               ),
+              ?trailing,
             ],
           ),
           const Divider(height: 24),

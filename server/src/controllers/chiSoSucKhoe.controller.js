@@ -163,6 +163,98 @@ const getMine = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const recordHealthMetric = async ({ pool, elderlyId, userId, typeId, primaryValue, secondaryValue, note }) => {
+  const typeResult = await pool.request()
+    .input('typeId', sql.Int, typeId)
+    .query(`
+      SELECT LoaiChiSoID, TenChiSo, DonVi, GiaTriMin, GiaTriMax,
+        GiaTriMin2, GiaTriMax2
+      FROM LoaiChiSoSucKhoe
+      WHERE LoaiChiSoID = @typeId
+    `);
+  if (!typeResult.recordset.length) {
+    return { error: 'METRIC_TYPE_NOT_FOUND', message: 'Khong tim thay loai chi so', status: 404 };
+  }
+
+  const metricType = typeResult.recordset[0];
+  if ((metricType.GiaTriMin2 != null || metricType.GiaTriMax2 != null) && secondaryValue == null) {
+    return { error: 'SECONDARY_VALUE_REQUIRED', message: 'Loai chi so nay yeu cau giaTriPhu', status: 400 };
+  }
+  const assessment = evaluateMetric({
+    tenChiSo: metricType.TenChiSo,
+    giaTri: primaryValue,
+    giaTriPhu: secondaryValue,
+    min: metricType.GiaTriMin,
+    max: metricType.GiaTriMax,
+    min2: metricType.GiaTriMin2,
+    max2: metricType.GiaTriMax2,
+    manuallyAbnormal: false,
+  });
+
+  const result = await pool.request()
+    .input('elderlyId', sql.Int, elderlyId)
+    .input('typeId', sql.Int, typeId)
+    .input('primaryValue', sql.Decimal(10, 2), primaryValue)
+    .input('secondaryValue', sql.Decimal(10, 2), secondaryValue)
+    .input('measuredBy', sql.Int, userId)
+    .input('isAbnormal', sql.Bit, assessment.abnormal ? 1 : 0)
+    .input('note', sql.NVarChar(300), note || null)
+    .input('alertContent', sql.NVarChar(500), assessment.description)
+    .input('alertLevel', sql.NVarChar(20), assessment.level)
+    .query(`
+      SET XACT_ABORT ON;
+      BEGIN TRY
+        BEGIN TRANSACTION;
+        DECLARE @metricId INT;
+        DECLARE @alertId INT = NULL;
+
+        INSERT INTO ChiSoSucKhoe
+          (NguoiCaoTuoiID, LoaiChiSoID, GiaTri, GiaTriPhu,
+           ThoiGianDo, NguoiDoID, LaBatThuong, GhiChu)
+        VALUES
+          (@elderlyId, @typeId, @primaryValue, @secondaryValue,
+            DATEADD(HOUR,7,SYSUTCDATETIME()), @measuredBy, @isAbnormal, @note);
+        SET @metricId = SCOPE_IDENTITY();
+
+        IF @isAbnormal = 1
+        BEGIN
+          INSERT INTO CanhBao
+            (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID)
+          VALUES
+            (@elderlyId, N'ChiSoBatThuong', @alertContent, @alertLevel,
+             N'ChiSoSucKhoe', @metricId);
+          SET @alertId = SCOPE_IDENTITY();
+        END;
+
+        COMMIT TRANSACTION;
+
+        SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
+          c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo,
+          l.DonVi AS donVi, c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
+          c.ThoiGianDo AS thoiGianDo, c.LaBatThuong AS laBatThuong,
+          c.GhiChu AS ghiChu, @alertId AS alertId
+        FROM ChiSoSucKhoe c
+        JOIN LoaiChiSoSucKhoe l ON l.LoaiChiSoID = c.LoaiChiSoID
+        WHERE c.ChiSoID = @metricId;
+      END TRY
+      BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+      END CATCH
+    `);
+
+  const row = result.recordset[0];
+  return {
+    data: {
+      ...mapMobileMetric(row),
+      alertCreated: row.alertId != null,
+      alertId: row.alertId,
+      mucDoCanhBao: assessment.level,
+    },
+    abnormal: assessment.abnormal,
+  };
+};
+
 // POST /api/elderly/me/health-metrics
 const createMine = async (req, res, next) => {
   try {
@@ -191,92 +283,66 @@ const createMine = async (req, res, next) => {
       return fail(res, 'Tai khoan chua co ho so nguoi cao tuoi lien ket', 'ELDERLY_PROFILE_NOT_FOUND', 404);
     }
 
-    const typeResult = await pool.request()
-      .input('typeId', sql.Int, typeId)
-      .query(`
-        SELECT LoaiChiSoID, TenChiSo, DonVi, GiaTriMin, GiaTriMax,
-          GiaTriMin2, GiaTriMax2
-        FROM LoaiChiSoSucKhoe
-        WHERE LoaiChiSoID = @typeId
-      `);
-    if (!typeResult.recordset.length) {
-      return fail(res, 'Khong tim thay loai chi so', 'METRIC_TYPE_NOT_FOUND', 404);
-    }
-
-    const metricType = typeResult.recordset[0];
-    if ((metricType.GiaTriMin2 != null || metricType.GiaTriMax2 != null) && secondaryValue == null) {
-      return fail(res, 'Loai chi so nay yeu cau giaTriPhu', 'SECONDARY_VALUE_REQUIRED', 400);
-    }
-    const assessment = evaluateMetric({
-      tenChiSo: metricType.TenChiSo,
-      giaTri: primaryValue,
-      giaTriPhu: secondaryValue,
-      min: metricType.GiaTriMin,
-      max: metricType.GiaTriMax,
-      min2: metricType.GiaTriMin2,
-      max2: metricType.GiaTriMax2,
-      manuallyAbnormal: false,
+    const outcome = await recordHealthMetric({
+      pool,
+      elderlyId,
+      userId: req.user.userId,
+      typeId,
+      primaryValue,
+      secondaryValue,
+      note,
     });
+    if (outcome.error) {
+      return fail(res, outcome.message, outcome.error, outcome.status);
+    }
 
-    const result = await pool.request()
-      .input('elderlyId', sql.Int, elderlyId)
-      .input('typeId', sql.Int, typeId)
-      .input('primaryValue', sql.Decimal(10, 2), primaryValue)
-      .input('secondaryValue', sql.Decimal(10, 2), secondaryValue)
-      .input('measuredBy', sql.Int, req.user.userId)
-      .input('isAbnormal', sql.Bit, assessment.abnormal ? 1 : 0)
-      .input('note', sql.NVarChar(300), note || null)
-      .input('alertContent', sql.NVarChar(500), assessment.description)
-      .input('alertLevel', sql.NVarChar(20), assessment.level)
-      .query(`
-        SET XACT_ABORT ON;
-        BEGIN TRY
-          BEGIN TRANSACTION;
-          DECLARE @metricId INT;
-          DECLARE @alertId INT = NULL;
+    return ok(res, outcome.data, outcome.abnormal
+      ? 'Da ghi nhan chi so bat thuong va tao canh bao'
+      : 'Da ghi nhan chi so suc khoe', 201);
+  } catch (err) { next(err); }
+};
 
-          INSERT INTO ChiSoSucKhoe
-            (NguoiCaoTuoiID, LoaiChiSoID, GiaTri, GiaTriPhu,
-             ThoiGianDo, NguoiDoID, LaBatThuong, GhiChu)
-          VALUES
-            (@elderlyId, @typeId, @primaryValue, @secondaryValue,
-              DATEADD(HOUR,7,SYSUTCDATETIME()), @measuredBy, @isAbnormal, @note);
-          SET @metricId = SCOPE_IDENTITY();
+// POST /api/elderly/:id/health-metrics
+const createForElderly = async (req, res, next) => {
+  try {
+    const elderlyId = Number(req.params.id);
+    const typeId = Number(req.body.loaiChiSoId);
+    const primaryValue = Number(req.body.giaTri);
+    const secondaryRaw = req.body.giaTriPhu;
+    const secondaryValue = secondaryRaw == null || secondaryRaw === '' ? null : Number(secondaryRaw);
+    const note = req.body.ghiChu == null ? null : String(req.body.ghiChu).trim();
 
-          IF @isAbnormal = 1
-          BEGIN
-            INSERT INTO CanhBao
-              (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID)
-            VALUES
-              (@elderlyId, N'ChiSoBatThuong', @alertContent, @alertLevel,
-               N'ChiSoSucKhoe', @metricId);
-            SET @alertId = SCOPE_IDENTITY();
-          END;
+    if (!Number.isInteger(elderlyId) || elderlyId < 1) {
+      return fail(res, 'ID ho so nguoi cao tuoi khong hop le', 'INVALID_ID', 400);
+    }
+    if (!Number.isInteger(typeId) || typeId < 1) {
+      return fail(res, 'loaiChiSoId khong hop le', 'INVALID_TYPE_ID', 400);
+    }
+    if (!Number.isFinite(primaryValue)) {
+      return fail(res, 'giaTri phai la mot so hop le', 'INVALID_VALUE', 400);
+    }
+    if (secondaryValue != null && !Number.isFinite(secondaryValue)) {
+      return fail(res, 'giaTriPhu phai la mot so hop le', 'INVALID_SECONDARY_VALUE', 400);
+    }
+    if (note && note.length > 300) {
+      return fail(res, 'ghiChu khong duoc vuot qua 300 ky tu', 'NOTE_TOO_LONG', 400);
+    }
 
-          COMMIT TRANSACTION;
+    const pool = await poolPromise;
+    const outcome = await recordHealthMetric({
+      pool,
+      elderlyId,
+      userId: req.user.userId,
+      typeId,
+      primaryValue,
+      secondaryValue,
+      note,
+    });
+    if (outcome.error) {
+      return fail(res, outcome.message, outcome.error, outcome.status);
+    }
 
-          SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
-            c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo,
-            l.DonVi AS donVi, c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
-            c.ThoiGianDo AS thoiGianDo, c.LaBatThuong AS laBatThuong,
-            c.GhiChu AS ghiChu, @alertId AS alertId
-          FROM ChiSoSucKhoe c
-          JOIN LoaiChiSoSucKhoe l ON l.LoaiChiSoID = c.LoaiChiSoID
-          WHERE c.ChiSoID = @metricId;
-        END TRY
-        BEGIN CATCH
-          IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-          THROW;
-        END CATCH
-      `);
-
-    const row = result.recordset[0];
-    return ok(res, {
-      ...mapMobileMetric(row),
-      alertCreated: row.alertId != null,
-      alertId: row.alertId,
-      mucDoCanhBao: assessment.level,
-    }, assessment.abnormal
+    return ok(res, outcome.data, outcome.abnormal
       ? 'Da ghi nhan chi so bat thuong va tao canh bao'
       : 'Da ghi nhan chi so suc khoe', 201);
   } catch (err) { next(err); }
@@ -405,4 +471,4 @@ const create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getMetricTypes, getMine, createMine, getAll, create };
+module.exports = { getMetricTypes, getMine, createMine, createForElderly, getAll, create };

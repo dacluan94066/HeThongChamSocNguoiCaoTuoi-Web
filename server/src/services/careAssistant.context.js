@@ -4,7 +4,7 @@ const normalize = text => String(text || '').normalize('NFD').replace(/[\u0300-\
   .replace(/\btui\b/g, 'toi')
   .replace(/\b(?:thuoccs?|thouc|thuooc)\b/g, 'thuoc').replace(/\bkhma\b/g, 'kham')
   .replace(/\bhuyet app\b/g, 'huyet ap').replace(/\bkham benh\b/g, 'kham');
-const PERSONAL = ['medications', 'appointments', 'health', 'caregivers', 'notifications', 'today', 'notes'];
+const PERSONAL = ['medications', 'appointments', 'health', 'caregivers', 'notifications', 'today', 'notes', 'plans', 'report'];
 function isCapabilities(question) {
   const q=normalize(question);
   return /^(?:ban|tro ly)(?: co the)? (?:giup|ho tro)(?: cho)?(?: toi| minh)?(?: duoc)? (?:gi|nhung gi|viec gi|nhung viec gi|nhu the nao)$/.test(q) ||
@@ -19,7 +19,9 @@ function detectIntent(question) {
   if (/nhin an|nhin uong/.test(q)) return 'visit_fasting';
   if (/(chuan bi|mang theo|can mang|giay to|bhyt).*(kham|xet nghiem)|(kham|xet nghiem).*(chuan bi|mang theo|can mang|giay to|bhyt)|(truoc|khi).*kham.*(chuan bi|mang|can gi)/.test(q)) return 'visit_preparation';
   if (/nhat ky/.test(q)) return 'notes';
-  if (/ke hoach|viec gi|viec can|can lam|hom nay lam|cong viec/.test(q)) return 'today';
+  if (/bao cao|tong ket|tong hop.*(?:7|30|tuan|thang)|nhin lai.*(?:tuan|thang)/.test(q)) return 'report';
+  if (/ke hoach.*tuan|tuan.*ke hoach/.test(q)) return 'plans';
+  if (/ke hoach|viec gi|viec can|can lam|hom nay lam|cong viec|viec nao|chua xong/.test(q)) return 'today';
   if (/thong bao|chua doc/.test(q)) return 'notifications';
   if (/\bkham\b|cuoc hen|hen bac si|hen benh vien/.test(q)) return 'appointments';
   if (/chi so|suc khoe|huyet ap|nhip tim|duong huyet|spo2|nhiet do|can nang/.test(q)) return 'health';
@@ -71,6 +73,7 @@ function resolveQuestion(question, history = [], sessionContext = null) {
     /\bmai\b/.test(normalize(anchor)) ? 1 : /hom qua/.test(normalize(anchor)) ? -1 : 0;
   const explicitDay = Boolean(targetDate) || /\bmai\b|ngay kia|ngay mot|hom qua|hom nay|toi nay|sang nay|chieu nay/.test(combined);
   return { question, intent, anchor, reference, general: isGeneral(question), options: {
+    reportDays: /30 ngay|ba muoi ngay|thang/.test(q) ? 30 : 7,
     dayOffset: sameContext && !explicitDay ? sameContext.dayOffset || 0 : dayOffset,
     explicitDay: explicitDay || Boolean(sameContext?.targetDate),
     targetDate: validDate ? targetDate || (sameContext && !explicitDay ? sameContext.targetDate : null) : null, invalidDate: !validDate,

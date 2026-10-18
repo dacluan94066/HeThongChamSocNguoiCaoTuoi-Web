@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'services/local_notification_service.dart';
+import 'services/care_reminder_service.dart';
 import 'services/auth_storage.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
@@ -11,6 +12,7 @@ import 'screens/caregiver/caregiver_home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  CareReminderService.initialize();
 
   await AuthStorage.clearLegacyPlainTextPassword();
   await LocalNotificationService.initialize();

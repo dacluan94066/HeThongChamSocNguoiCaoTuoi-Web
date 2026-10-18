@@ -39,5 +39,6 @@ router.use('/permissions',           permissionRoutes);
 router.use('/emergency-alerts',      emergencyAlertRoutes);
 router.use('/notifications',         notificationRoutes);
 router.use('/care-assistant',        careAssistantRoutes);
+router.use('/care', require('./careToday.routes'));
 
 module.exports = router;

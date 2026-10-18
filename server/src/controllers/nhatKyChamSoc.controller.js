@@ -22,7 +22,8 @@ const mapNote = (row,req) => ({
   trangThai:        'HoanThanh',
   trangThaiLabel:   'Hoàn thành',
   version: row.version,
-  canEdit: req.user.tenVaiTro==='QuanTriVien'||(req.user.tenVaiTro==='NguoiChamSoc'&&row.authorUserId===req.user.userId),
+  canEdit: !row.isLifestyle&&(req.user.tenVaiTro==='QuanTriVien'||(req.user.tenVaiTro==='NguoiChamSoc'&&row.authorUserId===req.user.userId)),
+  isLifestyle: Boolean(row.isLifestyle),
 });
 
 // GET /api/care-notes?nguoiCaoTuoiId=&ngay=
@@ -35,13 +36,15 @@ const getAll = async (req, res, next) => {
     if (isMobileRole(req) && nguoiCaoTuoiId != null && targetElderlyId(req, Number(nguoiCaoTuoiId)) == null)
       return fail(res, 'Khong co quyen doc nhat ky cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
     const pool = await poolPromise;
+    const typedSchema=(await pool.request().query("SELECT OBJECT_ID('dbo.SinhHoatChamSoc','U') AS id")).recordset[0].id;
 
     let query = `
       SELECT n.NhatKyID AS id, n.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         nct.HoTen AS nguoiCaoTuoiTen, n.NguoiChamSocID AS nguoiChamSocId,
         nd.HoTen AS nguoiChamSocTen, CONVERT(VARCHAR(19),n.NgayGhi,126) AS ngayGhi,
         n.HoatDong AS hoatDong, n.MoTaChiTiet AS moTaChiTiet, ncs.UserID AS authorUserId,
-        ${versionSql('n')} AS version
+        ${versionSql('n')} AS version,
+        ${typedSchema?"CASE WHEN EXISTS(SELECT 1 FROM SinhHoatChamSoc s WHERE s.NhatKyID=n.NhatKyID) THEN 1 ELSE 0 END":"0"} AS isLifestyle
       FROM NhatKyChamSoc n
       JOIN HoSoNguoiCaoTuoi nct ON n.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
       LEFT JOIN NguoiChamSoc ncs ON n.NguoiChamSocID = ncs.NguoiChamSocID

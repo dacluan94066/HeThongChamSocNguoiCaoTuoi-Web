@@ -42,7 +42,7 @@ function createRepository(pool, sql, deadline = Date.now() + 30000) {
       AND l.ThoiGianDuKien >= @targetDay
       AND l.ThoiGianDuKien < DATEADD(DAY,1,@targetDay)
       ORDER BY l.ThoiGianDuKien,l.LichUongThuocID`,
-    appointments: appointments(false), todayAppointments: appointments(true),
+    appointments: appointments(false), todayAppointments: appointments(true).replace("TrangThai=N'ChuaDen'", "TrangThai IN (N'ChuaDen',N'DaKham')"),
     health: `WITH latest AS (
       SELECT c.ChiSoID AS id,l.TenChiSo AS tenChiSo,l.DonVi AS donVi,c.GiaTri AS giaTri,c.GiaTriPhu AS giaTriPhu,
       CONVERT(VARCHAR(19),c.ThoiGianDo,126) AS thoiGianDo,c.LaBatThuong AS laBatThuong,
@@ -60,6 +60,22 @@ function createRepository(pool, sql, deadline = Date.now() + 30000) {
   };
   return {
     read: async (section, elderlyId, userId, options) => {
+      if(section==='report'){
+        const actor=(await pool.request().input('uid',sql.Int,userId).query('SELECT n.UserID AS userId,v.TenVaiTro AS tenVaiTro FROM NguoiDung n JOIN VaiTro v ON v.VaiTroID=n.VaiTroID WHERE n.UserID=@uid')).recordset[0];
+        if(!actor)throw new Error('Account unavailable');
+        const report=await require('./careReport.repository').read(actor,elderlyId,options?.reportDays||7);
+        return {rows:[{tuNgay:report.from,denNgay:report.to,thoiDiemTao:report.generatedAt,soLichThuoc:report.medication.scheduled,soXacNhanUong:report.medication.confirmed,soLichKham:report.appointments.total,soHoatDong:report.activities.scheduled,soHoanThanh:report.activities.completed,soBanGhiSinhHoat:report.lifestyle.records,luongNuocMl:report.lifestyle.totals.waterMl,soCanhBao:report.alerts.total}],truncated:false};
+      }
+      if (section === 'careActivities' || section === 'weeklyCare') {
+        const {vietnamNow}=require('./careAssistant.context');
+        const {addDays}=require('./careToday.service');
+        const local=vietnamNow(options?.now).slice(0,10);
+        const start=options?.targetDate || addDays(local,options?.dayOffset||0);
+        const actor=(await pool.request().input('uid',sql.Int,userId).query('SELECT n.UserID AS userId,v.TenVaiTro AS tenVaiTro FROM NguoiDung n JOIN VaiTro v ON v.VaiTroID=n.VaiTroID WHERE n.UserID=@uid')).recordset[0];
+        if (!actor) throw new Error('Account unavailable');
+        const care=await require('./carePlan.repository').read(actor,elderlyId,start,section==='weeklyCare'?addDays(start,6):start);
+        return {rows:care.occurrences.slice(0,50),truncated:care.occurrences.length>50};
+      }
       if (!Object.hasOwn(queries, section)) throw new Error('Unsupported section');
       const rows = await query(queries[section], elderlyId, userId, options);
       return { rows: rows.slice(0,50), truncated:rows.length > 50 };

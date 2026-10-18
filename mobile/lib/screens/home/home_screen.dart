@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../assistant/care_assistant_screen.dart';
+import '../care/care_today_screen.dart';
 
 import '../../services/appointment_storage.dart';
 import '../../services/health_metric_service.dart';
@@ -379,6 +380,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                CareTodayEntry(profileId: int.tryParse(profile['id']?.toString() ?? '')),
                 // =========================================
                 // HEADER
                 // =========================================
