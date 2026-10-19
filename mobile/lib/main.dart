@@ -388,7 +388,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập tên đăng nhập và mật khẩu.'),
+          content: Text('Vui lòng nhập tên đăng nhập, email hoặc số điện thoại và mật khẩu.'),
         ),
       );
 
@@ -674,7 +674,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 25),
                             const Text(
-                              'Tên đăng nhập',
+                              'Tên đăng nhập, email hoặc số điện thoại',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
@@ -690,7 +690,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               autocorrect: false,
                               style: const TextStyle(fontSize: 17),
                               decoration: _inputDecoration(
-                                'Nhập tên đăng nhập',
+                                'Nhập tên đăng nhập, email hoặc số điện thoại',
                                 Icons.person_outline,
                               ),
                             ),

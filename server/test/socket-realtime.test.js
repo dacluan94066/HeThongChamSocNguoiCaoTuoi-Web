@@ -3,18 +3,39 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const jwt = require('jsonwebtoken');
 const { io: createClient } = require('socket.io-client');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { createRequire } = require('node:module');
+
+const loadSocket = () => {
+  const filename = path.resolve(__dirname, '../src/socket.js');
+  const module = { exports: {} };
+  const pool = { request: () => ({
+    input(_name, _type, userId) { this.userId = userId; return this; },
+    async query() { return { recordset: [{ VaiTroID: this.userId >= 30 ? 4 : 1,
+      TrangThai: 'HoatDong', TenVaiTro: this.userId >= 30 ? 'NguoiCaoTuoi' : 'QuanTriVien' }] }; },
+  }) };
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
+    module, exports: module.exports, process, console,
+    require: (name) => name === './config/db'
+      ? { poolPromise: Promise.resolve(pool), sql: { Int: 'Int' } }
+      : createRequire(filename)(name),
+  }, { filename });
+  return module.exports;
+};
 
 test('Authenticated Web client receives SOS event from admin room', async () => {
   const originalSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = 'socket-test-secret';
 
   const httpServer = http.createServer((_, res) => res.end('ok'));
-  const { initSocket, emitToAdmin } = require('../src/socket');
+  const { initSocket, emitToAdmin } = loadSocket();
   const socketServer = initSocket(httpServer);
   await new Promise((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
 
   const token = jwt.sign(
-    { userId: 1, vaiTroId: 1, tenVaiTro: 'QuanTriVien' },
+    { userId: 1, vaiTroId: 1, tenVaiTro: 'QuanTriVien', sessionVersion: 2 },
     process.env.JWT_SECRET,
     { expiresIn: '5m' },
   );
@@ -50,14 +71,12 @@ test('Authenticated Web client receives a new health metric event from admin roo
   process.env.JWT_SECRET = 'health-socket-test-secret';
 
   const httpServer = http.createServer((_, res) => res.end('ok'));
-  const socketModulePath = require.resolve('../src/socket');
-  delete require.cache[socketModulePath];
-  const { initSocket, emitToAdmin } = require('../src/socket');
+  const { initSocket, emitToAdmin } = loadSocket();
   const socketServer = initSocket(httpServer);
   await new Promise((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
 
   const token = jwt.sign(
-    { userId: 2, vaiTroId: 1, tenVaiTro: 'QuanTriVien' },
+    { userId: 2, vaiTroId: 1, tenVaiTro: 'QuanTriVien', sessionVersion: 2 },
     process.env.JWT_SECRET,
     { expiresIn: '5m' },
   );
@@ -91,7 +110,6 @@ test('Authenticated Web client receives a new health metric event from admin roo
   } finally {
     client.close();
     await socketServer.close();
-    delete require.cache[socketModulePath];
     if (originalSecret == null) delete process.env.JWT_SECRET;
     else process.env.JWT_SECRET = originalSecret;
   }
@@ -101,9 +119,7 @@ test('Appointment event is delivered only to the authenticated Mobile user room'
   const originalSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = 'mobile-appointment-socket-test-secret';
   const httpServer = http.createServer((_, res) => res.end('ok'));
-  const socketModulePath = require.resolve('../src/socket');
-  delete require.cache[socketModulePath];
-  const { initSocket, emitToUser } = require('../src/socket');
+  const { initSocket, emitToUser } = loadSocket();
   const socketServer = initSocket(httpServer);
   await new Promise((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
 
@@ -111,7 +127,7 @@ test('Appointment event is delivered only to the authenticated Mobile user room'
     `http://127.0.0.1:${httpServer.address().port}`,
     {
       auth: { token: jwt.sign(
-        { userId, vaiTroId: 4, tenVaiTro: 'NguoiCaoTuoi' },
+        { userId, vaiTroId: 4, tenVaiTro: 'NguoiCaoTuoi', sessionVersion: 2 },
         process.env.JWT_SECRET,
         { expiresIn: '5m' },
       ) },
@@ -145,7 +161,6 @@ test('Appointment event is delivered only to the authenticated Mobile user room'
     intended.close();
     other.close();
     await socketServer.close();
-    delete require.cache[socketModulePath];
     if (originalSecret == null) delete process.env.JWT_SECRET;
     else process.env.JWT_SECRET = originalSecret;
   }

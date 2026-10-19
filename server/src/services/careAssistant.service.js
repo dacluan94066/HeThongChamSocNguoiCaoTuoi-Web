@@ -1,5 +1,5 @@
 // Deterministic, read-only assistant. Stored notes are data, never instructions.
-const { normalize, resolveQuestion, detectIntent } = require('./careAssistant.context');
+const { normalize, resolveQuestion, detectIntent, classifyDomain, isAppGuidance, OUT_OF_SCOPE } = require('./careAssistant.context');
 
 const value = (v, fallback = 'Chưa ghi nhận') => v == null || String(v).trim() === '' ? fallback : String(v).trim().slice(0, 400);
 const dateOnly = raw => String(raw || '').replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1');
@@ -10,11 +10,34 @@ const time = (raw) => {
   return match ? `${match[4]}:${match[5]} ${match[3]}/${match[2]}/${match[1]}` : value(raw);
 };
 const medication = (r) => `• ${value(r.tenThuoc)} — liều đã lưu: ${value(r.lieuDung)}; lịch ${time(r.thoiGianDuKien)}; ${({ChuaDenGio:'Chưa có xác nhận uống',DaUong:'Đã xác nhận uống',BoLo:'Đã ghi nhận bỏ lỡ',TuChoi:'Đã ghi nhận từ chối'})[r.trangThai] || value(r.trangThai)}${r.thoiGianThucTe ? ' lúc ' + time(r.thoiGianThucTe) : ''}`;
-const appointment = (r) => `• ${time(r.thoiGianKham)} — ${value(r.tenBenhVien)}, bác sĩ: ${value(r.bacSiPhuTrach)}${r.trangThai ? '; ' + (({ChuaDen:'Chưa đến',DaKham:'Đã khám',DaHuy:'Đã hủy',Huy:'Đã hủy',DaDoiLich:'Đã đổi lịch'})[r.trangThai] || 'Chưa rõ trạng thái') : ''}`;
+const appointment = (r) => `• ${time(r.thoiGianKham)} — ${value(r.tenBenhVien)}, bác sĩ: ${value(r.bacSiPhuTrach)}${r.trangThai ? '; ' + (({ChuaDen:'Chưa đến',DaKham:'Đã khám',DaHuy:'Đã hủy',Huy:'Đã hủy',DaDoiLich:'Chưa đến'})[r.trangThai] || 'Chưa rõ trạng thái') : ''}`;
 const allowedActions = new Set(['medications','appointments','health','caregivers','notifications','notes','sos','change_password']);
 async function answer({ question, history = [], profile, user, repository, resolved, now = new Date() }) {
   const context = resolved || resolveQuestion(question, history);
   const intent = context.intent;
+  const domain = context.domain || classifyDomain(question, history, context);
+  if (domain === 'OUT_OF_SCOPE') {
+    if (repository.authorize) await repository.authorize(false);
+    return {mode:'functional',domain,intent:'out_of_scope',profile,text:OUT_OF_SCOPE,actions:[],rows:[],truncated:false,fetchedAt:new Date().toISOString()};
+  }
+  if (domain === 'APP' && intent !== 'sos' && intent !== 'change_password' && isAppGuidance(question)) {
+    if (repository.authorize) await repository.authorize(false);
+    const q = normalize(question);
+    const guide = /chi so|suc khoe/.test(q) ? 'Bạn mở Trang chủ, chạm thẻ chỉ số hoặc nút “Đo & Cập nhật chỉ số mới”, rồi nhập và lưu số đo trên màn hình chỉ số.'
+      : /lich thuoc|thuoc/.test(q) ? 'Bạn mở tab Lịch thuốc để xem các cữ. Nếu cần xác nhận một cữ đã uống, bạn tự bấm nút xác nhận trên màn hình Lịch thuốc; chat không thể xác nhận thay.'
+      : /lich kham|kham/.test(q) ? 'Bạn mở tab Lịch khám để xem lịch do người chăm sóc đã nhập.'
+      : /thong bao|canh bao/.test(q) ? 'Bạn mở tab Cảnh báo để xem thông báo và lịch sử cảnh báo.'
+      : /ho so/.test(q) ? 'Bạn mở tab Hồ sơ để xem thông tin cá nhân và dùng các nút chỉnh sửa được hiển thị trên màn hình.'
+      : /nguoi cham soc/.test(q) ? 'Bạn xem mục Người chăm sóc của bạn trên Trang chủ. Nếu muốn gọi, bạn tự bấm nút gọi cạnh tên người chăm sóc.'
+      : 'Bạn có thể mở các tab Trang chủ, Lịch thuốc, Lịch khám, Cảnh báo, Hồ sơ hoặc SOS. Nếu bạn hỏi về một chức năng khác, mình chưa có thông tin xác nhận chức năng đó trong ứng dụng.';
+    return {mode:'functional',domain,intent:'app_guidance',profile,text:guide,actions:[],rows:[],truncated:false,fetchedAt:new Date().toISOString()};
+  }
+  if (intent === 'health_general' || domain === 'HEALTH' && !['emergency','visit_preparation','visit_fasting'].includes(intent)) {
+    if (repository.authorize) await repository.authorize(false);
+    return {mode:'functional',domain:'HEALTH',intent:'health_general',profile,
+      text:'Trợ lý AI hiện không khả dụng nên mình chưa thể trả lời câu hỏi sức khỏe này. Bạn vui lòng thử lại sau; nếu triệu chứng nặng hoặc đột ngột, hãy liên hệ cấp cứu hoặc cơ sở y tế.',
+      actions:[],rows:[],truncated:false,fetchedAt:new Date().toISOString()};
+  }
   if (context.options.invalidDate) return {mode:'functional',intent,profile,text:'Ngày bạn nhập chưa hợp lệ. Bạn cho mình ngày theo dạng ngày/tháng/năm nhé.',actions:[],rows:[],truncated:false,fetchedAt:new Date().toISOString()};
   let text; let rows = []; let actions = []; let truncated = false;
   const load = async (section) => {
@@ -68,9 +91,9 @@ async function answer({ question, history = [], profile, user, repository, resol
       const guidance = intent === 'visit_preparation'
         ? 'Trước khi đi khám, bạn nên chuẩn bị:\n• Giấy tờ tùy thân, thẻ BHYT và giấy hẹn/giấy chuyển tuyến nếu có.\n• Hồ sơ khám và kết quả xét nghiệm, phim chụp cũ.\n• Danh sách thuốc đang dùng, gồm liều theo đơn; ghi lại dị ứng nếu có.\n• Ghi chú triệu chứng, thời điểm xuất hiện và câu hỏi muốn hỏi bác sĩ.\nKhông tự ngừng thuốc hoặc nhịn ăn; chỉ làm theo hướng dẫn của cơ sở khám.'
         : 'Bạn đi khám chuyên khoa nào hoặc làm xét nghiệm gì? Việc cần nhịn ăn phụ thuộc loại khám/xét nghiệm và hướng dẫn của cơ sở khám. Không tự nhịn ăn hay ngừng thuốc; hãy hỏi cơ sở khám trước khi thực hiện.';
-      return {mode:'functional',intent,profile,text:guidance,actions:[],rows:[],truncated:false,fetchedAt:new Date().toISOString()};
+      return {mode:'functional',domain,intent,profile,text:guidance,actions:[],rows:[],truncated:false,fetchedAt:new Date().toISOString()};
     }
-    return { mode:'functional', intent:'help', profile, text:'Mình chưa trả lời được phần giải thích chung này. Bạn có thể hỏi lại cụ thể hơn hoặc tra dữ liệu đã lưu.', actions:[], rows:[], truncated:false, fetchedAt:new Date().toISOString() };
+    return { mode:'functional',domain, intent:'help', profile, text:'Mình chưa trả lời được phần giải thích chung này. Bạn có thể hỏi lại cụ thể hơn hoặc tra dữ liệu đã lưu.', actions:[], rows:[], truncated:false, fetchedAt:new Date().toISOString() };
   }
   switch (intent) {
       case 'capabilities':
@@ -84,7 +107,7 @@ async function answer({ question, history = [], profile, user, repository, resol
       actions = ['medications','health']; break;
     case 'sos':
       text = user.tenVaiTro === 'NguoiCaoTuoi'
-        ? 'Mở màn hình Người chăm sóc, chọn gửi SOS rồi xác nhận. Chỉ khi bạn xác nhận, ứng dụng mới gửi cảnh báo. Kết quả gửi sẽ hiển thị số người chăm sóc được tạo thông báo.'
+        ? 'Để gửi cảnh báo khẩn cấp, bạn mở tab SOS trong ứng dụng rồi nhấn giữ nút SOS đủ 3 giây. Trợ lý chat không thể tự gửi SOS thay bạn.'
         : 'Người chăm sóc không gửi SOS thay người cao tuổi qua trợ lý. Hãy liên hệ người được chăm sóc và tìm hỗ trợ y tế khi cần.';
       actions = user.tenVaiTro === 'NguoiCaoTuoi' ? ['sos','caregivers'] : ['caregivers']; break;
     case 'medications':
@@ -168,6 +191,6 @@ async function answer({ question, history = [], profile, user, repository, resol
   const entityLabel=labels.length===1 && (intent!=='appointments'||rows.length===1) ? labels[0] : intent==='appointments' && context.options.nextAppointment && rows.length && nextIsUnique ? rows[0][field] : intent==='health' ? context.options.healthType || context.options.entityLabel : null;
   const entityId=intent==='appointments' && (rows.length===1 || context.options.nextAppointment && nextIsUnique) ? rows[0]?.id || null : null;
   const conversationContext={topic:intent,entityLabel,entityId,dayOffset:context.options.dayOffset,targetDate:context.options.targetDate,nextAppointment:context.options.nextAppointment,period:context.options.period,appointmentStatus:context.options.appointmentStatus};
-  return {mode:'functional', intent, profile, text: text.slice(0,2200), actions:actions.filter(a => allowedActions.has(a) && (['notifications','sos','change_password'].includes(a) || Boolean(profile))), rows, truncated, fetchedAt:new Date().toISOString(), dataTimeZone:'Asia/Ho_Chi_Minh',conversationContext};
+  return {mode:'functional',domain, intent, profile, text: text.slice(0,2200), actions:actions.filter(a => allowedActions.has(a) && (['notifications','sos','change_password'].includes(a) || Boolean(profile))), rows, truncated, fetchedAt:new Date().toISOString(), dataTimeZone:'Asia/Ho_Chi_Minh',conversationContext};
 }
 module.exports = { normalize, detectIntent, answer };

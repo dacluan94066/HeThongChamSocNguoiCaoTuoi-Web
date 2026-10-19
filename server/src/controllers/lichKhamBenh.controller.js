@@ -9,13 +9,15 @@ const STATUS = {
   ChuaDen: { ma: 'CHUA_DEN', label: 'Chưa đến' },
   DaKham: { ma: 'DA_KHAM', label: 'Đã khám' },
   Huy: { ma: 'HUY', label: 'Hủy' },
-  DaDoiLich: { ma: 'DA_DOI_LICH', label: 'Đã dời lịch' },
+  // Du lieu cu van doc duoc; tren giao dien, lich da doi gio la lich ChuaDen.
+  DaDoiLich: { ma: 'CHUA_DEN', label: 'Chưa đến' },
 };
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const normalizeStatus = (value) => {
   if (!value) return null;
+  if (value === 'DaDoiLich' || value === 'DA_DOI_LICH') return null;
   if (STATUS[value]) return value;
   return Object.keys(STATUS).find((key) => STATUS[key].ma === value) || null;
 };
@@ -160,7 +162,9 @@ const getAll = async (req, res, next) => {
     if (trangThai) {
       const dbStatus = normalizeStatus(trangThai);
       if (!dbStatus) return fail(res, 'Trạng thái lịch khám không hợp lệ', 'INVALID_STATUS', 400);
-      query += ' AND l.TrangThai=@status';
+      query += dbStatus === 'ChuaDen'
+        ? " AND l.TrangThai IN (N'ChuaDen',N'DaDoiLich')"
+        : ' AND l.TrangThai=@status';
       request.input('status', sql.NVarChar, dbStatus);
     }
     if (keyword?.trim()) {
@@ -209,7 +213,7 @@ const getMine = async (req, res, next) => {
           KetQuaKham AS ketQuaKham
         FROM LichKhamBenh
         WHERE NguoiCaoTuoiID=@elderlyId
-          AND (@status IS NULL OR TrangThai=@status)
+          AND (@status IS NULL OR TrangThai=@status OR (@status=N'ChuaDen' AND TrangThai=N'DaDoiLich'))
           AND (@from IS NULL OR ThoiGianKham >= CONVERT(DATE, @from, 23))
           AND (@to IS NULL OR ThoiGianKham < DATEADD(DAY, 1, CONVERT(DATE, @to, 23)))
         ORDER BY ThoiGianKham ASC, LichKhamID ASC`);
@@ -324,12 +328,21 @@ const update = async (req, res, next) => {
     const pool = await poolPromise;
     const previous = await pool.request().input('id', sql.Int, id)
       .query(`SELECT NguoiCaoTuoiID AS elderlyId,
-                     CONVERT(VARCHAR(10), ThoiGianKham, 23) AS ngayKham
+                     CONVERT(VARCHAR(10), ThoiGianKham, 23) AS ngayKham,
+                     CONVERT(VARCHAR(16), ThoiGianKham, 126) AS thoiGianKham,
+                     TrangThai AS trangThai
               FROM LichKhamBenh WHERE LichKhamID=@id`);
     if (!previous.recordset.length) return fail(res, 'Không tìm thấy lịch khám', 'NOT_FOUND', 404);
     const previousElderlyId = previous.recordset[0].elderlyId;
+    const changedTime = previous.recordset[0].thoiGianKham !== `${ngayKham}T${gioKham}`;
     if (ngayKham < todayVietnam() && ngayKham !== previous.recordset[0].ngayKham) {
       return fail(res, 'Không thể đổi lịch khám sang ngày trước hiện tại', 'PAST_APPOINTMENT_DATE', 400);
+    }
+    if (changedTime && thoiGianKham.getTime() <= Date.now() + 7 * 60 * 60 * 1000) {
+      return fail(res, 'Giờ khám mới phải ở tương lai', 'PAST_APPOINTMENT_TIME', 422);
+    }
+    if (changedTime && ['Huy', 'DaKham'].includes(previous.recordset[0].trangThai)) {
+      return fail(res, 'Không thể dời lịch đã hủy hoặc đã khám', 'APPOINTMENT_NOT_RESCHEDULABLE', 409);
     }
     const result = await pool.request()
       .input('id', sql.Int, id)
@@ -338,25 +351,69 @@ const update = async (req, res, next) => {
       .input('bacSi', sql.NVarChar, bacSiTen?.trim() || null)
       .input('chuyenKhoa', sql.NVarChar, ghiChu?.trim() || null)
       .input('thoiGian', sql.DateTime2, thoiGianKham)
+      .input('changedTime', sql.Bit, changedTime ? 1 : 0)
+      .input('actorId', sql.Int, req.user.userId)
       .input('lyDo', sql.NVarChar, lyDoKham?.trim() || null)
       .query(`
+        SET XACT_ABORT ON;
+        BEGIN TRANSACTION;
+        DECLARE @notifications TABLE (id INT, userId INT);
         UPDATE LichKhamBenh SET
           NguoiCaoTuoiID=@nctId, TenBenhVien=@tenBenhVien,
           BacSiPhuTrach=@bacSi, ChuyenKhoa=@chuyenKhoa,
           ThoiGianKham=@thoiGian,
-          LyDoKham=@lyDo
+          LyDoKham=@lyDo,
+          TrangThai=CASE WHEN @changedTime=1 THEN N'ChuaDen' ELSE TrangThai END
         WHERE LichKhamID=@id;
         DECLARE @affectedRows INT=@@ROWCOUNT;
         IF @affectedRows > 0
           DELETE FROM ThongBao
           WHERE LienKetID=@id AND LoaiThongBao=N'NhacLichKham'
             AND LienKetBang LIKE N'LichKhamBenh:%' AND DaDoc=0;
-        SELECT @affectedRows AS affectedRows`);
+        IF @affectedRows>0 AND @changedTime=1
+        BEGIN
+          INSERT INTO ThongBao
+            (UserID,TieuDe,NoiDung,LoaiThongBao,LienKetBang,LienKetID)
+          OUTPUT INSERTED.ThongBaoID, INSERTED.UserID INTO @notifications
+          SELECT recipients.UserID, N'Lịch khám đã đổi giờ',
+            CONCAT(N'Lịch khám tại ', @tenBenhVien, N' đã chuyển sang ',
+              CONVERT(CHAR(5),@thoiGian,108), N' ngày ', CONVERT(CHAR(10),@thoiGian,103), N'.'),
+            N'NhacLichKham',
+            CONCAT(N'LichKhamBenh:DoiLich:',CONVERT(CHAR(8),@thoiGian,112),
+              REPLACE(CONVERT(CHAR(5),@thoiGian,108),':','')),
+            @id
+          FROM (
+            SELECT hs.UserID FROM HoSoNguoiCaoTuoi hs
+            WHERE hs.NguoiCaoTuoiID=@nctId AND hs.UserID IS NOT NULL
+            UNION
+            SELECT ncs.UserID FROM NguoiCaoTuoi_NguoiChamSoc lk
+            JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID=lk.NguoiChamSocID
+            WHERE lk.NguoiCaoTuoiID=@nctId AND ncs.UserID IS NOT NULL
+              AND ncs.TrangThai=N'DangLamViec'
+              AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+              AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
+          ) recipients
+          WHERE recipients.UserID<>@actorId
+            AND NOT EXISTS (SELECT 1 FROM ThongBao existing
+              WHERE existing.UserID=recipients.UserID AND existing.LienKetID=@id
+                AND existing.LienKetBang=CONCAT(N'LichKhamBenh:DoiLich:',
+                  CONVERT(CHAR(8),@thoiGian,112),REPLACE(CONVERT(CHAR(5),@thoiGian,108),':','')));
+        END;
+        COMMIT TRANSACTION;
+        SELECT @affectedRows AS affectedRows;
+        SELECT id,userId FROM @notifications;`);
     if (!result.recordset[0]?.affectedRows) return fail(res, 'Không tìm thấy lịch khám', 'NOT_FOUND', 404);
+    for (const notification of result.recordsets?.[1] || []) {
+      emitToUser(notification.userId, 'thongbao:new', {
+        id: notification.id, loaiThongBao: 'NhacLichKham', lichKhamId: id,
+      });
+    }
     await emitAppointmentUpdate(
       pool,
       [previousElderlyId, Number(nguoiCaoTuoiId)],
-      { id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'updated' },
+      { id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId),
+        trangThai: changedTime ? 'CHUA_DEN' : undefined,
+        action: changedTime ? 'rescheduled' : 'updated' },
     );
     return ok(res, { id }, 'Cập nhật lịch khám thành công');
   } catch (error) { next(error); }
@@ -399,13 +456,22 @@ const recordResult = async (req, res, next) => {
     if (!resultText) return fail(res, 'Kết quả khám là bắt buộc', 'MISSING_RESULT', 400);
     if (resultText.length > 500) return fail(res, 'Kết quả khám không được quá 500 ký tự', 'RESULT_TOO_LONG', 400);
     const pool = await poolPromise;
-    const elderlyId = await getAppointmentElderlyId(pool, id);
+    const appointment = await pool.request().input('id', sql.Int, id)
+      .query(`SELECT NguoiCaoTuoiID AS elderlyId,
+        CONVERT(VARCHAR(19),ThoiGianKham,126) AS appointmentTime
+        FROM LichKhamBenh WHERE LichKhamID=@id`);
+    if (!appointment.recordset.length) return fail(res, 'Không tìm thấy lịch khám', 'NOT_FOUND', 404);
+    if (appointment.recordset[0].appointmentTime > new Date(Date.now()+7*3600000).toISOString().slice(0,19)) {
+      return fail(res, 'Chưa đến giờ khám nên không thể ghi kết quả', 'FUTURE_APPOINTMENT', 422);
+    }
+    const elderlyId = appointment.recordset[0].elderlyId;
     const result = await pool.request()
       .input('id', sql.Int, id)
       .input('result', sql.NVarChar, resultText)
       .query(`UPDATE LichKhamBenh
               SET KetQuaKham=@result, TrangThai=N'DaKham'
-              WHERE LichKhamID=@id AND TrangThai<>N'Huy';
+              WHERE LichKhamID=@id AND TrangThai<>N'Huy'
+                AND ThoiGianKham<=DATEADD(HOUR,7,SYSUTCDATETIME());
               DECLARE @affectedRows INT=@@ROWCOUNT;
               IF @affectedRows > 0
                 DELETE FROM ThongBao
@@ -413,7 +479,7 @@ const recordResult = async (req, res, next) => {
                   AND LienKetBang LIKE N'LichKhamBenh:%' AND DaDoc=0;
               SELECT @affectedRows AS affectedRows`);
     if (!result.recordset[0]?.affectedRows) {
-      return fail(res, 'Không tìm thấy lịch khám hoặc lịch đã bị hủy', 'APPOINTMENT_NOT_UPDATABLE', 404);
+      return fail(res, 'Lịch khám chưa đến giờ hoặc đã bị hủy', 'APPOINTMENT_NOT_UPDATABLE', 422);
     }
     const eventData = { id, trangThai: 'DA_KHAM', ketQua: resultText, action: 'result-recorded' };
     await emitAppointmentUpdate(pool, [elderlyId], {

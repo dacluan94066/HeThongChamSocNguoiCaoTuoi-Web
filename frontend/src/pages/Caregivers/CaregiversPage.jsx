@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Col, Form, Input, message, Row, Space, Tag } from 'antd';
 import {
   EditOutlined, EnvironmentOutlined, EyeOutlined, FileTextOutlined,
-  IdcardOutlined, LinkOutlined, MailOutlined, PhoneOutlined, PlusOutlined,
+  IdcardOutlined, KeyOutlined, LinkOutlined, MailOutlined, PhoneOutlined, PlusOutlined,
   SolutionOutlined, TeamOutlined, UserDeleteOutlined, UserOutlined,
 } from '@ant-design/icons';
-import { createCaregiver, getCaregivers, updateCaregiver } from '../../services/caregiverService';
+import { createCaregiver, createCaregiverWebAccount, getCaregivers,
+  resetCaregiverWebPassword, updateCaregiver } from '../../services/caregiverService';
 import PageHeader from '../../components/PageHeader';
 import TableToolbar from '../../components/TableToolbar';
 import DataTable from '../../components/DataTable';
@@ -43,6 +44,8 @@ const CaregiversPage = () => {
   const { hasPermission } = usePermission();
   const canCreate = hasPermission('QLNGUOICHAMSOC', 'them');
   const canEdit = hasPermission('QLNGUOICHAMSOC', 'sua');
+  const canCreateAccount = hasPermission('QLNGUOIDUNG', 'them');
+  const canResetPassword = hasPermission('QLNGUOIDUNG', 'sua');
   const [caregivers, setCaregivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -50,7 +53,11 @@ const CaregiversPage = () => {
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [detailRecord, setDetailRecord] = useState(null);
+  const [accountTarget, setAccountTarget] = useState(null);
+  const [accountMode, setAccountMode] = useState('create');
+  const [accountSaving, setAccountSaving] = useState(false);
   const [form] = Form.useForm();
+  const [accountForm] = Form.useForm();
 
   const loadCaregivers = async () => {
     try {
@@ -135,6 +142,36 @@ const CaregiversPage = () => {
     }
   };
 
+  const openAccountForm = (record, mode) => {
+    setAccountTarget(record);
+    setAccountMode(mode);
+    accountForm.resetFields();
+    if (mode === 'create') {
+      const suggestion = String(record.email || '').split('@')[0]
+        .replace(/[^A-Za-z0-9._-]/g, '').slice(0, 50);
+      accountForm.setFieldsValue({ tenDangNhap: suggestion.length >= 3 ? suggestion : `ncs${record.id}` });
+    }
+  };
+
+  const handleAccountSave = async (values) => {
+    setAccountSaving(true);
+    try {
+      if (accountMode === 'create') {
+        await createCaregiverWebAccount(accountTarget.id, values);
+        message.success('Đã tạo tài khoản Web cho người chăm sóc');
+      } else {
+        await resetCaregiverWebPassword(accountTarget.id, { matKhauTam: values.matKhauTam });
+        message.success('Đã đặt lại mật khẩu Web');
+      }
+      setAccountTarget(null);
+      accountForm.resetFields();
+      await loadCaregivers();
+      setDetailRecord(null);
+    } finally {
+      setAccountSaving(false);
+    }
+  };
+
   const columns = [
     {
       title: 'Người chăm sóc',
@@ -180,10 +217,10 @@ const CaregiversPage = () => {
       render: (assignments) => <CaregiverAssignments assignments={assignments} compact />,
     },
     {
-      title: 'Tài khoản Mobile',
+      title: 'Tài khoản Web',
       dataIndex: 'userId',
       key: 'userId',
-      width: 160,
+      width: 170,
       render: (userId) => (
         <StatusTag
           status={userId ? 'success' : 'inactive'}
@@ -195,12 +232,24 @@ const CaregiversPage = () => {
       title: 'Thao tác',
       key: 'action',
       fixed: 'right',
-      width: 105,
+      width: 265,
       render: (_, record) => (
         <Space size={6}>
           <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setDetailRecord(record)} />
           {canEdit && (
             <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+          )}
+          {!record.userId && canCreateAccount && (
+            <Button size="small" icon={<IdcardOutlined />} disabled={!record.email}
+              onClick={(event) => { event.stopPropagation(); openAccountForm(record, 'create'); }}>
+              Tạo tài khoản Web
+            </Button>
+          )}
+          {record.userId && canResetPassword && (
+            <Button size="small" icon={<KeyOutlined />}
+              onClick={(event) => { event.stopPropagation(); openAccountForm(record, 'reset'); }}>
+              Đặt lại mật khẩu
+            </Button>
           )}
         </Space>
       ),
@@ -211,7 +260,7 @@ const CaregiversPage = () => {
     <div className="caregiver-management-page">
       <PageHeader
         title="Đội ngũ người chăm sóc"
-        subtitle="Quản lý người thân và điều dưỡng được phân công chăm sóc người cao tuổi qua ứng dụng Mobile"
+        subtitle="Quản lý người được phân công chăm sóc trên Web; người cao tuổi dùng ứng dụng Mobile"
         icon={<TeamOutlined />}
         extra={canCreate && (
           <Button type="primary" icon={<PlusOutlined />} size="large" onClick={handleAdd}>
@@ -227,7 +276,7 @@ const CaregiversPage = () => {
         </article>
         <article className="caregiver-kpi-card is-success">
           <span className="caregiver-kpi-icon"><IdcardOutlined /></span>
-          <div><small>Đã có tài khoản</small><strong>{kpis.withAccount}</strong><p>có thể đăng nhập Mobile</p></div>
+          <div><small>Đã có tài khoản</small><strong>{kpis.withAccount}</strong><p>có thể đăng nhập Web</p></div>
         </article>
         <article className="caregiver-kpi-card is-warning">
           <span className="caregiver-kpi-icon"><UserDeleteOutlined /></span>
@@ -281,9 +330,20 @@ const CaregiversPage = () => {
           { label: 'Địa chỉ', key: 'diaChi', span: 2 },
           { label: 'Nghề nghiệp', key: 'trinhDoChuyenMon' },
           {
-            label: 'Tài khoản Mobile',
+            label: 'Tài khoản Web',
             key: 'userId',
-            render: (value) => value ? 'Có tài khoản' : 'Chưa có tài khoản',
+            render: (value, record) => (
+              <Space wrap>
+                <span>{value ? 'Đã có tài khoản' : 'Chưa có tài khoản'}</span>
+                {!value && canCreateAccount && (
+                  <Button size="small" disabled={!record.email}
+                    onClick={() => openAccountForm(record, 'create')}>Tạo tài khoản Web</Button>
+                )}
+                {value && canResetPassword && (
+                  <Button size="small" onClick={() => openAccountForm(record, 'reset')}>Đặt lại mật khẩu</Button>
+                )}
+              </Space>
+            ),
           },
           {
             label: 'Người cao tuổi phụ trách',
@@ -297,7 +357,7 @@ const CaregiversPage = () => {
 
       <ModalForm
         title={editing ? 'Chỉnh sửa người chăm sóc' : 'Thêm mới người chăm sóc'}
-        subtitle="Lưu thông tin người thân hoặc điều dưỡng hỗ trợ chăm sóc qua Mobile"
+        subtitle="Lưu thông tin người được phân công chăm sóc trên Web"
         icon={<UserOutlined />}
         mode={editing ? 'edit' : 'create'}
         open={modalOpen}
@@ -317,7 +377,7 @@ const CaregiversPage = () => {
             </div>
           </div>
           <div className="caregiver-form-account-note">
-            <strong>{editing?.userId ? 'Đã có tài khoản Mobile' : 'Chưa có tài khoản Mobile'}</strong>
+            <strong>{editing?.userId ? 'Đã có tài khoản Web' : 'Chưa có tài khoản Web'}</strong>
             <span>Thêm hồ sơ người chăm sóc không tự động tạo tài khoản đăng nhập.</span>
           </div>
         </div>
@@ -379,6 +439,37 @@ const CaregiversPage = () => {
             </Col>
           </Row>
         </FormSection>
+      </ModalForm>
+
+      <ModalForm
+        title={accountMode === 'create' ? 'Tạo tài khoản Web' : 'Đặt lại mật khẩu Web'}
+        subtitle={accountTarget ? `${accountTarget.hoTen} • ${accountTarget.email || 'Chưa có email'}` : ''}
+        icon={<KeyOutlined />}
+        mode={accountMode === 'create' ? 'create' : 'edit'}
+        open={!!accountTarget}
+        onCancel={() => setAccountTarget(null)}
+        onFinish={handleAccountSave}
+        loading={accountSaving}
+        saveLabel={accountMode === 'create' ? 'Tạo tài khoản Web' : 'Đặt lại mật khẩu'}
+        width={560}
+        form={accountForm}
+      >
+        {accountMode === 'create' && (
+          <Form.Item name="tenDangNhap" label="Tên đăng nhập" rules={[
+            { required: true, message: 'Vui lòng nhập tên đăng nhập' },
+            { pattern: /^[A-Za-z0-9._-]{3,50}$/, message: 'Dùng 3–50 ký tự chữ, số, dấu . _ -' },
+          ]}>
+            <Input prefix={<UserOutlined />} autoComplete="off" />
+          </Form.Item>
+        )}
+        <Form.Item name="matKhauTam" label="Mật khẩu tạm" rules={[
+          { required: true, message: 'Vui lòng nhập mật khẩu tạm' },
+          { min: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' },
+          { max: 128, message: 'Mật khẩu tối đa 128 ký tự' },
+        ]}>
+          <Input.Password prefix={<KeyOutlined />} autoComplete="new-password" />
+        </Form.Item>
+        <p>Chia sẻ mật khẩu tạm qua kênh riêng để người chăm sóc đăng nhập Web và đổi mật khẩu.</p>
       </ModalForm>
     </div>
   );

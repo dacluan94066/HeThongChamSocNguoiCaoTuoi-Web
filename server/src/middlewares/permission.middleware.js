@@ -43,7 +43,7 @@ const checkPermission = (maChucNang, hanhDong) => {
         `);
 
       // Khong co dong nao hoac quyen = 0 thi tu choi
-      if (result.recordset.length === 0 || result.recordset[0][cotQuyen] === 0) {
+      if (result.recordset.length === 0 || !Boolean(result.recordset[0][cotQuyen])) {
         return fail(res, 'Ban khong co quyen thuc hien thao tac nay', 'FORBIDDEN', 403);
       }
 

@@ -72,6 +72,16 @@ const actions = {
   caregivers: ['caregivers'], notifications: ['notifications'], notes: ['notes'],
   today: ['medications', 'appointments', 'notes'], general_help: [],
 };
+// Verified navigation only; no personal facts or write operations are exposed to AI.
+const appGuide = [
+  'Trang chủ: xem các chỉ số sức khỏe mới nhất, mở màn nhập chỉ số từ thẻ chỉ số hoặc nút Đo & Cập nhật chỉ số mới.',
+  'Lịch thuốc: mở tab Lịch thuốc để xem các cữ; chỉ người dùng bấm nút xác nhận đã uống trên màn hình này.',
+  'Lịch khám: mở tab Lịch khám để xem lịch người chăm sóc đã nhập.',
+  'Cảnh báo: mở tab Cảnh báo để xem thông báo và lịch sử cảnh báo.',
+  'Hồ sơ: mở tab Hồ sơ để xem hoặc cập nhật thông tin được ứng dụng cho phép.',
+  'Người chăm sóc: xem mục Người chăm sóc của bạn ở Trang chủ; nút gọi cần người dùng tự bấm.',
+  'SOS: mở tab SOS, nhấn giữ nút SOS đủ 3 giây; chat không tự gửi SOS.',
+];
 function createTools(repository, context, now = new Date()) {
   const used = new Set(); let truncated = false;
   const results = new Map();
@@ -104,7 +114,10 @@ function createTools(repository, context, now = new Date()) {
       used.add(section);
       if (section === 'general_help') {
         await repository.authorize(false);
-        return { instruction: 'Chỉ giải thích chung hoặc hỏi lại; không có dữ liệu cá nhân để suy đoán.', personalData: false };
+        return { instruction: context?.domain === 'APP'
+          ? 'Chỉ hướng dẫn các chức năng có trong danh sách; chức năng khác phải nói chưa có thông tin.'
+          : 'Chỉ giải thích sức khỏe chung hoặc hỏi lại; không có dữ liệu cá nhân để suy đoán.',
+          ...(context?.domain === 'APP' ? { appGuide } : {}), personalData: false };
       }
       if (section === 'today') {
         const medications = compact(await read('medications'));

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../theme/care_senior_theme.dart';
 import '../../widgets/care_senior_ui.dart';
+import '../../widgets/draggable_assistant_fab.dart';
 
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
@@ -14,6 +15,7 @@ import '../../services/medication_schedule_service.dart';
 import '../../services/mobile_realtime_service.dart';
 import '../alerts/alerts_hub_screen.dart';
 import '../alerts/sos_screen.dart';
+import '../assistant/care_assistant_screen.dart';
 import '../appointments/appointment_screen.dart';
 import '../health/health_detail_screen.dart';
 import '../medication/medication_screen.dart';
@@ -174,6 +176,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (mounted) await _load(refresh: true);
   }
+
+  void _openAssistant() => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const CareAssistantScreen()),
+  );
 
   Future<void> _openAppointments() async {
     await Navigator.push(
@@ -602,17 +609,21 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: CareSeniorColors.background,
-    body: _tab == 0
-        ? _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _dashboard()
-        : switch (_tab) {
-            1 => const MedicationScreen(),
-            2 => const AppointmentScreen(),
-            3 => const SosScreen(),
-            4 => const AlertsHubScreen(),
-            _ => const ProfileScreen(),
-          },
+    body: DraggableAssistantFabHost(
+      visible: _tab <= 2,
+      onPressed: _openAssistant,
+      child: _tab == 0
+          ? _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _dashboard()
+          : switch (_tab) {
+              1 => const MedicationScreen(),
+              2 => const AppointmentScreen(),
+              3 => const SosScreen(),
+              4 => const AlertsHubScreen(),
+              _ => const ProfileScreen(),
+            },
+    ),
     bottomNavigationBar: AppBottomNavigation(
       selectedIndex: _tab,
       onSelected: (index) => setState(() => _tab = index),

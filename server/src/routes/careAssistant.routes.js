@@ -3,6 +3,7 @@ const auth = require('../middlewares/auth.middleware');
 const { loadMobileScope } = require('../middlewares/mobile-scope.middleware');
 const controller = require('../controllers/careAssistant.controller');
 const { fail } = require('../utils/response');
+const { checkPermission } = require('../middlewares/permission.middleware');
 const router=express.Router();
 router.use(auth,controller.protect);
 router.use((req,res,next) => {
@@ -18,8 +19,8 @@ router.use((req,res,next) => {
     ? fail(res,'Không kiểm tra được quyền truy cập. Vui lòng thử lại.','DATA_UNAVAILABLE',503)
     : next());
 });
-router.get('/profiles',controller.profiles);
-router.get('/status',controller.status);
-router.post('/query',controller.query);
-router.post('/chat',controller.query);
+router.get('/profiles',checkPermission('QLHOSONCT','xem'),controller.profiles);
+router.get('/status',checkPermission('QLHOSONCT','xem'),controller.status);
+router.post('/query',checkPermission('QLHOSONCT','xem'),controller.query);
+router.post('/chat',checkPermission('QLHOSONCT','xem'),controller.query);
 module.exports=router;

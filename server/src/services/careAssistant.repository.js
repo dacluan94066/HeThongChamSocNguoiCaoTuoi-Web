@@ -26,8 +26,8 @@ function createRepository(pool, sql, deadline = Date.now() + 30000) {
     FROM LichKhamBenh WHERE NguoiCaoTuoiID=@elderlyId
     ${today ? "AND TrangThai=N'ChuaDen' AND ThoiGianKham >= @targetDay AND ThoiGianKham < DATEADD(DAY,1,@targetDay)" : `
     AND ((@appointmentStatus='cancelled' AND TrangThai=N'Huy')
-      OR (@appointmentStatus='past' AND TrangThai NOT IN (N'Huy',N'DaDoiLich') AND ThoiGianKham<@localNow)
-      OR (@appointmentStatus='upcoming' AND TrangThai=N'ChuaDen' AND ThoiGianKham>=@localNow))
+      OR (@appointmentStatus='past' AND TrangThai<>N'Huy' AND ThoiGianKham<@localNow)
+      OR (@appointmentStatus='upcoming' AND TrangThai IN (N'ChuaDen',N'DaDoiLich') AND ThoiGianKham>=@localNow))
     AND (@explicitDay=0 OR (ThoiGianKham>=@targetDay AND ThoiGianKham<DATEADD(DAY,1,@targetDay)))`}
     ORDER BY ${today ? '' : "CASE WHEN @appointmentStatus='past' THEN ThoiGianKham END DESC,"} ThoiGianKham,LichKhamID`;
   const queries = {

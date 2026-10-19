@@ -52,7 +52,8 @@ test('Unrelated/ambiguous turns cannot grant arbitrary personal tools or reuse a
     const reply=await chat({question,history:[{role:'user',content:'thuốc tối nay?'}],sessionContext:{topic:'medications'},profile,user,
       config:{configured:true,model:'mock'},client:{chat:{completions:{create:()=>{throw new Error('must not route');}}}},
       repository:{authorize:async()=>{},read:()=>{calls++;throw new Error('must not read');}}});
-    assert.equal(reply.intent,'clarification');assert.equal(reply.modeReason,'clarification');
+    const outside=question==='Đặt vé máy bay giúp tôi';
+    assert.equal(reply.intent,outside?'out_of_scope':'clarification');assert.equal(reply.modeReason,outside?'out_of_scope':'clarification');
     assert.equal(calls,0);assert.deepEqual(reply.actions,[]);assert.deepEqual(reply.rows,[]);
   }
   const history=[{role:'user',content:'thuốc tối nay?'},{role:'user',content:'Bạn làm được những gì?'}];

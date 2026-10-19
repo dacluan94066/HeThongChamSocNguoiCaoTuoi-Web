@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { poolPromise, sql } = require('../config/db');
 const { sendMail } = require('../config/mailer');
 const { ok, fail } = require('../utils/response');
+const { validateElderlyProfile } = require('../utils/elderlyProfileValidation');
 const {
   GoogleIdentityError,
   verifyGoogleIdToken,
@@ -125,9 +126,8 @@ const register = async (req, res, next) => {
     }
 
     if (typeof tenDangNhap !== 'string' || !tenDangNhap.trim()
-      || typeof matKhau !== 'string' || !matKhau
-      || typeof hoTen !== 'string' || !hoTen.trim()) {
-      return fail(res, 'tenDangNhap, matKhau va hoTen la bat buoc', 'MISSING_FIELDS', 400);
+      || typeof matKhau !== 'string' || !matKhau) {
+      return fail(res, 'Tên đăng nhập và mật khẩu là bắt buộc', 'MISSING_FIELDS', 400);
     }
     if (matKhau.length < 6) {
       return fail(res, 'Mat khau phai co it nhat 6 ky tu', 'WEAK_PASSWORD', 400);
@@ -142,16 +142,10 @@ const register = async (req, res, next) => {
       return fail(res, 'Email la bat buoc de khoi phuc mat khau', 'MISSING_EMAIL', 400);
     }
 
-    if (accountType === 'NguoiCaoTuoi') {
-      if (!ngaySinh || !gioiTinh) {
-        return fail(res, 'ngaySinh va gioiTinh la bat buoc voi nguoi cao tuoi', 'MISSING_ELDERLY_FIELDS', 400);
-      }
-      const date = new Date(`${ngaySinh}T00:00:00Z`);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(ngaySinh) || Number.isNaN(date.getTime())
-        || date.toISOString().slice(0, 10) !== ngaySinh || date > new Date()
-        || !['Nam', 'Nữ', 'Khác'].includes(gioiTinh)) {
-        return fail(res, 'ngaySinh phai theo YYYY-MM-DD va gioiTinh la Nam, Nữ hoac Khác', 'INVALID_PROFILE', 400);
-      }
+    const profileValidation = validateElderlyProfile(req.body);
+    if (profileValidation.error) {
+      return fail(res, profileValidation.error.message,
+        `INVALID_${profileValidation.error.field.toUpperCase()}`, 422);
     }
 
     if (accountType === 'NguoiChamSoc'
@@ -181,7 +175,19 @@ const register = async (req, res, next) => {
         .input('email', sql.VarChar(100), normalizedEmail)
         .query('SELECT UserID FROM NguoiDung WHERE Email = @email');
       if (emailExists.recordset.length > 0) {
-        return fail(res, 'Email da duoc tai khoan khac su dung', 'EMAIL_TAKEN', 409);
+        return fail(res, 'Email đã được sử dụng', 'EMAIL_TAKEN', 409);
+      }
+    }
+
+    if (typeof soDienThoai === 'string' && soDienThoai.trim()) {
+      const phoneExists = await pool.request()
+        .input('phone', sql.VarChar(15), soDienThoai.trim())
+        .query(`SELECT 1 AS used WHERE
+          EXISTS(SELECT 1 FROM NguoiDung WHERE SoDienThoai=@phone)
+          OR EXISTS(SELECT 1 FROM HoSoNguoiCaoTuoi WHERE SoDienThoai=@phone)
+          OR EXISTS(SELECT 1 FROM NguoiChamSoc WHERE SoDienThoai=@phone)`);
+      if (phoneExists.recordset.length) {
+        return fail(res, 'Số điện thoại đã được sử dụng', 'PHONE_TAKEN', 409);
       }
     }
 
@@ -214,7 +220,7 @@ const register = async (req, res, next) => {
       transaction = null;
       return fail(
         res,
-        'Email da duoc dung cho ho so nguoi cham soc',
+        'Email đã được sử dụng',
         'EMAIL_TAKEN_BY_CAREGIVER',
         409,
       );
@@ -238,9 +244,9 @@ const register = async (req, res, next) => {
     const userResult = await new sql.Request(transaction)
       .input('tenDangNhap', sql.NVarChar, normalizedUsername)
       .input('matKhauHash', sql.NVarChar, matKhauHash)
-      .input('hoTen', sql.NVarChar, hoTen.trim())
+      .input('hoTen', sql.NVarChar, profileValidation.value.hoTen)
       .input('email', sql.VarChar(100), normalizedEmail || null)
-      .input('soDienThoai', sql.NVarChar, soDienThoai || null)
+      .input('soDienThoai', sql.NVarChar, profileValidation.value.soDienThoai)
       .input('vaiTroId', sql.Int, vaiTroId)
       .query(`
         INSERT INTO NguoiDung
@@ -255,15 +261,15 @@ const register = async (req, res, next) => {
     if (accountType === 'NguoiCaoTuoi') {
       const profileResult = await new sql.Request(transaction)
         .input('userId', sql.Int, userId)
-        .input('hoTen', sql.NVarChar, hoTen.trim())
+        .input('hoTen', sql.NVarChar, profileValidation.value.hoTen)
         .input('ngaySinh', sql.Date, ngaySinh)
         .input('gioiTinh', sql.NVarChar, gioiTinh)
-        .input('cccd', sql.VarChar, cccd || null)
-        .input('diaChi', sql.NVarChar, diaChi || null)
-        .input('soDienThoai', sql.VarChar, soDienThoai || null)
-        .input('nhomMau', sql.VarChar, nhomMau || null)
-        .input('benhNen', sql.NVarChar, Array.isArray(benhNen) ? benhNen.join(', ') : benhNen || null)
-        .input('diUng', sql.NVarChar, Array.isArray(diUng) ? diUng.join(', ') : diUng || null)
+        .input('cccd', sql.VarChar, profileValidation.value.cccd)
+        .input('diaChi', sql.NVarChar, profileValidation.value.diaChi)
+        .input('soDienThoai', sql.VarChar, profileValidation.value.soDienThoai)
+        .input('nhomMau', sql.VarChar, profileValidation.value.nhomMau)
+        .input('benhNen', sql.NVarChar, profileValidation.value.benhNen)
+        .input('diUng', sql.NVarChar, profileValidation.value.diUng)
         .query(`
           INSERT INTO HoSoNguoiCaoTuoi
             (UserID, HoTen, NgaySinh, GioiTinh, CCCD, DiaChi, SoDienThoai,
@@ -446,16 +452,20 @@ const registerCaregiver = async (req, res, next) => {
 const login = async (req, res, next) => {
   try {
     const { tenDangNhap, matKhau, platform = 'mobile' } = req.body;
+    const identity = typeof tenDangNhap === 'string' ? tenDangNhap.trim() : '';
 
-    if (!tenDangNhap || !matKhau) {
-      return fail(res, 'Vui long nhap ten dang nhap va mat khau', 'MISSING_FIELDS', 400);
+    if (!identity || !matKhau) {
+      return fail(res, 'Vui lòng nhập tên đăng nhập, email hoặc số điện thoại và mật khẩu', 'MISSING_FIELDS', 400);
     }
 
     const pool = await poolPromise;
 
-    // Tim user kem vai tro (JOIN VaiTro de lay TenVaiTro)
+    // Mot dinh danh co the trung giua username va SDT cua hai tai khoan.
+    // Khong tu chon mot tai khoan trong truong hop mo ho.
     const result = await pool.request()
-      .input('tenDangNhap', sql.NVarChar, tenDangNhap)
+      .input('tenDangNhap', sql.NVarChar(100), identity)
+      .input('email', sql.VarChar(100), identity.toLowerCase())
+      .input('phone', sql.VarChar(100), identity)
       .query(`
         SELECT
           nd.UserID,
@@ -470,10 +480,12 @@ const login = async (req, res, next) => {
         FROM NguoiDung nd
         INNER JOIN VaiTro vt ON nd.VaiTroID = vt.VaiTroID
         WHERE nd.TenDangNhap = @tenDangNhap
+          OR LOWER(LTRIM(RTRIM(nd.Email))) = @email
+          OR LTRIM(RTRIM(nd.SoDienThoai)) = @phone
       `);
 
-    if (result.recordset.length === 0) {
-      return fail(res, 'Ten dang nhap hoac mat khau khong chinh xac', 'INVALID_CREDENTIALS', 401);
+    if (result.recordset.length !== 1) {
+      return fail(res, 'Tên đăng nhập, email, số điện thoại hoặc mật khẩu không chính xác', 'INVALID_CREDENTIALS', 401);
     }
 
     const user = result.recordset[0];
@@ -488,7 +500,7 @@ const login = async (req, res, next) => {
     const matKhauDung = await bcrypt.compare(matKhau, user.MatKhauHash);
     if (!matKhauDung) {
       await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
-      return fail(res, 'Ten dang nhap hoac mat khau khong chinh xac', 'INVALID_CREDENTIALS', 401);
+      return fail(res, 'Tên đăng nhập, email, số điện thoại hoặc mật khẩu không chính xác', 'INVALID_CREDENTIALS', 401);
     }
 
     if (user.TrangThai === 'ChoDuyet') {

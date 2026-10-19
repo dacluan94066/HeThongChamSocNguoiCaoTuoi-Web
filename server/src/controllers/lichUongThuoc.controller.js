@@ -6,6 +6,7 @@ const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
 const { emitToAdmin, emitToUser } = require('../socket');
+const { todayVietnam } = require('../utils/vietnamDate');
 
 const STATUS_MAP = {
   ChuaDenGio: { ma: 'CHUA_DEN_GIO', label: 'Chưa đến giờ' },
@@ -159,7 +160,7 @@ const getByElderly = async (req, res, next) => {
 };
 
 // PATCH /api/medication-schedule/:id/confirm
-// Body: { trangThai: 'DaUong' | 'BoLo' }
+// Body: { trangThai: 'DaUong' | 'BoLo' | 'TuChoi' }
 const confirmMine = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -167,14 +168,15 @@ const confirmMine = async (req, res, next) => {
     if (!Number.isInteger(id) || id <= 0) {
       return fail(res, 'ID lich uong thuoc khong hop le', 'INVALID_ID', 400);
     }
-    if (!['DaUong', 'BoLo'].includes(trangThai)) {
-      return fail(res, 'trangThai chi nhan DaUong hoac BoLo', 'INVALID_STATUS', 400);
+    if (!['DaUong', 'BoLo', 'TuChoi'].includes(trangThai)) {
+      return fail(res, 'Trạng thái chỉ nhận DaUong, BoLo hoặc TuChoi', 'INVALID_STATUS', 422);
     }
 
     const pool = await poolPromise;
     const ownership = await pool.request()
       .input('id', sql.Int, id)
-      .query(`SELECT l.LichUongThuocID AS id, nct.UserID AS ownerUserId
+      .query(`SELECT l.LichUongThuocID AS id, nct.UserID AS ownerUserId,
+                CONVERT(VARCHAR(10),l.ThoiGianDuKien,23) AS scheduleDate
               FROM LichUongThuoc l
               JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID=l.NguoiCaoTuoiID
               WHERE l.LichUongThuocID=@id AND nct.TrangThai IN (N'DangTheoDoi',N'CanChamSocDacBiet')`);
@@ -183,6 +185,9 @@ const confirmMine = async (req, res, next) => {
     }
     if (Number(ownership.recordset[0].ownerUserId) !== Number(req.user.userId)) {
       return fail(res, 'Ban khong duoc phep cap nhat lich uong thuoc cua nguoi khac', 'FORBIDDEN', 403);
+    }
+    if (ownership.recordset[0].scheduleDate !== todayVietnam()) {
+      return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
     }
 
     const updated = await pool.request()
@@ -194,11 +199,13 @@ const confirmMine = async (req, res, next) => {
         SET TrangThai=@trangThai,
             ThoiGianThucTe=CASE WHEN @trangThai=N'DaUong' THEN DATEADD(HOUR,7,SYSUTCDATETIME()) ELSE NULL END,
             NguoiXacNhanID=@nguoiXacNhanId
-        WHERE LichUongThuocID=@id;
+        WHERE LichUongThuocID=@id
+          AND CAST(ThoiGianDuKien AS DATE)=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE);
+        DECLARE @affectedRows INT=@@ROWCOUNT;
 
         DELETE FROM ThongBao
         WHERE LienKetID=@id AND LienKetBang LIKE N'LichUongThuoc:%'
-          AND LoaiThongBao=N'NhacThuoc' AND DaDoc=0;
+          AND LoaiThongBao=N'NhacThuoc' AND DaDoc=0 AND @affectedRows>0;
 
         SELECT l.LichUongThuocID AS id,
           l.NguoiCaoTuoiID AS nguoiCaoTuoiId,
@@ -214,7 +221,11 @@ const confirmMine = async (req, res, next) => {
         FROM LichUongThuoc l
         JOIN DonThuocChiTiet ct ON ct.DonThuocChiTietID=l.DonThuocChiTietID
         JOIN DanhMucThuoc dm ON dm.ThuocID=ct.ThuocID
-        WHERE l.LichUongThuocID=@id`);
+        WHERE l.LichUongThuocID=@id AND @affectedRows>0`);
+
+    if (!updated.recordset.length) {
+      return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
+    }
 
     const schedule = mapMySchedule(updated.recordset[0]);
     emitToAdmin('lichuongthuoc:updated', schedule);
@@ -260,29 +271,40 @@ const getAll = async (req, res, next) => {
 };
 
 // PATCH /api/medication-schedules/:id/status
-// Body: { trangThai: 'DA_UONG' | 'BO_LO' | 'CHUA_DEN_GIO' }
+// Body: { trangThai: 'DA_UONG' | 'BO_LO' | 'TU_CHOI' }
 const updateStatus = async (req, res, next) => {
   try {
-    const { trangThai } = req.body;
+    const { trangThai } = req.body || {};
     const dbVal = Object.keys(STATUS_MAP).find((k) => STATUS_MAP[k].ma === trangThai) || trangThai;
+    if (!['DaUong', 'BoLo', 'TuChoi'].includes(dbVal)) {
+      return fail(res, 'Trạng thái chỉ nhận DaUong, BoLo hoặc TuChoi', 'INVALID_STATUS', 422);
+    }
 
     const pool = await poolPromise;
+    const dose = await pool.request().input('id', sql.Int, req.params.id)
+      .query('SELECT CONVERT(VARCHAR(10),ThoiGianDuKien,23) AS scheduleDate FROM LichUongThuoc WHERE LichUongThuocID=@id');
+    if (!dose.recordset.length) return fail(res, 'Không tìm thấy lịch uống thuốc', 'MEDICATION_SCHEDULE_NOT_FOUND', 404);
+    if (dose.recordset[0].scheduleDate !== todayVietnam()) {
+      return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
+    }
     const updated = await pool.request()
       .input('id', sql.Int, req.params.id)
       .input('trangThai', sql.NVarChar, dbVal)
-      .input('thoiGianThucTe', sql.DateTime2, trangThai === 'DA_UONG' ? new Date(Date.now()+7*3600000) : null)
+      .input('thoiGianThucTe', sql.DateTime2, dbVal === 'DaUong' ? new Date(Date.now()+7*3600000) : null)
       .input('nguoiXacNhan', sql.Int, req.user.userId)
       .query(`UPDATE LichUongThuoc SET TrangThai=@trangThai,
               ThoiGianThucTe=@thoiGianThucTe, NguoiXacNhanID=@nguoiXacNhan
               OUTPUT INSERTED.LichUongThuocID AS id,
                 INSERTED.NguoiCaoTuoiID AS nguoiCaoTuoiId,
                 INSERTED.TrangThai AS trangThai
-              WHERE LichUongThuocID=@id;
+              WHERE LichUongThuocID=@id
+                AND CAST(ThoiGianDuKien AS DATE)=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE);
+              DECLARE @affectedRows INT=@@ROWCOUNT;
               DELETE FROM ThongBao
               WHERE LienKetID=@id AND LienKetBang LIKE N'LichUongThuoc:%'
-                AND LoaiThongBao=N'NhacThuoc' AND DaDoc=0;`);
+                AND LoaiThongBao=N'NhacThuoc' AND DaDoc=0 AND @affectedRows>0;`);
     if (!updated.recordset.length) {
-      return fail(res, 'Khong tim thay lich uong thuoc', 'MEDICATION_SCHEDULE_NOT_FOUND', 404);
+      return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
     }
     const eventData = {
       id: updated.recordset[0].id,

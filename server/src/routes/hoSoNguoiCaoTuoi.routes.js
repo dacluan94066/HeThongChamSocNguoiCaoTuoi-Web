@@ -7,8 +7,6 @@ const healthMetricController = require('../controllers/chiSoSucKhoe.controller')
 const medicationScheduleController = require('../controllers/lichUongThuoc.controller');
 const prescriptionController = require('../controllers/donThuoc.controller');
 const appointmentController = require('../controllers/lichKhamBenh.controller');
-const caregiverController = require('../controllers/nguoiChamSoc.controller');
-const alertController = require('../controllers/canhBao.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const { checkPermission } = require('../middlewares/permission.middleware');
 const { fail } = require('../utils/response');
@@ -18,27 +16,21 @@ const mobileProfile = require('../controllers/mobileProfile.controller');
 
 // Mobile roles are already restricted to their own/assigned elderly records by
 // guardResource. Web roles continue to use the normal permission matrix.
-const checkScopedReadPermission = (req, res, next) => {
-  if (scope.isMobileRole(req)) return next();
-  return checkPermission('QLHOSONCT', 'xem')(req, res, next);
-};
-
 // Tat ca route duoi day deu can xac thuc JWT truoc
 router.use(authMiddleware);
 router.use(scope.loadMobileScope);
 
-router.get('/me', controller.getMe);
-router.get('/me/caregivers', careAssistant.protect, careAssistant.ownCaregivers);
-router.get('/me/alerts', mobileProfile.read('alerts'));
-router.get('/me/appointments', mobileProfile.read('allAppointments'));
-router.get('/me/appointments/upcoming', mobileProfile.read('appointments'));
-router.put('/me', controller.updateMe);
-router.get('/me/caregivers', caregiverController.getMine);
-router.get('/me/health-metrics', healthMetricController.getMine);
-router.post('/me/health-metrics', healthMetricController.createMine);
-router.get('/me/medication-schedule', medicationScheduleController.getMine);
-for(const [suffix,section] of [['medication-schedule','medications'],['health-metrics','health'],['appointments/upcoming','appointments'],['alerts','alerts']]){
- router.get('/:id/'+suffix,scope.guardResource('HoSoNguoiCaoTuoi','NguoiCaoTuoiID'),mobileProfile.read(section));
+router.get('/me', checkPermission('QLHOSONCT','xem'), controller.getMe);
+router.get('/me/caregivers', checkPermission('QLNGUOICHAMSOC','xem'), careAssistant.protect, careAssistant.ownCaregivers);
+router.get('/me/alerts', checkPermission('QLCANHBAO','xem'), mobileProfile.read('alerts'));
+router.get('/me/appointments', checkPermission('QLLICHKHAM','xem'), mobileProfile.read('allAppointments'));
+router.get('/me/appointments/upcoming', checkPermission('QLLICHKHAM','xem'), mobileProfile.read('appointments'));
+router.put('/me', checkPermission('QLHOSONCT','sua'), controller.updateMe);
+router.get('/me/health-metrics', checkPermission('QLCHISOSK','xem'), healthMetricController.getMine);
+router.post('/me/health-metrics', checkPermission('QLCHISOSK','them'), healthMetricController.createMine);
+router.get('/me/medication-schedule', checkPermission('QLLICHUONGTHUOC','xem'), medicationScheduleController.getMine);
+for(const [suffix,section,feature] of [['medication-schedule','medications','QLLICHUONGTHUOC'],['health-metrics','health','QLCHISOSK'],['appointments/upcoming','appointments','QLLICHKHAM'],['alerts','alerts','QLCANHBAO']]){
+ router.get('/:id/'+suffix,checkPermission(feature,'xem'),scope.guardResource('HoSoNguoiCaoTuoi','NguoiCaoTuoiID'),mobileProfile.read(section));
 }
 router.get(
   '/:id/prescriptions',
@@ -65,7 +57,7 @@ router.get(
 router.get(
   '/:id',
   scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
-  checkScopedReadPermission,
+  checkPermission('QLHOSONCT', 'xem'),
   controller.getById
 );
 

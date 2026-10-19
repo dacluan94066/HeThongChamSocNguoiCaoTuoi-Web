@@ -26,7 +26,7 @@ function detectIntent(question) {
   if (/cham soc|nguoi than|ai dang|ai phu trach|so dien thoai|lien lac/.test(q)) return 'caregivers';
   if (/thuoc|uong gi|lieu dung/.test(q)) return 'medications';
   if (/doi mat khau|thay mat khau|cap nhat mat khau|doi password|change password/.test(q)) return 'change_password';
-  if (/^(?:giup|ho tro)(?: cho)?(?: toi)?(?: voi| nhe| di)?$/.test(q) || /dat ve|may bay|chung khoan|gia vang|thoi tiet|bong da/.test(q)) return 'clarification';
+  if (/^(?:giup|ho tro)(?: cho)?(?: toi)?(?: voi| nhe| di)?$/.test(q)) return 'clarification';
   if (/huong dan|su dung|dung ung dung|tro giup|giup toi|xin chao|\bchao\b|cam on|tam biet|help/.test(q)) return 'help';
   return 'unknown';
 }
@@ -35,6 +35,45 @@ function isGeneral(question) {
   if (['visit_preparation','visit_fasting'].includes(detectIntent(question))) return true;
   return /la gi|nghia la|tai sao|giai thich|thong tin chung|cach cham soc/.test(q) &&
     !/cua toi|gan nhat|hom nay|toi nay|ngay mai|da luu|thuoc do|lich do|chi so do|nguoi do/.test(q);
+}
+const OUT_OF_SCOPE = 'Xin lỗi, tôi chỉ hỗ trợ các câu hỏi về CareSenior và sức khỏe. Bạn có thể hỏi tôi về thuốc, lịch khám, chỉ số sức khỏe, SOS hoặc cách sử dụng ứng dụng.';
+function isAppGuidance(question) {
+  const q = normalize(question);
+  return /\b(?:lam sao|cach|huong dan|su dung|o dau|nhan nut nao|co ho tro|co chuc nang)\b/.test(q) &&
+    /\b(?:xem|mo|nhap|cap nhat|them|theo doi|xac nhan|kiem tra|lich thuoc|lich kham|chi so|thong bao|canh bao|ho so|nguoi cham soc|caresenior|ung dung|app)\b/.test(q);
+}
+function classifyDomain(question, history = [], resolved = resolveQuestion(question, history)) {
+  const q = normalize(question);
+  // Explicit unrelated subjects win over incidental app/health words (e.g. "app game").
+  if (/\b(?:code|coding|lap trinh|ma nguon|html|css|javascript|python|game|tro choi dien tu|chinh tri|bau cu|chung khoan|co phieu|dau tu|tai chinh|gia vang|hoc bai|hoc tap|mon hoc|bai tap|giai toan|viet (?:bai )?van|lam tho|ke chuyen|du lich|dat ve|may bay|phim anh|ca nhac|bong da|thoi tiet|may tinh|dien thoai moi|cong nghe)\b/.test(q) ||
+      /\b(?:trang web|website|webpage|web site)\b/.test(q) && !/\b(?:caresenior|ung dung)\b/.test(q)) return 'OUT_OF_SCOPE';
+  const intent = resolved.intent;
+  if (/\b(?:toi|minh|ong|ba) (?:dang |bi |cam thay )?(?:dau|met|chong mat|buon non|sot|ho|kho ngu|te|phu|tieu chay|tao bon)\b/.test(q)) return 'HEALTH';
+  if (/\bcam thay\b.*\b(?:rat te|khong khoe|kho chiu|met|dau)\b/.test(q)) return 'HEALTH';
+  // Asking which medicine might help a condition is general health advice, not
+  // a lookup of the caller's stored medication schedule.
+  const personalLookup = /\b(?:cua toi|cho toi|cua minh|cho minh|da luu|gan nhat|hom nay|ngay mai|lich|may gio|luc nao|nguoi cham soc cua|thong bao cua|chi so cua)\b/.test(q);
+  if (!personalLookup && /\bthuoc\b/.test(q) &&
+      /\b(?:co thuoc nao|thuoc nao|thuoc gi|thuoc tri|thuoc chua|thuoc giam|tac dung|tac hai|dieu tri)\b/.test(q)) return 'HEALTH';
+  if (['sos', 'capabilities', 'change_password', 'clarification'].includes(intent) ||
+      /\b(?:caresenior|ung dung|app|tai khoan|dang nhap|dang xuat|ho so|nut|tab|man hinh|chuc nang|thao tac)\b/.test(q)) return 'APP';
+  if (['emergency', 'medical', 'visit_preparation', 'visit_fasting'].includes(intent)) return 'HEALTH';
+  // Questions about meaning, symptoms, care and medicines in general are not record lookups.
+  const healthTopic = /\b(?:dau|met|chong mat|buon non|sot|ho|kho ngu|mat ngu|te|phu|tieu chay|tao bon|trieu chung|benh|dinh duong|an uong|van dong|tap the duc|giam can|tang can|thua can|beo phi|thuoc|lieu|huyet ap|nhip tim|duong huyet|spo2|nhiet do|can nang|suc khoe|cham soc nguoi cao tuoi)\b/.test(q);
+  if (healthTopic && !personalLookup && (resolved.general ||
+      /\b(?:toi bi|toi dang|toi thay|cam thay|nen lam gi|phai lam sao|co sao khong|co nguy hiem|tac dung|tac hai|la gi|tai sao|the nao|cach cham soc|nen an|nen uong|co nen|bao nhieu la|khi nao nen)\b/.test(q) ||
+      ['unknown', 'medical'].includes(intent))) return 'HEALTH';
+  if (intent === 'help') return 'APP';
+  if (PERSONAL.includes(intent)) return 'APP';
+  // Short follow-ups to a health question remain health, without inheriting any personal facts.
+  const previous = [...history].reverse().find(turn => turn.role === 'user');
+  if (previous && /^(?:vay|the|con|toi nen|phai lam sao|co sao khong)/.test(q) &&
+      classifyDomain(previous.content, [], resolveQuestion(previous.content)) === 'HEALTH') return 'HEALTH';
+  // Only genuinely vague/conversational turns may ask for clarification.
+  if (/^(?:cai do sao roi|co gi hay khong|giup toi(?: voi)?|ho tro toi(?: voi)?|toi muon hoi(?: ban)?|cu the(?: hon)?|noi ro|con (?:bao lau|may ngay|gi nua)|o dau|dia chi|luc nao|may gio|bao lau|ban vua|vi du)/.test(q)) return 'APP';
+  if (previous && ['help', 'capabilities'].includes(detectIntent(previous.content)) &&
+      /^(?:cu the|noi ro|con gi nua|ban vua|vi du)/.test(q)) return 'APP';
+  return 'OUT_OF_SCOPE';
 }
 function resolveQuestion(question, history = [], sessionContext = null) {
   const q = normalize(question);
@@ -90,4 +129,4 @@ function vietnamNow(now = new Date()) {
   // DATETIME2 values are local wall times in this application, not UTC instants.
   return new Date(now.getTime() + 7 * 3600000).toISOString().slice(0, 19);
 }
-module.exports = { normalize, detectIntent, resolveQuestion, isGeneral, isCapabilities, vietnamNow, PERSONAL };
+module.exports = { normalize, detectIntent, resolveQuestion, classifyDomain, isAppGuidance, OUT_OF_SCOPE, isGeneral, isCapabilities, vietnamNow, PERSONAL };

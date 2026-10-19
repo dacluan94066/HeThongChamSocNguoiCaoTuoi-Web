@@ -88,10 +88,11 @@ const AppointmentCard = ({ appointment, canEdit, canDelete, onDetail, onEdit, on
 
       <footer className="appointment-card-actions" onClick={(event) => event.stopPropagation()}>
         <Button icon={<EyeOutlined />} onClick={() => onDetail(appointment)}>Chi tiết</Button>
-        {canEdit && !['HUY', 'DA_KHAM'].includes(appointment.trangThai) && (
+        {canEdit && !['HUY', 'DA_KHAM'].includes(appointment.trangThai)
+          && appointmentTime && !appointmentTime.isAfter(dayjs()) && (
           <Button type="primary" icon={<FileDoneOutlined />} onClick={() => onResult(appointment)}>Ghi kết quả khám</Button>
         )}
-        {canEdit && (
+        {canEdit && !['HUY', 'DA_KHAM'].includes(appointment.trangThai) && (
           <Button icon={<EditOutlined />} onClick={() => onEdit(appointment)}>Sửa</Button>
         )}
         {canDelete && appointment.trangThai === 'CHUA_DEN' && (
@@ -325,7 +326,6 @@ const AppointmentsPage = () => {
               { value: 'CHUA_DEN', label: 'Chưa đến' },
               { value: 'DA_KHAM', label: 'Đã khám' },
               { value: 'HUY', label: 'Đã hủy' },
-              { value: 'DA_DOI_LICH', label: 'Đã dời lịch' },
             ]}
           />
         </div>

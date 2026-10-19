@@ -120,16 +120,15 @@ const LoginForm = ({ onSubmit, onForgotPassword, onRegisterCaregiver, loading, e
         >
           <Form.Item
             name="tenDangNhap"
-            label="Tên đăng nhập"
+            label="Tên đăng nhập, email hoặc số điện thoại"
             rules={[
-              { required: true, message: 'Vui lòng nhập tên đăng nhập' },
-              { min: 3, message: 'Tên đăng nhập ít nhất 3 ký tự' },
+              { required: true, message: 'Vui lòng nhập tên đăng nhập, email hoặc số điện thoại' },
             ]}
             hasFeedback
           >
             <Input
               prefix={<UserOutlined className="input-prefix-icon" />}
-              placeholder="Nhập tên đăng nhập"
+              placeholder="Nhập tên đăng nhập, email hoặc số điện thoại"
               className="login-input"
               autoComplete="username"
             />
@@ -242,7 +241,7 @@ const LoginPage = () => {
       }
 
       if (errorCode === 'INVALID_CREDENTIALS') {
-        setErrorMsg('Tên đăng nhập hoặc mật khẩu không chính xác.');
+        setErrorMsg('Tên đăng nhập, email, số điện thoại hoặc mật khẩu không chính xác.');
         return;
       }
 

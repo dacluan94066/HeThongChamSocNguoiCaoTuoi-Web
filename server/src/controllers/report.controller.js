@@ -94,6 +94,7 @@ const getHealthSummary = async (req, res, next) => {
           (SELECT COUNT_BIG(1) FROM LichUongThuoc lut
             WHERE lut.ThoiGianDuKien >= CAST(@fromDate AS DATE)
               AND lut.ThoiGianDuKien < DATEADD(DAY,1,CAST(@toDate AS DATE))
+              AND lut.TrangThai IN (N'DaUong',N'BoLo',N'TuChoi')
               AND (@elderlyId IS NULL OR lut.NguoiCaoTuoiID=@elderlyId)
               ${profileScope('lut.NguoiCaoTuoiID')}) AS tongLieu,
           (SELECT COUNT_BIG(1) FROM LichUongThuoc lut
@@ -130,7 +131,7 @@ const getHealthSummary = async (req, res, next) => {
           SELECT
             DATEADD(DAY,-(DATEDIFF(DAY,'19000101',CAST(lut.ThoiGianDuKien AS DATE)) % 7),
               CAST(lut.ThoiGianDuKien AS DATE)) AS tuanBatDau,
-            lut.TrangThai
+            lut.TrangThai,lut.ThoiGianDuKien
           FROM LichUongThuoc lut
           WHERE lut.ThoiGianDuKien >= CAST(@fromDate AS DATE)
             AND lut.ThoiGianDuKien < DATEADD(DAY,1,CAST(@toDate AS DATE))
@@ -138,10 +139,11 @@ const getHealthSummary = async (req, res, next) => {
             ${profileScope('lut.NguoiCaoTuoiID')}
         )
         SELECT CONVERT(VARCHAR(10),tuanBatDau,23) AS tuanBatDau,
-          COUNT_BIG(1) AS tongLieu,
+          SUM(CASE WHEN TrangThai IN (N'DaUong',N'BoLo',N'TuChoi') THEN 1 ELSE 0 END) AS tongLieu,
           SUM(CASE WHEN TrangThai=N'DaUong' THEN 1 ELSE 0 END) AS daUong,
           SUM(CASE WHEN TrangThai IN (N'BoLo',N'TuChoi') THEN 1 ELSE 0 END) AS boLoTuChoi,
-          SUM(CASE WHEN TrangThai=N'ChuaDenGio' THEN 1 ELSE 0 END) AS chuaDenGio
+          SUM(CASE WHEN TrangThai=N'ChuaDenGio'
+            AND ThoiGianDuKien>DATEADD(HOUR,7,SYSUTCDATETIME()) THEN 1 ELSE 0 END) AS chuaDenGio
         FROM ThuocTheoTuan
         GROUP BY tuanBatDau
         ORDER BY tuanBatDau

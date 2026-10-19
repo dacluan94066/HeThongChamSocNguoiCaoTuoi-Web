@@ -29,7 +29,7 @@ const mapNote = (row,req) => ({
   trangThai:        'HoanThanh',
   trangThaiLabel:   'Hoàn thành',
   version: row.version,
-  canEdit: req.user.tenVaiTro==='QuanTriVien'||(req.user.tenVaiTro==='NguoiChamSoc'&&row.authorUserId===req.user.userId),
+  canEdit: req.user.tenVaiTro==='QuanTriVien'||req.user.tenVaiTro==='NguoiChamSoc',
 });
 
 // GET /api/care-notes?nguoiCaoTuoiId=&ngay=

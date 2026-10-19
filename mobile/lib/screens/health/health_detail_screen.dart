@@ -2,9 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../theme/care_senior_theme.dart';
+import '../../widgets/draggable_assistant_fab.dart';
 
 import '../../services/api_client.dart';
 import '../../services/health_metric_service.dart';
+import '../assistant/care_assistant_screen.dart';
 
 class HealthDetailScreen extends StatefulWidget {
   const HealthDetailScreen({super.key});
@@ -275,184 +277,198 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
     return Scaffold(
       backgroundColor: CareSeniorColors.background,
       appBar: AppBar(title: const Text('Chi tiết sinh hiệu')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () => _load(refresh: true),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
-                children: [
-                  if (_error != null)
+      body: DraggableAssistantFabHost(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CareAssistantScreen()),
+        ),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: () => _load(refresh: true),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
+                  children: [
+                    if (_error != null)
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(fontSize: 16, color: red),
+                          ),
+                        ),
+                      ),
+                    const Text(
+                      'Chọn loại chỉ số',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _types.map((type) {
+                        final name = type['tenChiSo']?.toString() ?? '';
+                        return ChoiceChip(
+                          label: Text(
+                            name,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          selected: _selected == name,
+                          onSelected: (_) => setState(() => _selected = name),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
                     Card(
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(fontSize: 16, color: red),
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Nhập $_selected',
+                              style: const TextStyle(
+                                fontSize: 21,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _range(selectedType),
+                              style: const TextStyle(fontSize: 16, color: teal),
+                            ),
+                            const SizedBox(height: 14),
+                            if (_selected == 'Huyết áp') ...[
+                              _stepper('Tâm thu', _systolic, 40, 280),
+                              const SizedBox(height: 10),
+                              _stepper('Tâm trương', _diastolic, 30, 200),
+                              const SizedBox(height: 10),
+                              _stepper('Nhịp tim (nhịp/phút)', _pulse, 25, 240),
+                            ] else
+                              TextField(
+                                controller: _value,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                style: const TextStyle(fontSize: 20),
+                                decoration: InputDecoration(
+                                  labelText:
+                                      'Giá trị ${selectedType?['donVi'] ?? ''}',
+                                  border: const OutlineInputBorder(),
+                                ),
+                              ),
+                            const SizedBox(height: 14),
+                            FilledButton.icon(
+                              onPressed: _saving ? null : _save,
+                              icon: const Icon(Icons.save_outlined),
+                              label: Text(
+                                _saving ? 'Đang lưu...' : 'Lưu chỉ số',
+                                style: const TextStyle(fontSize: 17),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  const Text(
-                    'Chọn loại chỉ số',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _types.map((type) {
-                      final name = type['tenChiSo']?.toString() ?? '';
-                      return ChoiceChip(
-                        label: Text(name, style: const TextStyle(fontSize: 16)),
-                        selected: _selected == name,
-                        onSelected: (_) => setState(() => _selected = name),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Nhập $_selected',
-                            style: const TextStyle(
-                              fontSize: 21,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _range(selectedType),
-                            style: const TextStyle(fontSize: 16, color: teal),
-                          ),
-                          const SizedBox(height: 14),
-                          if (_selected == 'Huyết áp') ...[
-                            _stepper('Tâm thu', _systolic, 40, 280),
-                            const SizedBox(height: 10),
-                            _stepper('Tâm trương', _diastolic, 30, 200),
-                            const SizedBox(height: 10),
-                            _stepper('Nhịp tim (nhịp/phút)', _pulse, 25, 240),
-                          ] else
-                            TextField(
-                              controller: _value,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              style: const TextStyle(fontSize: 20),
-                              decoration: InputDecoration(
-                                labelText:
-                                    'Giá trị ${selectedType?['donVi'] ?? ''}',
-                                border: const OutlineInputBorder(),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Xu hướng 7 ngày',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          const SizedBox(height: 14),
-                          FilledButton.icon(
-                            onPressed: _saving ? null : _save,
-                            icon: const Icon(Icons.save_outlined),
-                            label: Text(
-                              _saving ? 'Đang lưu...' : 'Lưu chỉ số',
-                              style: const TextStyle(fontSize: 17),
-                            ),
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            if (trend.isEmpty)
+                              const Text(
+                                'Chưa có dữ liệu trong 7 ngày.',
+                                style: TextStyle(fontSize: 16),
+                              )
+                            else
+                              SizedBox(
+                                height: 180,
+                                width: double.infinity,
+                                child: CustomPaint(
+                                  painter: _TrendPainter(trend),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Xu hướng 7 ngày',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (trend.isEmpty)
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             const Text(
-                              'Chưa có dữ liệu trong 7 ngày.',
-                              style: TextStyle(fontSize: 16),
-                            )
-                          else
-                            SizedBox(
-                              height: 180,
-                              width: double.infinity,
-                              child: CustomPaint(painter: _TrendPainter(trend)),
+                              'Lịch sử đo gần đây',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Lịch sử đo gần đây',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (selectedMetrics.isEmpty)
-                            const Text(
-                              'Chưa có lần đo nào.',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                          ...selectedMetrics
-                              .take(8)
-                              .map(
-                                (item) => ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  title: Text(
-                                    _valueOf(item),
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
+                            const SizedBox(height: 8),
+                            if (selectedMetrics.isEmpty)
+                              const Text(
+                                'Chưa có lần đo nào.',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                            ...selectedMetrics
+                                .take(8)
+                                .map(
+                                  (item) => ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      _valueOf(item),
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                  ),
-                                  subtitle: Text(
-                                    item['thoiGianDo']?.toString() ?? '',
-                                    style: const TextStyle(fontSize: 16),
-                                  ),
-                                  trailing: Text(
-                                    item['laBatThuong'] == true
-                                        ? 'Bất thường'
-                                        : 'Bình thường',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: item['laBatThuong'] == true
-                                          ? red
-                                          : teal,
+                                    subtitle: Text(
+                                      item['thoiGianDo']?.toString() ?? '',
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                    trailing: Text(
+                                      item['laBatThuong'] == true
+                                          ? 'Bất thường'
+                                          : 'Bình thường',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: item['laBatThuong'] == true
+                                            ? red
+                                            : teal,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Nếu chỉ số bất thường, người chăm sóc sẽ được thông báo.',
-                    style: TextStyle(fontSize: 16, color: teal),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Nếu chỉ số bất thường, người chăm sóc sẽ được thông báo.',
+                      style: TextStyle(fontSize: 16, color: teal),
+                    ),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 }

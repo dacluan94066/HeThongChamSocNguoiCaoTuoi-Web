@@ -88,13 +88,14 @@ test('Medication follow-up can ask clarification instead of guessing which medic
   const reply=await run({question:'Thuốc đó uống lúc nào?',history,repository:repo,client:ai});assert.equal(reply.mode,'functional');assert.match(reply.text,/thuốc nào/);assert.doesNotMatch(reply.text,/Tự chọn/);
 });
 test('General Vietnamese health explanation needs no patient data',async()=>{
-  const repo=repository();const ai=client([call('care_general_help'),text('Vận động nhẹ có thể giúp duy trì sức khỏe. Hãy hỏi bác sĩ về hoạt động phù hợp với bạn.')]);
+  const repo=repository();const ai=client([text('Vận động nhẹ có thể giúp duy trì sức khỏe. Hãy hỏi bác sĩ về hoạt động phù hợp với bạn.')]);
   const reply=await run({question:'Tại sao nên vận động nhẹ?',client:ai,repository:repo});assert.equal(reply.mode,'ai');assert.deepEqual(repo.reads,[]);
+  assert.equal(ai.requests[0].params.tools,undefined);
 });
 test('General health definitions do not fetch measurements or require a profile',async()=>{
   const repo=repository();const ai=client([params=>{
-    assert.deepEqual(params.tools.map(t=>t.function.name),['care_general_help']);return call('care_general_help');
-  },text('Huyết áp là áp lực máu tác động lên thành mạch. Đây là giải thích chung, không phải chẩn đoán.')]);
+    assert.equal(params.tools,undefined);return text('Huyết áp là áp lực máu tác động lên thành mạch. Đây là giải thích chung, không phải chẩn đoán.');
+  }]);
   const reply=await run({question:'Huyết áp là gì?',profile:null,repository:repo,client:ai});assert.equal(reply.mode,'ai');assert.deepEqual(repo.reads,[]);
 });
 test('Missing selection returns a short question with no personal data',async()=>{
@@ -128,8 +129,8 @@ test('Stored note injection is marked untrusted; cannot select an extra health t
   }]);
   const reply=await run({question:'Mở nhật ký',repository:repo,client:ai});assert.equal(reply.modeReason,'grounded_data');assert.deepEqual(reply.actions,['notes']);assert.equal(ai.requests.length,1);
 });
-test('Emergency and medication change requests bypass AI; no SOS is executed',async()=>{
-  for(const question of ['Tôi khó thở','Gui SOS giup toi','Tôi nên tăng liều thuốc?']){
+test('Emergency and SOS requests bypass AI; no SOS is executed',async()=>{
+  for(const question of ['Tôi khó thở','Gui SOS giup toi']){
     const ai=client([]);const repo=repository();const reply=await run({question,client:ai,repository:repo});
     assert.equal(reply.modeReason,'safety');assert.equal(ai.requests.length,0);assert.deepEqual(repo.reads,[]);
   }
@@ -157,7 +158,7 @@ for(const role of ['NguoiCaoTuoi','NguoiChamSoc']) test('Each tool rechecks actu
   assert.ok(!db.queries.some(q=>Object.values(q.inputs).includes(999)));
   assert.ok(db.queries.every(({q})=>! /\b(INSERT|UPDATE|DELETE|EXEC)\b/i.test(q)));
 });
-for(const fixture of [{assigned:false},{active:false},{role:'BacSi'}]) test('Revoked assignment/locked/changed-role stops data before model output: '+JSON.stringify(fixture),async()=>{
+for(const fixture of [{assigned:false},{active:false},{role:'QuanTriVien'}]) test('Revoked assignment/locked/changed-role stops data before model output: '+JSON.stringify(fixture),async()=>{
   const db=dbFixture(fixture);const repo=createScopedRepository(db.pool,{Int:'Int'},{userId:10,tenVaiTro:'NguoiChamSoc'},profile);
   await assert.rejects(run({client:client([call('care_appointments')]),repository:repo,user:{userId:10,tenVaiTro:'NguoiChamSoc'}}),e=>e instanceof AssistantAccessError && e.status===403);
   assert.ok(!db.queries.some(({q})=>q.includes('FROM LichKhamBenh')));
@@ -193,7 +194,7 @@ test('Empty tool data stays explicitly empty instead of fabricated appointment f
   const reply=await run({repository:repo,client:ai});assert.equal(reply.mode,'functional');assert.match(reply.text,/Chưa có/);
 });
 test('AI urgent guidance adds only fixed SOS/contact navigation, never a mutation',async()=>{
-  const repo=repository();const ai=client([call('care_general_help'),text('Hãy tìm hỗ trợ y tế ngay, đừng chờ trong chat.')]);
+  const repo=repository();const ai=client([text('Hãy tìm hỗ trợ y tế ngay, đừng chờ trong chat.')]);
   const reply=await run({question:'Tôi cảm thấy rất tệ, giúp tôi với',client:ai,repository:repo});
   assert.equal(reply.mode,'ai');assert.deepEqual(reply.actions,['sos','caregivers']);assert.deepEqual(repo.reads,[]);
 });

@@ -34,7 +34,8 @@ class AppointmentService {
   ) {
     if (status == null) return List.unmodifiable(appointments);
     return appointments
-        .where((appointment) => appointment['trangThai'] == status)
+        .where((appointment) => appointment['trangThai'] == status
+            || (status == 'ChuaDen' && appointment['trangThai'] == 'DaDoiLich'))
         .toList(growable: false);
   }
 

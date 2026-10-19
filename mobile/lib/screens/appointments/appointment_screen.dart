@@ -28,7 +28,6 @@ class _AppointmentScreenState extends State<AppointmentScreen>
     MapEntry('ChuaDen', 'Chưa đến'),
     MapEntry('DaKham', 'Đã khám'),
     MapEntry('Huy', 'Hủy'),
-    MapEntry('DaDoiLich', 'Đã dời lịch'),
   ];
 
   List<Map<String, dynamic>> _allAppointments = [];
@@ -122,7 +121,6 @@ class _AppointmentScreenState extends State<AppointmentScreen>
     'ChuaDen' => 'Chưa có lịch khám sắp tới',
     'DaKham' => 'Chưa có lịch đã khám',
     'Huy' => 'Chưa có lịch đã hủy',
-    'DaDoiLich' => 'Chưa có lịch đã dời',
     _ => 'Chưa có lịch khám',
   };
 
@@ -131,7 +129,6 @@ class _AppointmentScreenState extends State<AppointmentScreen>
       'Lịch chỉ xuất hiện ở đây sau khi người chăm sóc ghi kết quả khám trên Web.',
     'ChuaDen' => 'Tài khoản này hiện chưa có lịch khám nào đang chờ.',
     'Huy' => 'Tài khoản này hiện chưa có lịch khám nào bị hủy.',
-    'DaDoiLich' => 'Tài khoản này hiện chưa có lịch khám nào đã dời.',
     _ => 'Lịch khám do người chăm sóc tạo trên Web sẽ xuất hiện tại đây.',
   };
 
@@ -681,11 +678,6 @@ class AppointmentStatusStyle {
       'Hủy',
       Color(0xff6f767d),
       Color(0xffeeeeee),
-    ),
-    'DaDoiLich' => const AppointmentStatusStyle(
-      'Đã dời lịch',
-      Color(0xffb56b00),
-      Color(0xfffff0d9),
     ),
     _ => const AppointmentStatusStyle(
       'Chưa đến',

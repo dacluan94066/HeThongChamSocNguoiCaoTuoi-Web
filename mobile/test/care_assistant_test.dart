@@ -115,6 +115,17 @@ class RecordingAdapter implements HttpClientAdapter {
 }
 
 void main() {
+  test('Health AI outage is shown as unavailable, not as a functional answer', () {
+    final reply = AssistantReply.fromJson({
+      'text': 'Trợ lý AI hiện không khả dụng nên mình chưa thể trả lời câu hỏi sức khỏe này.',
+      'intent': 'health_general',
+      'domain': 'HEALTH',
+      'modeReason': 'ai_unavailable',
+      'aiFailureCode': 'AI_TIMEOUT',
+    });
+    expect(reply.modeNotice, contains('quá thời gian chờ'));
+    expect(reply.modeNotice, isNot(contains('tra cứu dự phòng')));
+  });
   test('Capabilities are deliberate functional routing, not an AI outage', () {
     final reply = AssistantReply.fromJson({
       'mode': 'functional',

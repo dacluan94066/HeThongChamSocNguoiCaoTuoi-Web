@@ -1,5 +1,6 @@
 const { poolPromise } = require('../config/db');
 const { emitToUser } = require('../socket');
+const { materializeMissedMedications, emitMissedMedications } = require('./medicationMissed.service');
 
 const MEDICATION_REMINDER_INTERVAL_MS = 30_000;
 
@@ -70,6 +71,9 @@ const runWorker = async () => {
   if (running) return;
   running = true;
   try {
+    const missed = await materializeMissedMedications();
+    emitMissedMedications(missed);
+    if (missed.alerts.length) console.log(`[REMINDER] Da chuyen ${missed.alerts.length} lieu qua han thanh BoLo.`);
     const created = await materializeDueMedicationReminders();
     for (const reminder of created) {
       emitToUser(reminder.userId, 'thongbao:new', { id: reminder.id, loaiThongBao: 'NhacThuoc' });

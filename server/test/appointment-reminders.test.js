@@ -28,6 +28,7 @@ test('materializer uses Vietnam time, two exclusive windows and an idempotent fi
   } }) };
   const service = load('../src/services/appointmentReminder.service.js', {
     '../config/db': { poolPromise: Promise.resolve(pool) },
+    '../socket': { emitToUser: () => true },
   });
   assert.deepEqual(await service.materializeDueAppointmentReminders(pool), [{ id: 7, userId: 2 }]);
   assert.match(query, /DATEADD\(HOUR, 7, SYSUTCDATETIME\(\)\)/);
@@ -57,6 +58,12 @@ test('notifications endpoint materializes due reminders before reading the list'
         calls.push({ sql: 'MATERIALIZE' });
       },
     },
+    '../services/medicationReminder.service': {
+      materializeDueMedicationReminders: async (received) => {
+        assert.equal(received, pool);
+        calls.push({ sql: 'MATERIALIZE_MEDICATION' });
+      },
+    },
     '../utils/response': {
       ok: (_res, data) => data,
       fail: () => { throw new Error('unexpected fail'); },
@@ -64,8 +71,9 @@ test('notifications endpoint materializes due reminders before reading the list'
   });
   await controller.getMine({ user: { userId: 9 } }, {}, (error) => { throw error; });
   assert.equal(calls[0].sql, 'MATERIALIZE');
-  assert.match(calls[1].sql, /FROM ThongBao/);
-  assert.equal(calls[1].input.userId, 9);
+  assert.equal(calls[1].sql, 'MATERIALIZE_MEDICATION');
+  assert.match(calls[2].sql, /FROM ThongBao/);
+  assert.equal(calls[2].input.userId, 9);
 });
 
 test('appointment changes remove only unread appointment reminders', () => {

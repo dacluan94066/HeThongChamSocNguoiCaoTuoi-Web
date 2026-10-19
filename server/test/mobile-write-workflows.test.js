@@ -20,20 +20,23 @@ function fixture({role='NguoiChamSoc',allowed=true,assigned=true,author=3,failUp
  const workflow=load('alertWorkflow.service.js');
  return {trace,workflow,notes:load('careNoteMutation.service.js',workflow),user:{userId:3,tenVaiTro:role}};
 }
-for(const allowed of [true,1,false,0]){
- test('SOS doctor permission BIT '+allowed,async()=>{
-  const {workflow,user}=fixture({role:'BacSi',allowed});
-  const operation=workflow.authorizeWrite({},user,1,'QLCANHBAO');
-  if(allowed===true||allowed===1)await operation;
-  else await assert.rejects(operation,e=>e.status===403);
- });
-}
+test('Admin can manage an alert and NCT cannot resolve it',async()=>{
+ const admin=fixture({role:'QuanTriVien'});
+ await admin.workflow.authorizeWrite({},admin.user,1,'QLCANHBAO');
+ const elderly=fixture({role:'NguoiCaoTuoi'});
+ await assert.rejects(elderly.workflow.authorizeWrite({},elderly.user,1,'QLCANHBAO'),e=>e.status===403);
+});
 test('Revoked caregiver assignment denies a transaction write',async()=>{
  const {workflow,user}=fixture({assigned:false});
  await assert.rejects(workflow.authorizeWrite({},user,1,'QLNHATKY'),e=>e.status===403);
 });
-for(const options of [{author:4},{assigned:false},{role:'BacSi'}]){
- test('Note mutation requires current assignment and author/admin: '+JSON.stringify(options),async()=>{
+test('Assigned caregiver may edit a note written by another caregiver',async()=>{
+ const {notes,user,trace}=fixture({author:4});
+ await notes.mutate({user,id:1,version:'F'.repeat(64),title:'TEST',content:'TEST'});
+ assert.equal(trace.updates,1);assert.equal(trace.committed,1);
+});
+for(const options of [{assigned:false},{role:'NguoiCaoTuoi'}]){
+ test('Note mutation requires current assignment and caregiver/admin role: '+JSON.stringify(options),async()=>{
   const {notes,user,trace}=fixture(options);
   await assert.rejects(notes.mutate({user,id:1,version:'F'.repeat(64),title:'TEST',content:'TEST'}),e=>e.status===403);
   assert.equal(trace.updates,0);assert.equal(trace.rolledBack,1);

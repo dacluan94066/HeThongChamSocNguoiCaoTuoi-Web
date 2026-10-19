@@ -33,6 +33,7 @@ class AssistantReply {
   const AssistantReply({
     required this.text,
     required this.intent,
+    this.domain,
     this.actions = const [],
     this.rows = const [],
     this.fetchedAt,
@@ -44,6 +45,7 @@ class AssistantReply {
   });
   final String text;
   final String intent;
+  final String? domain;
   final List<AssistantAction> actions;
   final List<Map<String, dynamic>> rows;
   final DateTime? fetchedAt;
@@ -54,6 +56,15 @@ class AssistantReply {
   final String? conversationToken;
   String get modeLabel => mode == 'ai' ? 'AI' : 'Trợ lý theo chức năng';
   String? get modeNotice {
+    if (domain == 'HEALTH' &&
+        (modeReason == 'missing_config' || modeReason == 'ai_unavailable') &&
+        intent != 'visit_preparation' && intent != 'visit_fasting') {
+      return modeReason == 'missing_config'
+          ? 'AI chưa được cấu hình; chưa có câu trả lời AI cho câu hỏi sức khỏe này.'
+          : aiFailureCode == 'AI_TIMEOUT'
+              ? 'AI trả lời quá thời gian chờ; vui lòng thử lại.'
+              : 'AI hiện không khả dụng; vui lòng thử lại.';
+    }
     if (mode != 'ai' &&
         (intent == 'visit_preparation' || intent == 'visit_fasting') &&
         (modeReason == 'missing_config' || modeReason == 'ai_unavailable')) {
@@ -89,6 +100,7 @@ class AssistantReply {
   factory AssistantReply.fromJson(Map<String, dynamic> data) => AssistantReply(
     text: data['text']?.toString() ?? '',
     intent: data['intent']?.toString() ?? 'unknown',
+    domain: data['domain']?.toString(),
     actions: (data['actions'] as List? ?? [])
         .map(AssistantAction.fromName)
         .whereType<AssistantAction>()

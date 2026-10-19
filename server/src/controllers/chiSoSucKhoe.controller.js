@@ -7,6 +7,7 @@ const { ok, fail } = require('../utils/response');
 const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
 const { emitToAdmin } = require('../socket');
 const { notifyAlertRecipients, emitAlertNotifications } = require('../services/alertNotification.service');
+const { validateMetricValues, validateMeasurementTime } = require('../utils/healthMetricValidation');
 
 // Map TenChiSo trong DB -> loaiChiSo frontend
 const MAP_LOAI = {
@@ -252,10 +253,10 @@ const createMine = async (req, res, next) => {
       return fail(res, 'loaiChiSoId khong hop le', 'INVALID_TYPE_ID', 400);
     }
     if (!Number.isFinite(primaryValue)) {
-      return fail(res, 'giaTri phai la mot so hop le', 'INVALID_VALUE', 400);
+      return fail(res, 'Giá trị chỉ số phải là số hợp lệ', 'INVALID_VALUE', 422);
     }
     if (secondaryValue != null && !Number.isFinite(secondaryValue)) {
-      return fail(res, 'giaTriPhu phai la mot so hop le', 'INVALID_SECONDARY_VALUE', 400);
+      return fail(res, 'Giá trị phụ phải là số hợp lệ', 'INVALID_SECONDARY_VALUE', 422);
     }
     if (note && note.length > 300) {
       return fail(res, 'ghiChu khong duoc vuot qua 300 ky tu', 'NOTE_TOO_LONG', 400);
@@ -280,9 +281,10 @@ const createMine = async (req, res, next) => {
     }
 
     const metricType = typeResult.recordset[0];
-    if ((metricType.GiaTriMin2 != null || metricType.GiaTriMax2 != null) && secondaryValue == null) {
-      return fail(res, 'Loai chi so nay yeu cau giaTriPhu', 'SECONDARY_VALUE_REQUIRED', 400);
-    }
+    const valueError = validateMetricValues(metricType, primaryValue, secondaryValue);
+    if (valueError) return fail(res, valueError, 'INVALID_METRIC_VALUE', 422);
+    const timeError = validateMeasurementTime({ thoiGianDo: req.body.thoiGianDo });
+    if (timeError) return fail(res, timeError, 'INVALID_MEASUREMENT_TIME', 422);
     const assessment = evaluateMetric({
       tenChiSo: metricType.TenChiSo,
       giaTri: primaryValue,
@@ -426,7 +428,7 @@ const create = async (req, res, next) => {
     const { loaiChiSo, giaTri, ngayDo, gioDo, binhThuong, ghiChu } = req.body;
     const nguoiCaoTuoiId = targetElderlyId(req, req.body.nguoiCaoTuoiId);
     if (isMobileRole(req) && nguoiCaoTuoiId == null) return fail(res, 'Khong co quyen ghi chi so cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
-    if (!nguoiCaoTuoiId || !loaiChiSo || !giaTri)
+    if (!nguoiCaoTuoiId || !loaiChiSo || giaTri == null || giaTri === '')
       return fail(res, 'nguoiCaoTuoiId, loaiChiSo, giaTri la bat buoc', 'MISSING_FIELDS', 400);
 
     const pool = await poolPromise;
@@ -434,7 +436,7 @@ const create = async (req, res, next) => {
     const tenChiSo = Object.entries(MAP_LOAI).find(([, v]) => v.ma === loaiChiSo)?.[0];
     const loaiRes = await pool.request().input('ten', sql.NVarChar, tenChiSo || loaiChiSo)
       .query(`
-        SELECT LoaiChiSoID, TenChiSo, GiaTriMin, GiaTriMax, GiaTriMin2, GiaTriMax2
+        SELECT LoaiChiSoID, TenChiSo, DonVi, GiaTriMin, GiaTriMax, GiaTriMin2, GiaTriMax2
         FROM LoaiChiSoSucKhoe
         WHERE TenChiSo=@ten
       `);
@@ -446,16 +448,17 @@ const create = async (req, res, next) => {
 
     // Parse GiaTri: co the la "120/80" (huyet ap) hoac so don
     let giaTriNum = null, giaTriPhuNum = null;
-    if (String(giaTri).includes('/')) {
-      const parts = String(giaTri).split('/');
-      giaTriNum = parseFloat(parts[0]);
-      giaTriPhuNum = parseFloat(parts[1]);
-    } else {
-      giaTriNum = parseFloat(giaTri);
+    const numeric = /^\d+(?:\.\d+)?$/;
+    const parts = String(giaTri).split('/');
+    if (parts.length > 2 || !parts.every((part) => numeric.test(part.trim()))) {
+      return fail(res, 'Giá trị chỉ số phải là số hợp lệ', 'INVALID_VALUE', 422);
     }
-
-    if (!Number.isFinite(giaTriNum) || (giaTriPhuNum != null && !Number.isFinite(giaTriPhuNum)))
-      return fail(res, 'Gia tri chi so khong hop le', 'INVALID_VALUE', 400);
+    giaTriNum = Number(parts[0]);
+    giaTriPhuNum = parts.length === 2 ? Number(parts[1]) : null;
+    const valueError = validateMetricValues(metricType, giaTriNum, giaTriPhuNum);
+    if (valueError) return fail(res, valueError, 'INVALID_METRIC_VALUE', 422);
+    const timeError = validateMeasurementTime({ ngayDo, gioDo });
+    if (timeError) return fail(res, timeError, 'INVALID_MEASUREMENT_TIME', 422);
 
     const assessment = evaluateMetric({
       tenChiSo: metricType.TenChiSo,

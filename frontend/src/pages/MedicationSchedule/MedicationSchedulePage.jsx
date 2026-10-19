@@ -205,7 +205,8 @@ const MedicationSchedulePage = () => {
     const intervention = todaySchedules.filter((item) => (
       ['BO_LO', 'TU_CHOI'].includes(item.trangThaiHom_nay)
     )).length;
-    const upcoming = todaySchedules.filter((item) => item.trangThaiHom_nay === 'CHUA_DEN_GIO').length;
+    const upcoming = todaySchedules.filter((item) => item.trangThaiHom_nay === 'CHUA_DEN_GIO'
+      && getScheduleTime(item)?.isAfter(dayjs())).length;
     return {
       total,
       taken,

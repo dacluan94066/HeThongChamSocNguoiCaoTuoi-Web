@@ -13,7 +13,7 @@ async function mutate({user,id,version,title,content,remove=false}){
     FROM NhatKyChamSoc n WITH(UPDLOCK,HOLDLOCK) LEFT JOIN NguoiChamSoc c ON c.NguoiChamSocID=n.NguoiChamSocID WHERE n.NhatKyID=@id`)).recordset[0];
   if(!row||row.status==='HUY')throw problem(404,'NOTE_NOT_FOUND','Nhật ký không tồn tại hoặc đã xóa.');
   await authorizeWrite(transaction,user,row.elderlyId,'QLNHATKY');
-  if(user.tenVaiTro!=='QuanTriVien'&&row.author!==user.userId)throw problem(403,'NOTE_AUTHOR_ONLY','Chỉ người viết nhật ký hoặc Admin được sửa/xóa.');
+  // authorizeWrite already checks that a caregiver is currently assigned to this elderly person.
   if(row.version!==version)throw problem(409,'NOTE_CHANGED','Nhật ký đã thay đổi. Bản nháp được giữ; tải lại dữ liệu trước khi lưu.');
   const request=new sql.Request(transaction).input('id',sql.Int,Number(id));
   if(remove)await request.query("UPDATE NhatKyChamSoc SET TrangThai=N'HUY' WHERE NhatKyID=@id");

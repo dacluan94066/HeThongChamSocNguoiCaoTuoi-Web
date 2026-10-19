@@ -22,3 +22,13 @@ export const updateCaregiver = async (id, data) => {
   const res = await axiosClient.put(`/caregivers/${id}`, data);
   return res.data?.data ?? res.data;
 };
+
+export const createCaregiverWebAccount = async (id, data) => {
+  const res = await axiosClient.post(`/caregivers/${id}/account`, data);
+  return res.data?.data ?? res.data;
+};
+
+export const resetCaregiverWebPassword = async (id, data) => {
+  const res = await axiosClient.post(`/caregivers/${id}/account/reset-password`, data);
+  return res.data?.data ?? res.data;
+};

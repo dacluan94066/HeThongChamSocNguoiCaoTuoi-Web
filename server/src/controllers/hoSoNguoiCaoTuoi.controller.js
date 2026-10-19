@@ -4,6 +4,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+const { validateElderlyProfile } = require('../utils/elderlyProfileValidation');
 
 // GET /api/elderly/me - chi tai khoan NguoiCaoTuoi co ho so lien ket.
 const getMe = async (req, res, next) => {
@@ -53,39 +54,16 @@ const updateMe = async (req, res, next) => {
       return fail(res, 'Du lieu cap nhat khong hop le; khong duoc sua CCCD', 'INVALID_FIELDS', 400);
     }
 
-    const { hoTen, ngaySinh, gioiTinh } = req.body;
+    const validation = validateElderlyProfile(req.body, { partial: true });
+    if (validation.error) return fail(res, validation.error.message, `INVALID_${validation.error.field.toUpperCase()}`, 422);
     const email = req.body.email;
-    if (email !== undefined && (typeof email !== 'string' || email.trim().length > 100
-      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))) {
-      return fail(res, 'Email không hợp lệ.', 'INVALID_EMAIL', 400);
-    }
-    if (hoTen !== undefined && (typeof hoTen !== 'string' || !hoTen.trim())) {
-      return fail(res, 'Ho ten khong duoc de trong', 'INVALID_NAME', 400);
-    }
-    if (ngaySinh !== undefined) {
-      const date = typeof ngaySinh === 'string' ? new Date(`${ngaySinh}T00:00:00Z`) : new Date(NaN);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(ngaySinh)
-        || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== ngaySinh
-        || date > new Date()) {
-        return fail(res, 'Ngay sinh phai theo YYYY-MM-DD va khong duoc o tuong lai', 'INVALID_BIRTH_DATE', 400);
-      }
-    }
-    if (gioiTinh !== undefined && !['Nam', 'Nữ', 'Khác'].includes(gioiTinh)) {
-      return fail(res, 'Gioi tinh khong hop le', 'INVALID_GENDER', 400);
-    }
     const normalizedEmail = typeof req.body.email === 'string'
       ? req.body.email.trim().toLowerCase()
       : '';
     if (req.body.email !== undefined
       && (!normalizedEmail || normalizedEmail.length > 100
         || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))) {
-      return fail(res, 'Email khong hop le', 'INVALID_EMAIL', 400);
-    }
-    for (const field of ['soDienThoai', 'diaChi', 'nhomMau', 'benhNen', 'diUng']) {
-      if (req.body[field] !== undefined && req.body[field] !== null
-        && typeof req.body[field] !== 'string') {
-        return fail(res, `${field} phai la chuoi`, 'INVALID_FIELD_TYPE', 400);
-      }
+      return fail(res, 'Email không hợp lệ', 'INVALID_EMAIL', 422);
     }
 
     const columns = {
@@ -99,7 +77,7 @@ const updateMe = async (req, res, next) => {
       transaction = new sql.Transaction(pool);
       await transaction.begin();
       const duplicate = await new sql.Request(transaction)
-        .input('userId', sql.Int, req.user.userId).input('email', sql.VarChar(100), email.trim())
+        .input('userId', sql.Int, req.user.userId).input('email', sql.VarChar(100), normalizedEmail)
         .query('SELECT UserID FROM NguoiDung WITH (UPDLOCK,HOLDLOCK) WHERE Email=@email AND UserID<>@userId');
       if (duplicate.recordset.length) {
         await transaction.rollback();
@@ -110,7 +88,7 @@ const updateMe = async (req, res, next) => {
     const request = (transaction ? new sql.Request(transaction) : pool.request()).input('userId', sql.Int, req.user.userId);
     const profileFields = fields.filter(field => field !== 'email');
     for (const field of profileFields) {
-      const value = req.body[field];
+      const value = validation.value[field];
       request.input(field, field === 'ngaySinh' ? sql.Date : sql.NVarChar,
         typeof value === 'string' ? value.trim() || null : value);
     }
@@ -124,7 +102,7 @@ const updateMe = async (req, res, next) => {
     }
     if (transaction) {
       await new sql.Request(transaction)
-        .input('userId', sql.Int, req.user.userId).input('email', sql.VarChar(100), email.trim())
+        .input('userId', sql.Int, req.user.userId).input('email', sql.VarChar(100), normalizedEmail)
         .query('UPDATE NguoiDung SET Email=@email WHERE UserID=@userId');
       await transaction.commit();
       transaction = null;
@@ -256,26 +234,24 @@ const create = async (req, res, next) => {
       nhomMau, benhNen, diUng,
     } = req.body;
 
-    // Validate cac truong bat buoc
-    if (!hoTen || !ngaySinh || !gioiTinh) {
-      return fail(res, 'hoTen, ngaySinh, gioiTinh la bat buoc', 'MISSING_FIELDS', 400);
-    }
+    const validation = validateElderlyProfile(req.body);
+    if (validation.error) return fail(res, validation.error.message, `INVALID_${validation.error.field.toUpperCase()}`, 422);
 
     const pool = await poolPromise;
 
     // BenhNen va DiUng co the la mang, luu thanh chuoi JSON hoac CSV
-    const benhNenStr = Array.isArray(benhNen) ? benhNen.join(', ') : (benhNen || '');
-    const diUngStr = Array.isArray(diUng) ? diUng.join(', ') : (diUng || '');
+    const benhNenStr = validation.value.benhNen;
+    const diUngStr = validation.value.diUng;
 
     // Them ban ghi moi, lay lai ID vua tao qua OUTPUT
     const result = await pool.request()
-      .input('hoTen', sql.NVarChar, hoTen)
+      .input('hoTen', sql.NVarChar, validation.value.hoTen)
       .input('ngaySinh', sql.Date, ngaySinh)
       .input('gioiTinh', sql.NVarChar, gioiTinh)
-      .input('cccd', sql.NVarChar, cccd || null)
-      .input('diaChi', sql.NVarChar, diaChi || null)
-      .input('soDienThoai', sql.NVarChar, soDienThoai || null)
-      .input('nhomMau', sql.NVarChar, nhomMau || null)
+      .input('cccd', sql.VarChar, validation.value.cccd)
+      .input('diaChi', sql.NVarChar, validation.value.diaChi)
+      .input('soDienThoai', sql.VarChar, validation.value.soDienThoai)
+      .input('nhomMau', sql.VarChar, validation.value.nhomMau)
       .input('benhNen', sql.NVarChar, benhNenStr || null)
       .input('diUng', sql.NVarChar, diUngStr || null)
       .input('nguoiTaoId', sql.Int, req.user.userId)
@@ -308,6 +284,12 @@ const update = async (req, res, next) => {
       nhomMau, benhNen, diUng, trangThai,
     } = req.body;
 
+    const validation = validateElderlyProfile(req.body);
+    if (validation.error) return fail(res, validation.error.message, `INVALID_${validation.error.field.toUpperCase()}`, 422);
+    if (trangThai != null && !['DangTheoDoi', 'CanChamSocDacBiet', 'NgungTheoDoi'].includes(trangThai)) {
+      return fail(res, 'Trạng thái hồ sơ không hợp lệ', 'INVALID_TRANGTHAI', 422);
+    }
+
     const pool = await poolPromise;
 
     // Kiem tra ho so ton tai
@@ -319,19 +301,19 @@ const update = async (req, res, next) => {
       return fail(res, 'Khong tim thay ho so nguoi cao tuoi', 'NOT_FOUND', 404);
     }
 
-    const benhNenStr = Array.isArray(benhNen) ? benhNen.join(', ') : (benhNen || '');
-    const diUngStr = Array.isArray(diUng) ? diUng.join(', ') : (diUng || '');
+    const benhNenStr = validation.value.benhNen;
+    const diUngStr = validation.value.diUng;
 
     // Cap nhat toan bo cac truong
     await pool.request()
       .input('id', sql.Int, id)
-      .input('hoTen', sql.NVarChar, hoTen)
+      .input('hoTen', sql.NVarChar, validation.value.hoTen)
       .input('ngaySinh', sql.Date, ngaySinh)
       .input('gioiTinh', sql.NVarChar, gioiTinh)
-      .input('cccd', sql.NVarChar, cccd || null)
-      .input('diaChi', sql.NVarChar, diaChi || null)
-      .input('soDienThoai', sql.NVarChar, soDienThoai || null)
-      .input('nhomMau', sql.NVarChar, nhomMau || null)
+      .input('cccd', sql.VarChar, validation.value.cccd)
+      .input('diaChi', sql.NVarChar, validation.value.diaChi)
+      .input('soDienThoai', sql.VarChar, validation.value.soDienThoai)
+      .input('nhomMau', sql.VarChar, validation.value.nhomMau)
       .input('benhNen', sql.NVarChar, benhNenStr || null)
       .input('diUng', sql.NVarChar, diUngStr || null)
       .input('trangThai', sql.NVarChar, trangThai || 'DangTheoDoi')

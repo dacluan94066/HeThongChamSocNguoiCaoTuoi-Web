@@ -87,6 +87,11 @@ CREATE UNIQUE INDEX UX_NguoiDung_Email
     WHERE Email IS NOT NULL;
 GO
 
+CREATE UNIQUE INDEX UX_NguoiDung_SoDienThoai
+    ON NguoiDung(SoDienThoai)
+    WHERE SoDienThoai IS NOT NULL;
+GO
+
 -- Dinh danh `sub` da duoc Google ky; moi tai khoan Google chi lien ket mot user.
 CREATE UNIQUE INDEX UX_NguoiDung_GoogleSubject
     ON NguoiDung(GoogleSubject)
@@ -477,11 +482,11 @@ INSERT INTO @Quyen VALUES
 (N'NguoiChamSoc','QLNGUOICHAMSOC',1,0,0,0),(N'NguoiChamSoc','QLTHUOC',1,1,1,0),
 (N'NguoiChamSoc','QLLICHUONGTHUOC',1,1,1,0),(N'NguoiChamSoc','QLLICHKHAM',1,1,1,0),
 (N'NguoiChamSoc','QLCHISOSK',1,1,1,0),(N'NguoiChamSoc','QLCANHBAO',1,1,1,0),
-(N'NguoiChamSoc','QLLIENHEKC',1,1,1,0),(N'NguoiChamSoc','QLNHATKY',1,1,1,0),
+(N'NguoiChamSoc','QLLIENHEKC',1,1,1,1),(N'NguoiChamSoc','QLNHATKY',1,1,1,1),
 (N'NguoiChamSoc','QLBAOCAO',1,0,0,0),
 
 -- NguoiCaoTuoi: dung Mobile, chi xem/cap nhat du lieu cua chinh minh
-(N'NguoiCaoTuoi','QLNGUOIDUNG',0,0,0,0),(N'NguoiCaoTuoi','QLHOSONCT',1,0,0,0),
+(N'NguoiCaoTuoi','QLNGUOIDUNG',0,0,0,0),(N'NguoiCaoTuoi','QLHOSONCT',1,0,1,0),
 (N'NguoiCaoTuoi','QLNGUOICHAMSOC',1,0,0,0),(N'NguoiCaoTuoi','QLTHUOC',1,0,0,0),
 (N'NguoiCaoTuoi','QLLICHUONGTHUOC',1,0,1,0),(N'NguoiCaoTuoi','QLLICHKHAM',1,0,0,0),
 (N'NguoiCaoTuoi','QLCHISOSK',1,1,0,0),(N'NguoiCaoTuoi','QLCANHBAO',1,1,0,0),
