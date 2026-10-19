@@ -10,6 +10,8 @@
    ===================================================================== */
 
 USE QLSucKhoeNguoiCaoTuoi;
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
@@ -17,14 +19,10 @@ BEGIN TRY
     BEGIN TRANSACTION;
 
     DECLARE @AdminID INT = (SELECT UserID FROM NguoiDung WHERE TenDangNhap = 'admin');
-    DECLARE @DoctorID INT = (SELECT UserID FROM NguoiDung WHERE TenDangNhap = 'doctor01');
-    DECLARE @NurseID INT = (SELECT UserID FROM NguoiDung WHERE TenDangNhap = 'nurse01');
     DECLARE @CaregiverUserID INT = (SELECT UserID FROM NguoiDung WHERE TenDangNhap = 'caregiver01');
 
-    IF @AdminID IS NULL OR @DoctorID IS NULL OR @CaregiverUserID IS NULL
+    IF @AdminID IS NULL OR @CaregiverUserID IS NULL
         THROW 50001, N'Chua co tai khoan demo. Hay chay server/seed_users.js truoc.', 1;
-
-    IF @NurseID IS NULL SET @NurseID = @DoctorID;
 
     /* ================================================================
        1. HO SO NGUOI CAO TUOI
@@ -169,16 +167,16 @@ BEGIN TRY
 
     IF NOT EXISTS (SELECT 1 FROM DonThuoc WHERE GhiChu = @GhiChuDT1)
         INSERT INTO DonThuoc (NguoiCaoTuoiID, BacSiKeDon, NoiKeDon, NgayKeDon, NgayBatDau, NgayKetThuc, GhiChu, NguoiTaoID)
-        VALUES (@NctAn, N'BS. Trần Thị Minh', N'Bệnh viện Nhân Dân 115', DATEADD(DAY,-10,CAST(GETDATE() AS DATE)), DATEADD(DAY,-9,CAST(GETDATE() AS DATE)), DATEADD(DAY,21,CAST(GETDATE() AS DATE)), @GhiChuDT1, @DoctorID);
+        VALUES (@NctAn, N'BS. Trần Thị Minh', N'Bệnh viện Nhân Dân 115', DATEADD(DAY,-10,CAST(GETDATE() AS DATE)), DATEADD(DAY,-9,CAST(GETDATE() AS DATE)), DATEADD(DAY,21,CAST(GETDATE() AS DATE)), @GhiChuDT1, @CaregiverUserID);
     IF NOT EXISTS (SELECT 1 FROM DonThuoc WHERE GhiChu = @GhiChuDT2)
         INSERT INTO DonThuoc (NguoiCaoTuoiID, BacSiKeDon, NoiKeDon, NgayKeDon, NgayBatDau, NgayKetThuc, GhiChu, NguoiTaoID)
-        VALUES (@NctBinh, N'BS. Trần Thị Minh', N'Bệnh viện Đại học Y Dược', DATEADD(DAY,-8,CAST(GETDATE() AS DATE)), DATEADD(DAY,-7,CAST(GETDATE() AS DATE)), DATEADD(DAY,23,CAST(GETDATE() AS DATE)), @GhiChuDT2, @DoctorID);
+        VALUES (@NctBinh, N'BS. Trần Thị Minh', N'Bệnh viện Đại học Y Dược', DATEADD(DAY,-8,CAST(GETDATE() AS DATE)), DATEADD(DAY,-7,CAST(GETDATE() AS DATE)), DATEADD(DAY,23,CAST(GETDATE() AS DATE)), @GhiChuDT2, @CaregiverUserID);
     IF NOT EXISTS (SELECT 1 FROM DonThuoc WHERE GhiChu = @GhiChuDT3)
         INSERT INTO DonThuoc (NguoiCaoTuoiID, BacSiKeDon, NoiKeDon, NgayKeDon, NgayBatDau, NgayKetThuc, GhiChu, NguoiTaoID)
-        VALUES (@NctCuong, N'BS. Lê Hoàng Nam', N'Bệnh viện Phạm Ngọc Thạch', DATEADD(DAY,-6,CAST(GETDATE() AS DATE)), DATEADD(DAY,-5,CAST(GETDATE() AS DATE)), DATEADD(DAY,25,CAST(GETDATE() AS DATE)), @GhiChuDT3, @DoctorID);
+        VALUES (@NctCuong, N'BS. Lê Hoàng Nam', N'Bệnh viện Phạm Ngọc Thạch', DATEADD(DAY,-6,CAST(GETDATE() AS DATE)), DATEADD(DAY,-5,CAST(GETDATE() AS DATE)), DATEADD(DAY,25,CAST(GETDATE() AS DATE)), @GhiChuDT3, @CaregiverUserID);
     IF NOT EXISTS (SELECT 1 FROM DonThuoc WHERE GhiChu = @GhiChuDT4)
         INSERT INTO DonThuoc (NguoiCaoTuoiID, BacSiKeDon, NoiKeDon, NgayKeDon, NgayBatDau, NgayKetThuc, GhiChu, NguoiTaoID)
-        VALUES (@NctDuc, N'BS. Trần Thị Minh', N'Viện Tim TP. Hồ Chí Minh', DATEADD(DAY,-12,CAST(GETDATE() AS DATE)), DATEADD(DAY,-11,CAST(GETDATE() AS DATE)), DATEADD(DAY,19,CAST(GETDATE() AS DATE)), @GhiChuDT4, @DoctorID);
+        VALUES (@NctDuc, N'BS. Trần Thị Minh', N'Viện Tim TP. Hồ Chí Minh', DATEADD(DAY,-12,CAST(GETDATE() AS DATE)), DATEADD(DAY,-11,CAST(GETDATE() AS DATE)), DATEADD(DAY,19,CAST(GETDATE() AS DATE)), @GhiChuDT4, @CaregiverUserID);
 
     DECLARE @DT1 INT = (SELECT DonThuocID FROM DonThuoc WHERE GhiChu = @GhiChuDT1);
     DECLARE @DT2 INT = (SELECT DonThuocID FROM DonThuoc WHERE GhiChu = @GhiChuDT2);
@@ -259,7 +257,7 @@ BEGIN TRY
 
     INSERT INTO LichKhamBenh
         (NguoiCaoTuoiID, TenBenhVien, BacSiPhuTrach, ChuyenKhoa, ThoiGianKham, LyDoKham, TrangThai, KetQuaKham, NguoiTaoID)
-    SELECT l.NctID, l.BenhVien, l.BacSi, l.ChuyenKhoa, l.NgayGio, l.LyDo, l.TrangThai, l.KetQua, @DoctorID
+    SELECT l.NctID, l.BenhVien, l.BacSi, l.ChuyenKhoa, l.NgayGio, l.LyDo, l.TrangThai, l.KetQua, @CaregiverUserID
     FROM @LichKhamMau l
     WHERE NOT EXISTS (SELECT 1 FROM LichKhamBenh x WHERE x.LyDoKham=l.LyDo);
 
@@ -290,7 +288,7 @@ BEGIN TRY
 
     INSERT INTO ChiSoSucKhoe
         (NguoiCaoTuoiID, LoaiChiSoID, GiaTri, GiaTriPhu, ThoiGianDo, NguoiDoID, LaBatThuong, GhiChu)
-    SELECT c.NctID, c.LoaiID, c.GiaTri, c.GiaTriPhu, c.ThoiGian, @NurseID, c.BatThuong, c.GhiChu
+    SELECT c.NctID, c.LoaiID, c.GiaTri, c.GiaTriPhu, c.ThoiGian, @CaregiverUserID, c.BatThuong, c.GhiChu
     FROM @ChiSoMau c
     WHERE NOT EXISTS (SELECT 1 FROM ChiSoSucKhoe x WHERE x.GhiChu=c.GhiChu);
 
@@ -316,7 +314,7 @@ BEGIN TRY
 
     IF NOT EXISTS (SELECT 1 FROM CanhBao WHERE NguonBang=N'ChiSoSucKhoe' AND NguonID=@CsDucNhipTim)
         INSERT INTO CanhBao (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID, TrangThai, NgayTao, NguoiXuLyID)
-        VALUES (@NctDuc, N'ChiSoBatThuong', N'Nhịp tim ghi nhận 108 lần/phút, cần kiểm tra lại sau khi nghỉ.', N'TrungBinh', N'ChiSoSucKhoe', @CsDucNhipTim, N'DaXem', DATEADD(HOUR,-5,SYSDATETIME()), @NurseID);
+        VALUES (@NctDuc, N'ChiSoBatThuong', N'Nhịp tim ghi nhận 108 lần/phút, cần kiểm tra lại sau khi nghỉ.', N'TrungBinh', N'ChiSoSucKhoe', @CsDucNhipTim, N'DaXem', DATEADD(HOUR,-5,SYSDATETIME()), @CaregiverUserID);
 
     IF NOT EXISTS (SELECT 1 FROM CanhBao WHERE NguonBang=N'DuLieuMau' AND NguonID=101)
         INSERT INTO CanhBao (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID, TrangThai, NgayTao)
@@ -333,10 +331,10 @@ BEGIN TRY
     -- Cac canh bao da xu ly o nhung thang truoc giup bieu do bao cao co du lieu.
     IF NOT EXISTS (SELECT 1 FROM CanhBao WHERE NguonBang=N'DuLieuMau' AND NguonID=201)
         INSERT INTO CanhBao (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID, TrangThai, NgayTao, NgayXuLy, NguoiXuLyID, GhiChuXuLy)
-        VALUES (@NctAn, N'ChiSoBatThuong', N'Huyết áp tăng nhẹ trong lần đo buổi sáng.', N'TrungBinh', N'DuLieuMau', 201, N'DaXuLy', DATEADD(MONTH,-1,SYSDATETIME()), DATEADD(MINUTE,45,DATEADD(MONTH,-1,SYSDATETIME())), @DoctorID, N'Đã liên hệ, đo lại và ghi nhận chỉ số ổn định.');
+        VALUES (@NctAn, N'ChiSoBatThuong', N'Huyết áp tăng nhẹ trong lần đo buổi sáng.', N'TrungBinh', N'DuLieuMau', 201, N'DaXuLy', DATEADD(MONTH,-1,SYSDATETIME()), DATEADD(MINUTE,45,DATEADD(MONTH,-1,SYSDATETIME())), @CaregiverUserID, N'Đã liên hệ, đo lại và ghi nhận chỉ số ổn định.');
     IF NOT EXISTS (SELECT 1 FROM CanhBao WHERE NguonBang=N'DuLieuMau' AND NguonID=202)
         INSERT INTO CanhBao (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID, TrangThai, NgayTao, NgayXuLy, NguoiXuLyID, GhiChuXuLy)
-        VALUES (@NctBinh, N'NhacUongThuoc', N'Bỏ lỡ một lịch uống thuốc buổi tối.', N'TrungBinh', N'DuLieuMau', 202, N'DaXuLy', DATEADD(MONTH,-2,SYSDATETIME()), DATEADD(HOUR,2,DATEADD(MONTH,-2,SYSDATETIME())), @NurseID, N'Đã xác minh với người chăm sóc.');
+        VALUES (@NctBinh, N'NhacUongThuoc', N'Bỏ lỡ một lịch uống thuốc buổi tối.', N'TrungBinh', N'DuLieuMau', 202, N'DaXuLy', DATEADD(MONTH,-2,SYSDATETIME()), DATEADD(HOUR,2,DATEADD(MONTH,-2,SYSDATETIME())), @CaregiverUserID, N'Đã xác minh với người chăm sóc.');
     IF NOT EXISTS (SELECT 1 FROM CanhBao WHERE NguonBang=N'DuLieuMau' AND NguonID=203)
         INSERT INTO CanhBao (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID, TrangThai, NgayTao, NgayXuLy, NguoiXuLyID, GhiChuXuLy)
         VALUES (@NctDung, N'NhacLichKham', N'Lịch khám cơ xương khớp cần xác nhận.', N'Thap', N'DuLieuMau', 203, N'DaXuLy', DATEADD(MONTH,-3,SYSDATETIME()), DATEADD(HOUR,4,DATEADD(MONTH,-3,SYSDATETIME())), @AdminID, N'Đã xác nhận lịch với bệnh viện.');
@@ -354,9 +352,9 @@ BEGIN TRY
     (UserID INT, TieuDe NVARCHAR(150), NoiDung NVARCHAR(500), Loai NVARCHAR(30), Bang NVARCHAR(50), LienKetID INT, DaDoc BIT);
     INSERT INTO @ThongBaoMau VALUES
         (@AdminID, N'Cảnh báo khẩn cần tiếp nhận', N'Ông Lê Văn Cường có cảnh báo khó thở khi vận động.', N'KhanCap', N'CanhBao', 103, 0),
-        (@DoctorID, N'Chỉ số SpO2 bất thường', N'Chỉ số SpO2 mới cần được đánh giá.', N'CanhBaoChiSo', N'ChiSoSucKhoe', @CsCuongSpo2, 0),
+        (@CaregiverUserID, N'Chỉ số SpO2 bất thường', N'Chỉ số SpO2 mới cần được đánh giá.', N'CanhBaoChiSo', N'ChiSoSucKhoe', @CsCuongSpo2, 0),
         (@CaregiverUserID, N'Nhắc lịch uống thuốc', N'Vui lòng xác nhận lịch thuốc buổi tối của ông Nguyễn Văn An.', N'NhacThuoc', N'LichUongThuoc', NULL, 0),
-        (@NurseID, N'Lịch khám sắp tới', N'Có lịch tái khám tim mạch trong 2 ngày tới.', N'NhacLichKham', N'LichKhamBenh', NULL, 1);
+        (@CaregiverUserID, N'Lịch khám sắp tới', N'Có lịch tái khám tim mạch trong 2 ngày tới.', N'NhacLichKham', N'LichKhamBenh', NULL, 1);
 
     INSERT INTO ThongBao (UserID, TieuDe, NoiDung, LoaiThongBao, LienKetBang, LienKetID, DaDoc)
     SELECT t.UserID, t.TieuDe, t.NoiDung, t.Loai, t.Bang, t.LienKetID, t.DaDoc

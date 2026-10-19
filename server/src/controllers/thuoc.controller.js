@@ -14,7 +14,7 @@ const mapThuoc = (row) => ({
   tacDungPhu:     row.tacDungPhu,
   moTa:           row.moTa,
   trangThai:      row.trangThai ? 'DANG_SU_DUNG' : 'NGUNG_SU_DUNG',
-  trangThaiLabel: row.trangThai ? 'Đang sử dụng' : 'Ngừng sử dụng',
+  trangThaiLabel: row.trangThai ? 'Có thể chọn' : 'Không tạo đơn mới',
 });
 
 // GET /api/medications?keyword=

@@ -15,12 +15,17 @@ import TableActionButton from '../../components/TableActionButton';
 import RecordDetailModal from '../../components/RecordDetailModal';
 import MedicationQuickTabs from '../../components/MedicationQuickTabs';
 import StatusTag from '../../components/StatusTag';
+import ElderlyMedicationsPanel from './ElderlyMedicationsPanel';
 
 const MedicationsPage = () => {
   const { hasPermission } = usePermission();
   const canCreate = hasPermission('QLTHUOC', 'them');
   const canEdit = hasPermission('QLTHUOC', 'sua');
   const canDelete = hasPermission('QLTHUOC', 'xoa');
+  const canViewPersonal = hasPermission('QLHOSONCT', 'xem') && hasPermission('QLLICHUONGTHUOC', 'xem');
+  const canCreatePrescription = hasPermission('QLLICHUONGTHUOC', 'them');
+  const [activeView, setActiveView] = useState('personal');
+  const showPersonal = canViewPersonal && activeView === 'personal';
   const [medications, setMedications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -55,7 +60,7 @@ const MedicationsPage = () => {
 
   const handleDisable = async (id) => {
     await deleteMedication(id);
-    message.success('Đã ngừng sử dụng thuốc');
+    message.success('Đã ngừng cho chọn thuốc trong đơn mới');
     load();
   };
 
@@ -147,13 +152,13 @@ const MedicationsPage = () => {
             )}
             {canDelete && isActive && (
               <Popconfirm
-                title="Ngừng sử dụng thuốc này?"
+                title="Ngừng cho chọn thuốc này trong đơn mới?"
                 description="Thuốc sẽ được giữ lại trong dữ liệu nhưng không còn dùng để tạo đơn mới."
                 onConfirm={() => handleDisable(record.id)}
                 okText="Ngừng dùng"
                 cancelText="Hủy"
               >
-                <TableActionButton type="delete" tooltip="Ngừng sử dụng" icon={<StopOutlined />} />
+                <TableActionButton type="delete" tooltip="Ngừng chọn trong đơn mới" icon={<StopOutlined />} />
               </Popconfirm>
             )}
           </Space>
@@ -165,10 +170,12 @@ const MedicationsPage = () => {
   return (
     <div className="medication-management-page medication-catalog-page">
       <PageHeader
-        title="Danh mục thuốc"
-        subtitle="Quản lý thông tin dược phẩm đang sử dụng trong hệ thống chăm sóc"
+        title={showPersonal ? 'Thuốc của người cao tuổi' : 'Kho thuốc tham chiếu'}
+        subtitle={showPersonal
+          ? 'Xem thuốc trong đơn của từng người cao tuổi được chăm sóc'
+          : 'Kho thông tin thuốc dùng chung để chọn khi nhập đơn, không phải thuốc của tất cả người cao tuổi'}
         icon={<MedicineBoxOutlined />}
-        extra={canCreate && (
+        extra={!showPersonal && canCreate && (
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="large">
             Thêm thuốc
           </Button>
@@ -177,11 +184,24 @@ const MedicationsPage = () => {
 
       <MedicationQuickTabs />
 
+      {canViewPersonal && (
+        <div className="medication-view-tabs" role="tablist" aria-label="Chọn cách xem thuốc">
+          <button type="button" role="tab" aria-selected={showPersonal} className={showPersonal ? 'is-active' : ''} onClick={() => setActiveView('personal')}>
+            Thuốc của NCT
+          </button>
+          <button type="button" role="tab" aria-selected={!showPersonal} className={!showPersonal ? 'is-active' : ''} onClick={() => setActiveView('catalog')}>
+            Kho thuốc tham chiếu
+          </button>
+        </div>
+      )}
+
+      {showPersonal ? <ElderlyMedicationsPanel canCreatePrescription={canCreatePrescription} /> : (
+
       <section className="medication-list-panel">
         <div className="medication-list-heading">
           <div>
-            <h3>Danh mục dược phẩm</h3>
-            <p>Thông tin lấy trực tiếp từ danh mục thuốc của hệ thống.</p>
+            <h3>Kho thuốc tham chiếu</h3>
+            <p>Thuốc dùng chung để nhập đơn. Chọn “Thuốc của NCT” để xem thuốc của một người cụ thể.</p>
           </div>
           <span>{medications.length} thuốc</span>
         </div>
@@ -206,6 +226,7 @@ const MedicationsPage = () => {
           )}
         />
       </section>
+      )}
 
       <RecordDetailModal
         open={!!detailRecord}

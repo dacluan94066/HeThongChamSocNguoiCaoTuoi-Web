@@ -26,8 +26,8 @@ const getMe = async (req, res, next) => {
         JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lk.NguoiChamSocID
         WHERE lk.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
           AND lk.LaChinh = 1
-          AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
-          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
+          AND lk.NgayBatDau <= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
         ORDER BY lk.ID DESC
       ) ncsMain
       WHERE nct.UserID = @userId
@@ -172,7 +172,7 @@ const getAll = async (req, res, next) => {
           INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
           WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
           AND lienKet.LaChinh = 1
-          AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
+          AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
         ORDER BY lienKet.ID DESC
       ) ncsMain
       WHERE 1=1
@@ -229,7 +229,7 @@ const getById = async (req, res, next) => {
           INNER JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID = lienKet.NguoiChamSocID
           WHERE lienKet.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
             AND lienKet.LaChinh = 1
-            AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc >= CAST(GETDATE() AS DATE))
+            AND (lienKet.NgayKetThuc IS NULL OR lienKet.NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
           ORDER BY lienKet.ID DESC
         ) ncsMain
         WHERE nct.NguoiCaoTuoiID = @id
@@ -405,26 +405,34 @@ const assignCaregiver = async (req, res, next) => {
       .query(`
         SELECT
           (SELECT COUNT(1) FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID = @id) AS elderCount,
-          (SELECT COUNT(1) FROM NguoiChamSoc WHERE NguoiChamSocID = @nguoiChamSocId) AS caregiverCount
+          (SELECT COUNT(1) FROM NguoiChamSoc
+            WHERE NguoiChamSocID = @nguoiChamSocId AND TrangThai=N'DangLamViec') AS caregiverCount
       `);
 
     const counts = existing.recordset[0];
     if (!counts.elderCount || !counts.caregiverCount) {
       await transaction.rollback();
-      return fail(res, 'Ho so hoac nguoi cham soc khong ton tai', 'NOT_FOUND', 404);
+      return fail(res, 'Ho so khong ton tai hoac nguoi cham soc khong dang lam viec', 'NOT_FOUND', 404);
     }
 
     await transaction.request()
       .input('id', sql.Int, id)
       .input('nguoiChamSocId', sql.Int, nguoiChamSocId)
       .query(`
+        DECLARE @today DATE = CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE);
+
+        -- NgayKetThuc la moc het hieu luc (khong tinh ngay nay), vi vay
+        -- chuyen giao trong cung ngay van thu hoi quyen ma giu duoc lich su.
         UPDATE NguoiCaoTuoi_NguoiChamSoc
         SET LaChinh = 0,
+            NgayKetThuc = @today,
             MoiQuanHe = CASE
               WHEN MoiQuanHe = N'Người chăm sóc chính' THEN N'Người chăm sóc'
               ELSE MoiQuanHe
             END
-        WHERE NguoiCaoTuoiID = @id;
+        WHERE NguoiCaoTuoiID = @id
+          AND NguoiChamSocID <> @nguoiChamSocId
+          AND LaChinh = 1;
 
         MERGE NguoiCaoTuoi_NguoiChamSoc WITH (HOLDLOCK) AS target
         USING (SELECT @id AS NguoiCaoTuoiID, @nguoiChamSocId AS NguoiChamSocID) AS source
@@ -436,7 +444,7 @@ const assignCaregiver = async (req, res, next) => {
             NgayKetThuc = NULL
         WHEN NOT MATCHED THEN
           INSERT (NguoiCaoTuoiID, NguoiChamSocID, MoiQuanHe, LaChinh, NgayBatDau)
-          VALUES (source.NguoiCaoTuoiID, source.NguoiChamSocID, N'Người chăm sóc chính', 1, CAST(GETDATE() AS DATE));
+          VALUES (source.NguoiCaoTuoiID, source.NguoiChamSocID, N'Người chăm sóc chính', 1, @today);
       `);
 
     await transaction.commit();

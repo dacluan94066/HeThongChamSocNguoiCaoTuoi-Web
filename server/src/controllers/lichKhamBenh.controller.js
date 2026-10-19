@@ -1,7 +1,8 @@
 // Lich kham benh: API quan ly tren Web va API chi-doc cho tai khoan Mobile.
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
-const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
+const { todayVietnam } = require('../utils/vietnamDate');
+const { scopedWhere, targetElderlyId } = require('../middlewares/mobile-scope.middleware');
 const { emitToAdmin, emitToUser } = require('../socket');
 
 const STATUS = {
@@ -274,6 +275,12 @@ const create = async (req, res, next) => {
     const validationError = validateAppointmentBody(req.body);
     if (validationError) return fail(res, validationError, 'INVALID_APPOINTMENT', 400);
     const { nguoiCaoTuoiId, ngayKham, gioKham, noiKham, lyDoKham, bacSiTen, ghiChu } = req.body;
+    if (ngayKham < todayVietnam()) {
+      return fail(res, 'Ngày khám không được trước ngày hiện tại', 'PAST_APPOINTMENT_DATE', 400);
+    }
+    if (!targetElderlyId(req, Number(nguoiCaoTuoiId))) {
+      return fail(res, 'Khong co quyen tao lich cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
+    }
     // Treat the entered Vietnam clock as a timezone-independent wall clock.
     // The UTC suffix prevents the Node host timezone from shifting the value
     // before the mssql driver writes it into the DATETIME2 column.
@@ -310,9 +317,20 @@ const update = async (req, res, next) => {
     const validationError = validateAppointmentBody(req.body);
     if (validationError) return fail(res, validationError, 'INVALID_APPOINTMENT', 400);
     const { nguoiCaoTuoiId, ngayKham, gioKham, noiKham, lyDoKham, bacSiTen, ghiChu } = req.body;
+    if (!targetElderlyId(req, Number(nguoiCaoTuoiId))) {
+      return fail(res, 'Khong co quyen chuyen lich sang ho so nay', 'FORBIDDEN_ELDERLY', 403);
+    }
     const thoiGianKham = new Date(`${ngayKham}T${gioKham}:00Z`);
     const pool = await poolPromise;
-    const previousElderlyId = await getAppointmentElderlyId(pool, id);
+    const previous = await pool.request().input('id', sql.Int, id)
+      .query(`SELECT NguoiCaoTuoiID AS elderlyId,
+                     CONVERT(VARCHAR(10), ThoiGianKham, 23) AS ngayKham
+              FROM LichKhamBenh WHERE LichKhamID=@id`);
+    if (!previous.recordset.length) return fail(res, 'Không tìm thấy lịch khám', 'NOT_FOUND', 404);
+    const previousElderlyId = previous.recordset[0].elderlyId;
+    if (ngayKham < todayVietnam() && ngayKham !== previous.recordset[0].ngayKham) {
+      return fail(res, 'Không thể đổi lịch khám sang ngày trước hiện tại', 'PAST_APPOINTMENT_DATE', 400);
+    }
     const result = await pool.request()
       .input('id', sql.Int, id)
       .input('nctId', sql.Int, Number(nguoiCaoTuoiId))

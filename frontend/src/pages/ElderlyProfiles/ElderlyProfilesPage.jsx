@@ -20,6 +20,7 @@ import StatusTag, { getElderStatusMap } from '../../components/StatusTag';
 import TableAvatar from '../../components/TableAvatar';
 import TableActionButton from '../../components/TableActionButton';
 import usePermission from '../../hooks/usePermission';
+import { useAuth } from '../../context/AuthContext';
 import ModalForm, { FormSection } from '../../components/ModalForm';
 import { formatEntityCode } from '../../utils/displayUtils';
 
@@ -27,8 +28,11 @@ const ElderlyProfilesPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryKeyword = searchParams.get('keyword')?.trim() || '';
   const { hasPermission } = usePermission();
+  const { user } = useAuth();
+  const isCaregiver = user?.tenVaiTro === 'NguoiChamSoc';
   const canCreate = hasPermission('QLHOSONCT', 'them');
   const canEdit = hasPermission('QLHOSONCT', 'sua');
+  const canAssign = user?.tenVaiTro === 'QuanTriVien' && canEdit;
   const [elders, setElders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -250,7 +254,8 @@ const ElderlyProfilesPage = () => {
         <button
           type="button"
           className="caregiver-link"
-          onClick={(event) => { event.stopPropagation(); if (canEdit) openAssignModal(record); }}
+          disabled={!canAssign}
+          onClick={(event) => { event.stopPropagation(); if (canAssign) openAssignModal(record); }}
         >
           <TableAvatar name={value} size={30} />
           <span><strong>{value}</strong><small>Người chăm sóc chính</small></span>
@@ -259,7 +264,7 @@ const ElderlyProfilesPage = () => {
         <button
           type="button"
           className="unassigned-caregiver"
-          disabled={!canEdit}
+          disabled={!canAssign}
           onClick={(event) => { event.stopPropagation(); openAssignModal(record); }}
         >
           <PlusOutlined /> Chưa gán
@@ -297,8 +302,10 @@ const ElderlyProfilesPage = () => {
       <section className="elderly-page-heading">
         <div>
           <span className="elderly-page-eyebrow"><span /> Cơ sở dữ liệu hồ sơ chăm sóc</span>
-          <h1>Hồ sơ người cao tuổi</h1>
-          <p>Quản lý thông tin hành chính, liên hệ và hồ sơ y tế của người cao tuổi.</p>
+          <h1>{isCaregiver ? 'Người cao tuổi tôi chăm sóc' : 'Hồ sơ người cao tuổi'}</h1>
+          <p>{isCaregiver
+            ? 'Chỉ hiển thị hồ sơ đang được phân công cho tài khoản của bạn.'
+            : 'Quản lý thông tin hành chính, liên hệ và hồ sơ y tế của người cao tuổi.'}</p>
         </div>
         {canCreate && (
           <Button type="primary" icon={<PlusOutlined />} size="large" onClick={handleAdd}>Thêm hồ sơ</Button>
@@ -308,7 +315,7 @@ const ElderlyProfilesPage = () => {
       <section className="elderly-kpi-grid" aria-label="Thống kê hồ sơ người cao tuổi">
         <article className="elderly-kpi-card is-total">
           <span className="elderly-kpi-icon"><UsergroupAddOutlined /></span>
-          <div><small>Tổng hồ sơ</small><strong>{profileStats.total}</strong><span>hồ sơ</span></div>
+          <div><small>{isCaregiver ? 'Hồ sơ được phân công' : 'Tổng hồ sơ'}</small><strong>{profileStats.total}</strong><span>hồ sơ</span></div>
         </article>
         <article className="elderly-kpi-card is-active">
           <span className="elderly-kpi-icon"><CheckCircleOutlined /></span>
@@ -360,7 +367,9 @@ const ElderlyProfilesPage = () => {
         rowKey="id"
         loading={loading}
         onRow={(record) => ({ onClick: () => handleView(record) })}
-        emptyDescription="Chưa có hồ sơ người cao tuổi"
+        emptyDescription={isCaregiver
+          ? 'Bạn chưa được phân công chăm sóc người cao tuổi nào'
+          : 'Chưa có hồ sơ người cao tuổi'}
         emptyAction={canCreate && <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>Thêm hồ sơ mới</Button>}
       />
 

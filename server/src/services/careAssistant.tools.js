@@ -33,7 +33,7 @@ function createScopedRepository(pool, sql, user, profile, deadline = Date.now() 
          JOIN NguoiCaoTuoi_NguoiChamSoc lk ON lk.NguoiChamSocID=ncs.NguoiChamSocID
          WHERE ncs.UserID=@userId AND lk.NguoiCaoTuoiID=@elderlyId
            AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
-           AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))`, deadline);
+           AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))`, deadline);
     if (!result.recordset.length) throw new AssistantAccessError('Bạn không còn quyền truy cập hồ sơ này.');
   };
   const checkedAuthorize = async (needsProfile) => {

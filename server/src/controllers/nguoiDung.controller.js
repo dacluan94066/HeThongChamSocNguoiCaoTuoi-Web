@@ -36,7 +36,6 @@ const changeMyPassword = async (req, res, next) => {
 
 const VAI_TRO_MAP = {
   QuanTriVien: { ma: 'QUAN_TRI', label: 'Quản trị viên' },
-  BacSi: { ma: 'BAC_SI', label: 'Bác sĩ' },
   NguoiChamSoc: { ma: 'NGUOI_CHAM_SOC', label: 'Người chăm sóc' },
   NguoiCaoTuoi: { ma: 'NGUOI_CAO_TUOI', label: 'Người cao tuổi' },
 };
@@ -129,10 +128,18 @@ const getById = async (req, res, next) => {
 
 // POST /api/users
 const create = async (req, res, next) => {
+  let transaction;
   try {
     const { username, password, hoTen, email, soDienThoai, vaiTro } = req.body;
     if (!username || !password || !hoTen || !vaiTro)
       return fail(res, 'username, password, hoTen, vaiTro la bat buoc', 'MISSING_FIELDS', 400);
+
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const normalizedPhone = typeof soDienThoai === 'string' ? soDienThoai.trim() : '';
+    if (!normalizedEmail || normalizedEmail.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+      return fail(res, 'Can email hop le de khoi phuc mat khau', 'INVALID_EMAIL', 400);
+    if (typeof password !== 'string' || password.length < 6)
+      return fail(res, 'Mat khau phai co it nhat 6 ky tu', 'INVALID_PASSWORD', 400);
 
     const pool = await poolPromise;
     const exists = await pool.request().input('u', sql.NVarChar, username)
@@ -141,45 +148,142 @@ const create = async (req, res, next) => {
 
     const roleName = findRoleNameByCode(vaiTro);
     if (!roleName) return fail(res, 'Vai tro khong hop le', 'INVALID_ROLE', 400);
+    if (roleName === 'NguoiChamSoc' && !/^[0-9]{10,11}$/.test(normalizedPhone))
+      return fail(res, 'Nguoi cham soc can so dien thoai 10-11 chu so', 'INVALID_PHONE', 400);
     const roleResult = await pool.request().input('tenVaiTro', sql.NVarChar, roleName)
       .query('SELECT VaiTroID AS id FROM VaiTro WHERE TenVaiTro=@tenVaiTro');
     if (!roleResult.recordset.length) return fail(res, 'Khong tim thay vai tro', 'ROLE_NOT_FOUND', 400);
     const vaiTroId = roleResult.recordset[0].id;
     const hash = await bcrypt.hash(password, 10);
 
-    const r = await pool.request()
+    transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    const caregiverMatch = await new sql.Request(transaction)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .query(`SELECT NguoiChamSocID AS id, UserID AS userId
+              FROM NguoiChamSoc WITH (UPDLOCK, HOLDLOCK)
+              WHERE LOWER(LTRIM(RTRIM(Email)))=@email`);
+    if (caregiverMatch.recordset.length > 1 ||
+        (caregiverMatch.recordset.length &&
+          (roleName !== 'NguoiChamSoc' || caregiverMatch.recordset[0].userId))) {
+      await transaction.rollback();
+      transaction = null;
+      return fail(res, 'Email da duoc su dung', 'EMAIL_TAKEN', 409);
+    }
+    const existingEmail = await new sql.Request(transaction)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .query(`SELECT UserID FROM NguoiDung WITH (UPDLOCK, HOLDLOCK)
+              WHERE LOWER(LTRIM(RTRIM(Email)))=@email`);
+    if (existingEmail.recordset.length) {
+      await transaction.rollback();
+      transaction = null;
+      return fail(res, 'Email da duoc su dung', 'EMAIL_TAKEN', 409);
+    }
+
+    const r = await new sql.Request(transaction)
       .input('ten', sql.NVarChar, username).input('hash', sql.NVarChar, hash)
-      .input('hoTen', sql.NVarChar, hoTen).input('email', sql.NVarChar, email || null)
-      .input('sdt', sql.NVarChar, soDienThoai || null).input('vaiTroId', sql.Int, vaiTroId)
+      .input('hoTen', sql.NVarChar, hoTen).input('email', sql.VarChar(100), normalizedEmail)
+      .input('sdt', sql.VarChar(15), normalizedPhone || null).input('vaiTroId', sql.Int, vaiTroId)
       .query(`INSERT INTO NguoiDung (TenDangNhap,MatKhauHash,HoTen,Email,SoDienThoai,VaiTroID,TrangThai)
               OUTPUT INSERTED.UserID AS id
               VALUES (@ten,@hash,@hoTen,@email,@sdt,@vaiTroId,N'HoatDong')`);
+    if (roleName === 'NguoiChamSoc') {
+      const caregiver = new sql.Request(transaction)
+        .input('userId', sql.Int, r.recordset[0].id)
+        .input('hoTen', sql.NVarChar(100), hoTen.trim())
+        .input('email', sql.VarChar(100), normalizedEmail)
+        .input('sdt', sql.VarChar(15), normalizedPhone);
+      if (caregiverMatch.recordset.length) {
+        await caregiver.input('id', sql.Int, caregiverMatch.recordset[0].id)
+          .query(`UPDATE NguoiChamSoc SET UserID=@userId, HoTen=@hoTen,
+                  Email=@email, SoDienThoai=@sdt WHERE NguoiChamSocID=@id`);
+      } else {
+        await caregiver.query(`INSERT INTO NguoiChamSoc (UserID, HoTen, SoDienThoai, Email)
+                               VALUES (@userId, @hoTen, @sdt, @email)`);
+      }
+    }
+    await transaction.commit();
+    transaction = null;
     return ok(res, { id: r.recordset[0].id }, 'Tao nguoi dung thanh cong', 201);
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (transaction) {
+      try { await transaction.rollback(); } catch (_) { /* Transaction already closed. */ }
+    }
+    next(err);
+  }
 };
 
 // PUT /api/users/:id
 const update = async (req, res, next) => {
+  let transaction;
   try {
     const { hoTen, email, soDienThoai, vaiTro } = req.body;
     const pool = await poolPromise;
-    let vaiTroId;
+    const current = await pool.request().input('id', sql.Int, req.params.id)
+      .query(`SELECT nd.UserID, vt.TenVaiTro FROM NguoiDung nd
+              JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID WHERE nd.UserID=@id`);
+    if (!current.recordset.length) return fail(res, 'Khong tim thay nguoi dung', 'NOT_FOUND', 404);
+    const roleName = current.recordset[0].TenVaiTro;
     if (vaiTro) {
-      const roleName = findRoleNameByCode(vaiTro);
-      if (!roleName) return fail(res, 'Vai tro khong hop le', 'INVALID_ROLE', 400);
-      const roleResult = await pool.request().input('tenVaiTro', sql.NVarChar, roleName)
-        .query('SELECT VaiTroID AS id FROM VaiTro WHERE TenVaiTro=@tenVaiTro');
-      if (!roleResult.recordset.length) return fail(res, 'Khong tim thay vai tro', 'ROLE_NOT_FOUND', 400);
-      vaiTroId = roleResult.recordset[0].id;
+      const requestedRole = findRoleNameByCode(vaiTro);
+      if (!requestedRole) return fail(res, 'Vai tro khong hop le', 'INVALID_ROLE', 400);
+      if (requestedRole !== roleName)
+        return fail(res, 'Khong the doi vai tro tai khoan da tao; can tao tai khoan moi voi ho so phu hop', 'ROLE_CHANGE_NOT_SUPPORTED', 409);
     }
-    const r = pool.request().input('id', sql.Int, req.params.id)
-      .input('hoTen', sql.NVarChar, hoTen).input('email', sql.NVarChar, email || null)
-      .input('sdt', sql.NVarChar, soDienThoai || null);
-    let set = `HoTen=@hoTen, Email=@email, SoDienThoai=@sdt`;
-    if (vaiTroId) { set += `, VaiTroID=@vaiTroId`; r.input('vaiTroId', sql.Int, vaiTroId); }
-    await r.query(`UPDATE NguoiDung SET ${set} WHERE UserID=@id`);
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const normalizedPhone = typeof soDienThoai === 'string' ? soDienThoai.trim() : '';
+    if (!hoTen?.trim() || !normalizedEmail || normalizedEmail.length > 100
+      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return fail(res, 'Can ho ten va email hop le', 'INVALID_CONTACT', 400);
+    }
+    if (roleName === 'NguoiChamSoc' && !/^[0-9]{10,11}$/.test(normalizedPhone))
+      return fail(res, 'Nguoi cham soc can so dien thoai 10-11 chu so', 'INVALID_PHONE', 400);
+
+    transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    const emailTaken = await new sql.Request(transaction)
+      .input('id', sql.Int, req.params.id)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .query(`SELECT 1 AS taken FROM NguoiDung WITH (UPDLOCK, HOLDLOCK)
+              WHERE LOWER(LTRIM(RTRIM(Email)))=@email AND UserID<>@id
+              UNION ALL
+              SELECT 1 FROM NguoiChamSoc WITH (UPDLOCK, HOLDLOCK)
+              WHERE LOWER(LTRIM(RTRIM(Email)))=@email
+                AND (UserID IS NULL OR UserID<>@id)`);
+    if (emailTaken.recordset.length) {
+      await transaction.rollback();
+      transaction = null;
+      return fail(res, 'Email da duoc su dung', 'EMAIL_TAKEN', 409);
+    }
+    await new sql.Request(transaction)
+      .input('id', sql.Int, req.params.id)
+      .input('hoTen', sql.NVarChar(100), hoTen.trim())
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .input('sdt', sql.VarChar(15), normalizedPhone || null)
+      .query(`UPDATE NguoiDung SET HoTen=@hoTen, Email=@email,
+              SoDienThoai=@sdt WHERE UserID=@id`);
+    if (roleName === 'NguoiChamSoc') {
+      await new sql.Request(transaction)
+        .input('id', sql.Int, req.params.id)
+        .input('hoTen', sql.NVarChar(100), hoTen.trim())
+        .input('email', sql.VarChar(100), normalizedEmail)
+        .input('sdt', sql.VarChar(15), normalizedPhone)
+        .query(`IF EXISTS (SELECT 1 FROM NguoiChamSoc WHERE UserID=@id)
+                  UPDATE NguoiChamSoc SET HoTen=@hoTen, Email=@email,
+                    SoDienThoai=@sdt WHERE UserID=@id
+                ELSE
+                  INSERT INTO NguoiChamSoc (UserID, HoTen, SoDienThoai, Email)
+                  VALUES (@id, @hoTen, @sdt, @email)`);
+    }
+    await transaction.commit();
+    transaction = null;
     return ok(res, { id: parseInt(req.params.id) }, 'Cap nhat thanh cong');
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (transaction) {
+      try { await transaction.rollback(); } catch (_) { /* Transaction already closed. */ }
+    }
+    next(err);
+  }
 };
 
 // PATCH /api/users/:id/toggle-status

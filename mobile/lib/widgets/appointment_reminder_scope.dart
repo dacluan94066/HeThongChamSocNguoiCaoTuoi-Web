@@ -41,7 +41,10 @@ class _AppointmentReminderScopeState extends State<AppointmentReminderScope> {
   void _onPayload() {
     if (!_current || _opening) return;
     final payload = LocalNotificationService.pendingPayload.value;
-    if (payload?.startsWith('appointment:') != true) return;
+    if (payload?.startsWith('appointment:') != true &&
+        payload?.startsWith('medication:') != true) {
+      return;
+    }
     unawaited(_open(payload!));
   }
 
@@ -59,7 +62,9 @@ class _AppointmentReminderScopeState extends State<AppointmentReminderScope> {
           payload.split(':').elementAtOrNull(1) != user['userId']?.toString()) {
         return;
       }
-      await ApiClient.navigatorKey.currentState?.pushNamed('/appointments');
+      await ApiClient.navigatorKey.currentState?.pushNamed(
+        payload.startsWith('medication:') ? '/medications' : '/appointments',
+      );
     } catch (_) {
       // Never navigate into an unauthenticated or another account's schedule.
     } finally {

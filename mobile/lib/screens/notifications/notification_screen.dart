@@ -10,6 +10,7 @@ import '../caregiver/caregiver_elderly_detail_screen.dart';
 import '../alerts/alert_history_screen.dart';
 import '../alerts/emergency_alert_history_screen.dart';
 import '../appointments/appointment_screen.dart';
+import '../medication/medication_screen.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -177,6 +178,7 @@ class _NotificationScreenState extends State<NotificationScreen>
           item['lienKetBang'] == 'CanhBaoKhanCap' ||
           item['lienKetBang'] == 'CanhBao';
       final appointment = item['loaiThongBao'] == 'NhacLichKham';
+      final medication = item['loaiThongBao'] == 'NhacThuoc';
       final openRelated = await showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
@@ -198,13 +200,16 @@ class _NotificationScreenState extends State<NotificationScreen>
                 Text(item['noiDung']?.toString() ?? ''),
                 const SizedBox(height: 12),
                 Text(_dateTime(item['ngayTao'])),
-                if (linkedAlert || (!caregiver && appointment)) ...[
+                if (linkedAlert ||
+                    (!caregiver && (appointment || medication))) ...[
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: () => Navigator.pop(sheetContext, true),
                     child: Text(
                       caregiver
                           ? 'Xem hồ sơ và cảnh báo'
+                          : medication
+                          ? 'Xem lịch uống thuốc'
                           : appointment
                           ? 'Xem lịch khám'
                           : 'Xem lịch sử cảnh báo',
@@ -229,7 +234,9 @@ class _NotificationScreenState extends State<NotificationScreen>
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => appointment
+            builder: (_) => medication
+                ? const MedicationScreen()
+                : appointment
                 ? const AppointmentScreen()
                 : item['lienKetBang'] == 'CanhBaoKhanCap'
                 ? const EmergencyAlertHistoryScreen()

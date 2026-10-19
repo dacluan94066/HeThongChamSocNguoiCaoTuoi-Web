@@ -52,10 +52,10 @@ const getPermissionMatrix = async (req, res, next) => {
       pool.request().query(`
         SELECT VaiTroID AS id, TenVaiTro AS tenVaiTro, MoTa AS moTa
         FROM VaiTro
-        WHERE TenVaiTro IN (N'QuanTriVien',N'BacSi',N'NguoiChamSoc',N'NguoiCaoTuoi')
+        WHERE TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi')
         ORDER BY CASE TenVaiTro
-          WHEN N'QuanTriVien' THEN 1 WHEN N'BacSi' THEN 2
-          WHEN N'NguoiChamSoc' THEN 3 WHEN N'NguoiCaoTuoi' THEN 4 ELSE 5 END
+          WHEN N'QuanTriVien' THEN 1
+          WHEN N'NguoiChamSoc' THEN 2 WHEN N'NguoiCaoTuoi' THEN 3 ELSE 4 END
       `),
       pool.request().query(`
         SELECT ChucNangID AS id, MaChucNang AS maChucNang,
@@ -69,7 +69,7 @@ const getPermissionMatrix = async (req, res, next) => {
           pq.ChoPhepSua AS sua, pq.ChoPhepXoa AS xoa
         FROM PhanQuyen pq
         INNER JOIN VaiTro vt ON vt.VaiTroID=pq.VaiTroID
-        WHERE vt.TenVaiTro IN (N'QuanTriVien',N'BacSi',N'NguoiChamSoc',N'NguoiCaoTuoi')
+        WHERE vt.TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi')
       `),
     ]);
     const permissions = permissionsResult.recordset.map((row) => ({
@@ -100,7 +100,7 @@ const updatePermissionMatrix = async (req, res, next) => {
     const [rolesResult, functionsResult] = await Promise.all([
       pool.request().query(`
         SELECT VaiTroID AS id FROM VaiTro
-        WHERE TenVaiTro IN (N'QuanTriVien',N'BacSi',N'NguoiChamSoc',N'NguoiCaoTuoi')
+        WHERE TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi')
       `),
       pool.request().query('SELECT ChucNangID AS id FROM ChucNang'),
     ]);
@@ -119,7 +119,7 @@ const updatePermissionMatrix = async (req, res, next) => {
     const invalid = normalized.some((entry) => (
       !roleIds.has(entry.vaiTroId) || !functionIds.has(entry.chucNangId)
     ));
-    if (roleIds.size !== 4 || !expectedCount || normalized.length !== expectedCount
+    if (roleIds.size !== 3 || !expectedCount || normalized.length !== expectedCount
       || uniqueKeys.size !== expectedCount || invalid) {
       return fail(res, 'Ma tran phan quyen khong day du hoac khong hop le', 'INVALID_PERMISSION_MATRIX', 400);
     }

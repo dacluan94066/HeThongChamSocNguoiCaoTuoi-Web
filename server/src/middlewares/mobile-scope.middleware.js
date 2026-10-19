@@ -2,6 +2,7 @@ const { poolPromise, sql } = require('../config/db');
 const { fail } = require('../utils/response');
 const { boundedQuery } = require('../utils/boundedQuery');
 
+// Both non-admin roles are scoped to their own/assigned elderly, regardless of platform.
 const isMobileRole = (req) => ['NguoiCaoTuoi', 'NguoiChamSoc'].includes(req.user?.tenVaiTro);
 
 // IDs are loaded from the database, never taken from query/body parameters.
@@ -17,9 +18,9 @@ const loadMobileScope = async (req, res, next) => {
           SELECT DISTINCT lk.NguoiCaoTuoiID AS id
           FROM NguoiChamSoc ncs
           JOIN NguoiCaoTuoi_NguoiChamSoc lk ON lk.NguoiChamSocID = ncs.NguoiChamSocID
-          WHERE ncs.UserID = @userId
+          WHERE ncs.UserID = @userId AND ncs.TrangThai=N'DangLamViec'
             AND lk.NgayBatDau <= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
-            AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
+            AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
         `;
     const result = await boundedQuery(request, statement, req.assistantDeadline);
 
@@ -80,7 +81,7 @@ const caregiverOnlyWrite = (req, res, next) => {
 };
 
 const webOnlyWrite = (req, res, next) => {
-  if (isMobileRole(req)) {
+  if (req.user?.tenVaiTro === 'NguoiCaoTuoi') {
     return fail(res, 'Tai khoan khong co quyen thay doi du lieu nay', 'FORBIDDEN', 403);
   }
   next();

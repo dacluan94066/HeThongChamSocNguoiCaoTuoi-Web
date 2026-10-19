@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, DatePicker, Empty, Select, Skeleton, Tag } from 'antd';
 import {
   AlertOutlined, BarChartOutlined, CheckCircleOutlined, HeartOutlined,
-  MedicineBoxOutlined, WarningOutlined,
+  MedicineBoxOutlined, TeamOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { Bar, Line } from 'react-chartjs-2';
 import {
@@ -37,6 +37,26 @@ const QUICK_RANGES = [
   { key: '7days', label: '7 ngày', value: () => [dayjs().subtract(6, 'day'), dayjs()] },
   { key: '30days', label: '30 ngày', value: () => [dayjs().subtract(29, 'day'), dayjs()] },
   { key: 'month', label: 'Tháng này', value: () => [dayjs().startOf('month'), dayjs()] },
+];
+
+const AGE_OPTIONS = [
+  { value: 'all', label: 'Mọi độ tuổi' },
+  { value: 'under60', label: 'Dưới 60 tuổi' },
+  { value: '60to69', label: '60–69 tuổi' },
+  { value: '70to79', label: '70–79 tuổi' },
+  { value: '80plus', label: 'Từ 80 tuổi' },
+];
+const GENDER_OPTIONS = [
+  { value: 'all', label: 'Mọi giới tính' },
+  { value: 'Nam', label: 'Nam' },
+  { value: 'Nữ', label: 'Nữ' },
+  { value: 'Khác', label: 'Khác' },
+];
+const CARE_STATUS_OPTIONS = [
+  { value: 'all', label: 'Mọi tình trạng' },
+  { value: 'DangTheoDoi', label: 'Đang theo dõi' },
+  { value: 'CanChamSocDacBiet', label: 'Cần chăm sóc đặc biệt' },
+  { value: 'NgungTheoDoi', label: 'Ngừng theo dõi' },
 ];
 
 const chartOptions = {
@@ -81,6 +101,9 @@ const ReportsPage = () => {
   const [range, setRange] = useState(() => QUICK_RANGES[2].value());
   const [quickRange, setQuickRange] = useState('30days');
   const [selectedElder, setSelectedElder] = useState('all');
+  const [ageGroup, setAgeGroup] = useState('all');
+  const [gender, setGender] = useState('all');
+  const [careStatus, setCareStatus] = useState('all');
   const [selectedMetric, setSelectedMetric] = useState(null);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -96,6 +119,9 @@ const ReportsPage = () => {
       from: fromDate,
       to: toDate,
       nguoiCaoTuoiId: selectedElder === 'all' ? null : selectedElder,
+      nhomTuoi: ageGroup === 'all' ? null : ageGroup,
+      gioiTinh: gender === 'all' ? null : gender,
+      trangThai: careStatus === 'all' ? null : careStatus,
     })
       .then((data) => { if (active) setReport(data); })
       .catch(() => {
@@ -106,7 +132,7 @@ const ReportsPage = () => {
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [fromDate, toDate, selectedElder, reloadKey]);
+  }, [fromDate, toDate, selectedElder, ageGroup, gender, careStatus, reloadKey]);
 
   const metricTypes = report?.xuHuongChiSo || [];
   const currentMetric = metricTypes.find((item) => item.id === selectedMetric)
@@ -204,6 +230,63 @@ const ReportsPage = () => {
   }, [currentMetric]);
 
   const kpi = report?.kpi || {};
+  const profileStats = report?.thongKeHoSo;
+  const careStats = report?.thongKeChamSoc;
+  const caregiverStats = report?.thongKeNguoiChamSoc;
+  const profileBreakdowns = profileStats ? [
+    { title: 'Theo độ tuổi', items: [
+      ['Dưới 60 tuổi', profileStats.theoDoTuoi?.duoi60],
+      ['60–69 tuổi', profileStats.theoDoTuoi?.tu60Den69],
+      ['70–79 tuổi', profileStats.theoDoTuoi?.tu70Den79],
+      ['Từ 80 tuổi', profileStats.theoDoTuoi?.tu80TroLen],
+    ] },
+    { title: 'Theo giới tính', items: [
+      ['Nam', profileStats.theoGioiTinh?.Nam],
+      ['Nữ', profileStats.theoGioiTinh?.Nu],
+      ['Khác', profileStats.theoGioiTinh?.Khac],
+    ] },
+    { title: 'Theo tình trạng chăm sóc', items: [
+      ['Đang theo dõi', profileStats.theoTrangThai?.DangTheoDoi],
+      ['Cần chăm sóc đặc biệt', profileStats.theoTrangThai?.CanChamSocDacBiet],
+      ['Ngừng theo dõi', profileStats.theoTrangThai?.NgungTheoDoi],
+    ] },
+  ] : [];
+  const careNoteChart = {
+    labels: (careStats?.theoNgay || []).map((item) => dayjs(item.ngay).format('DD/MM')),
+    datasets: [{
+      label: 'Nhật ký chăm sóc',
+      data: (careStats?.theoNgay || []).map((item) => item.soNhatKy),
+      backgroundColor: COLORS.teal,
+      borderRadius: 6,
+      maxBarThickness: 36,
+    }],
+  };
+  const caregiverColumns = [
+    {
+      title: 'Người chăm sóc', key: 'caregiver', width: 260,
+      render: (_, record) => (
+        <div className="table-person-cell">
+          <TableAvatar name={record.hoTen} size={38} />
+          <div className="table-person-copy">
+            <div className="table-person-name">{record.hoTen}</div>
+            <div className="table-person-meta">{formatEntityCode('NCS', record.id)}</div>
+          </div>
+        </div>
+      ),
+    },
+    { title: 'NCT đang phụ trách', dataIndex: 'soNguoiPhuTrach', key: 'assigned', align: 'center', width: 160 },
+    { title: 'Nhật ký trong kỳ', dataIndex: 'soNhatKy', key: 'notes', align: 'center', width: 150 },
+    {
+      title: 'Tài khoản', dataIndex: 'coTaiKhoan', key: 'account', width: 150,
+      render: (value) => <Tag color={value ? 'green' : 'default'}>● {value ? 'Có tài khoản' : 'Chưa có tài khoản'}</Tag>,
+    },
+    {
+      title: 'Trạng thái', dataIndex: 'trangThai', key: 'status', width: 160,
+      render: (value) => <Tag color={value === 'DangLamViec' ? 'green' : value === 'TamNghi' ? 'orange' : 'default'}>
+        ● {({ DangLamViec: 'Đang làm việc', TamNghi: 'Tạm nghỉ', NgungLamViec: 'Ngừng làm việc' })[value] || 'Chưa xác định'}
+      </Tag>,
+    },
+  ];
   const summaryColumns = [
     {
       title: 'Người cao tuổi',
@@ -252,6 +335,13 @@ const ReportsPage = () => {
     setError('');
     setQuickRange(item.key);
     setRange(item.value());
+  };
+
+  const changeProfileFilter = (setter, value) => {
+    setLoading(true);
+    setError('');
+    setSelectedElder('all');
+    setter(value);
   };
 
   return (
@@ -306,6 +396,27 @@ const ReportsPage = () => {
             })),
           ]}
         />
+        <Select
+          className="report-demographic-select"
+          aria-label="Lọc theo độ tuổi"
+          value={ageGroup}
+          onChange={(value) => changeProfileFilter(setAgeGroup, value)}
+          options={AGE_OPTIONS}
+        />
+        <Select
+          className="report-demographic-select"
+          aria-label="Lọc theo giới tính"
+          value={gender}
+          onChange={(value) => changeProfileFilter(setGender, value)}
+          options={GENDER_OPTIONS}
+        />
+        <Select
+          className="report-demographic-select"
+          aria-label="Lọc theo tình trạng chăm sóc"
+          value={careStatus}
+          onChange={(value) => changeProfileFilter(setCareStatus, value)}
+          options={CARE_STATUS_OPTIONS}
+        />
       </section>
 
       {error && (
@@ -323,7 +434,7 @@ const ReportsPage = () => {
 
       {loading && !report ? (
         <Skeleton active paragraph={{ rows: 12 }} />
-      ) : (
+      ) : report ? (
         <>
           <section className={`report-kpi-grid ${loading ? 'is-loading' : ''}`}>
             <ReportKpi
@@ -434,8 +545,91 @@ const ReportsPage = () => {
               emptyDescription="Không có hồ sơ phù hợp"
             />
           </section>
+
+          <section className="report-panel report-business-panel">
+            <div className="report-panel-heading">
+              <div>
+                <h3>Thống kê hồ sơ người cao tuổi</h3>
+                <p>Phân bố theo tuổi tại ngày cuối kỳ báo cáo, giới tính và trạng thái hồ sơ hiện tại.</p>
+              </div>
+              <Tag color="cyan">{profileStats?.tongHoSo || 0} hồ sơ</Tag>
+            </div>
+            <div className="report-breakdown-filters">
+              <Select
+                aria-label="Lọc thống kê theo độ tuổi"
+                value={ageGroup}
+                onChange={(value) => changeProfileFilter(setAgeGroup, value)}
+                options={AGE_OPTIONS}
+              />
+              <Select
+                aria-label="Lọc thống kê theo giới tính"
+                value={gender}
+                onChange={(value) => changeProfileFilter(setGender, value)}
+                options={GENDER_OPTIONS}
+              />
+              <Select
+                aria-label="Lọc thống kê theo tình trạng chăm sóc"
+                value={careStatus}
+                onChange={(value) => changeProfileFilter(setCareStatus, value)}
+                options={CARE_STATUS_OPTIONS}
+              />
+              <span>Áp dụng cho toàn bộ báo cáo; người chăm sóc chỉ thấy NCT được phân công.</span>
+            </div>
+            <div className="report-breakdown-grid">
+              {profileBreakdowns.map((group) => (
+                <div className="report-breakdown-card" key={group.title}>
+                  <h4>{group.title}</h4>
+                  {group.items.map(([label, value]) => (
+                    <div className="report-breakdown-row" key={label}>
+                      <span>{label}</span><strong>{value ?? 0}</strong>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="report-panel report-business-panel">
+            <div className="report-panel-heading">
+              <div>
+                <h3>Lịch sử chăm sóc trong kỳ</h3>
+                <p>Đếm nhật ký chăm sóc đã ghi, không bao gồm nhật ký đã hủy.</p>
+              </div>
+              <div className="report-heading-stats">
+                <Tag color="cyan">{careStats?.tongNhatKy || 0} nhật ký</Tag>
+                <Tag>{careStats?.soNgayCoChamSoc || 0} ngày có ghi nhận</Tag>
+              </div>
+            </div>
+            {careStats?.theoNgay?.length ? (
+              <div className="report-chart is-wide"><Bar data={careNoteChart} options={{
+                ...chartOptions,
+                scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, ticks: { precision: 0 } } },
+              }} /></div>
+            ) : <Empty description="Không có nhật ký chăm sóc trong kỳ" />}
+          </section>
+
+          <section className="report-panel report-summary-panel report-business-panel">
+            <div className="report-panel-heading">
+              <div>
+                <h3>Thống kê người chăm sóc</h3>
+                <p>Số NCT đang phụ trách và nhật ký đã ghi trong khoảng ngày đã chọn.</p>
+              </div>
+              <div className="report-heading-stats">
+                <Tag icon={<TeamOutlined />}>{caregiverStats?.tongNguoiChamSoc || 0} người</Tag>
+                <Tag color="green">{caregiverStats?.daCoTaiKhoan || 0} có tài khoản</Tag>
+                <Tag color="orange">{caregiverStats?.chuaPhuTrach || 0} chưa phụ trách NCT</Tag>
+              </div>
+            </div>
+            <DataTable
+              columns={caregiverColumns}
+              dataSource={caregiverStats?.danhSach || []}
+              rowKey="id"
+              pageSize={10}
+              emptyDescription="Không có người chăm sóc phù hợp"
+            />
+          </section>
         </>
-      )}
+      ) : null}
     </div>
   );
 };

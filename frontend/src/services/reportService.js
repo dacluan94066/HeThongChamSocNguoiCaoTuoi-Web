@@ -14,11 +14,14 @@ const localDateKey = (value = new Date()) => {
 
 const settledData = (result) => (result.status === 'fulfilled' ? unwrap(result.value) : null);
 
-export const getHealthReport = async ({ from, to, nguoiCaoTuoiId } = {}) => {
+export const getHealthReport = async ({ from, to, nguoiCaoTuoiId, nhomTuoi, gioiTinh, trangThai } = {}) => {
   const params = {};
   if (from) params.from = from;
   if (to) params.to = to;
   if (nguoiCaoTuoiId) params.nguoiCaoTuoiId = nguoiCaoTuoiId;
+  if (nhomTuoi) params.nhomTuoi = nhomTuoi;
+  if (gioiTinh) params.gioiTinh = gioiTinh;
+  if (trangThai) params.trangThai = trangThai;
   const response = await axiosClient.get('/reports/health-summary', { params });
   return response.data?.data ?? {};
 };

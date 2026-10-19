@@ -34,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen>
     await Future.wait([
       loadUnreadNotificationCount(refresh: true),
       loadNextAppointment(refresh: true),
+      loadMedicationSchedule(refresh: true),
     ]);
   }
 
@@ -59,6 +60,12 @@ class _HomeScreenState extends State<HomeScreen>
     MobileRealtimeService.instance.appointmentRevision.addListener(
       _onRealtimeAppointment,
     );
+    MobileRealtimeService.instance.medicationRevision.addListener(
+      _onRealtimeMedication,
+    );
+    MobileRealtimeService.instance.notificationRevision.addListener(
+      _onRealtimeNotification,
+    );
     loadAllData();
   }
 
@@ -72,10 +79,24 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  void _onRealtimeMedication() {
+    if (mounted) unawaited(loadMedicationSchedule());
+  }
+
+  void _onRealtimeNotification() {
+    if (mounted) unawaited(loadUnreadNotificationCount(refresh: true));
+  }
+
   @override
   void dispose() {
     MobileRealtimeService.instance.appointmentRevision.removeListener(
       _onRealtimeAppointment,
+    );
+    MobileRealtimeService.instance.medicationRevision.removeListener(
+      _onRealtimeMedication,
+    );
+    MobileRealtimeService.instance.notificationRevision.removeListener(
+      _onRealtimeNotification,
     );
     super.dispose();
   }
@@ -209,6 +230,11 @@ class _HomeScreenState extends State<HomeScreen>
         failedSections.remove('thuốc');
         loadingMedication = false;
       });
+      unawaited(
+        MedicationScheduleService.instance
+            .syncUpcomingReminders(refresh: refresh)
+            .catchError((Object _) {}),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() {

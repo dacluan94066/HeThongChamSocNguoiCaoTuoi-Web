@@ -47,6 +47,7 @@ axiosClient.interceptors.response.use(
       const isPublicAuthRequest = [
         '/auth/login',
         '/auth/register',
+        '/auth/register-caregiver',
         '/auth/forgot-password',
         '/auth/verify-otp',
         '/auth/reset-password-with-token',
@@ -62,14 +63,15 @@ axiosClient.interceptors.response.use(
           window.location.assign('/login');
         }
       }
-    } else if (status === 403 && data?.errorCode !== 'WEB_ACCESS_DENIED') {
-      // Không đủ quyền truy cập (dùng key để tránh hiện nhiều thông báo đè nhau)
-      message.error({
-        content: 'Bạn không có quyền thực hiện thao tác này',
-        key: 'forbidden_error',
-        duration: 4,
-      });
-    } else {
+    } else if (status === 403) {
+      if (!['WEB_ACCESS_DENIED', 'ACCOUNT_PENDING_APPROVAL'].includes(data?.errorCode)) {
+        message.error({
+          content: 'Bạn không có quyền thực hiện thao tác này',
+          key: 'forbidden_error',
+          duration: 4,
+        });
+      }
+    } else if (!error.config?.url?.includes('/auth/register-caregiver')) {
       // Các lỗi khác: lấy message từ response nếu có
       const errMsg =
         data?.message || `Lỗi máy chủ (${status}), vui lòng thử lại sau.`;

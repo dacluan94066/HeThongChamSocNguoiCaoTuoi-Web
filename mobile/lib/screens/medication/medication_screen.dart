@@ -44,7 +44,15 @@ class _MedicationScreenState extends State<MedicationScreen> {
         _loading = false;
         _error = null;
       });
-      await _resetTodayReminders(items);
+      try {
+        await _syncReminders();
+      } catch (_) {
+        if (mounted) {
+          _showMessage(
+            'Chưa đồng bộ được giờ nhắc thuốc; hãy thử tải lại khi có mạng.',
+          );
+        }
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -118,30 +126,12 @@ class _MedicationScreenState extends State<MedicationScreen> {
     return exactAlarmAllowed;
   }
 
-  Future<void> _resetTodayReminders(List<Map<String, dynamic>> items) async {
-    await LocalNotificationService.cancelMedicationReminders();
-    if (!mounted || items.isEmpty) return;
+  Future<void> _syncReminders() async {
+    if (!mounted) return;
     if (!await _ensureNotificationPermission()) return;
-
-    final now = DateTime.now();
-    for (final item in items) {
-      if (item['trangThai'] != 'ChuaDenGio') continue;
-      final date = _parseDateTime(item['thoiGianDuKien']);
-      final id = _asInt(item['id']);
-      if (date == null || id == null || !date.isAfter(now)) continue;
-      final name = item['tenThuoc']?.toString().trim();
-      final dose = item['lieuDung']?.toString().trim();
-      final description = [
-        name,
-        dose,
-      ].where((part) => part != null && part.isNotEmpty).join(' - ');
-      await LocalNotificationService.scheduleDailyMedication(
-        id: 100000 + id,
-        medicineName: description.isEmpty ? 'thuốc của bạn' : description,
-        hour: date.hour,
-        minute: date.minute,
-      );
-    }
+    await MedicationScheduleService.instance.syncUpcomingReminders(
+      refresh: true,
+    );
   }
 
   Future<void> _chooseStatus(Map<String, dynamic> item) async {
@@ -381,7 +371,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Giờ nhắc được đồng bộ từ lịch thuốc trên hệ thống và đặt lại khi bạn tải màn hình này.',
+                    'Giờ nhắc được đồng bộ từ lịch thuốc trên hệ thống. Khi mở ứng dụng, lịch nhắc 30 ngày tới sẽ được cập nhật.',
                     style: TextStyle(color: Colors.black54, height: 1.35),
                   ),
                 ),

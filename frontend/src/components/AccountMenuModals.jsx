@@ -5,7 +5,6 @@ import { changeMyPassword, getLoginHistory, updateMyProfile } from '../services/
 
 const roleLabels = {
   QuanTriVien: 'Quản trị viên',
-  BacSi: 'Bác sĩ / Nhân viên y tế',
   NguoiChamSoc: 'Người chăm sóc',
   NguoiCaoTuoi: 'Người cao tuổi',
 };

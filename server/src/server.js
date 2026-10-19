@@ -6,6 +6,7 @@ const http = require('http');
 const app = require('./app');
 const { initSocket } = require('./socket');
 const { startAppointmentReminderWorker } = require('./services/appointmentReminder.service');
+const { startMedicationReminderWorker } = require('./services/medicationReminder.service');
 
 // Ket noi DB ngay khi server khoi dong (poolPromise tu dong chay)
 require('./config/db');
@@ -15,6 +16,7 @@ const server = http.createServer(app);
 
 initSocket(server);
 startAppointmentReminderWorker();
+startMedicationReminderWorker();
 
 server.listen(PORT, () => {
   console.log('='.repeat(50));

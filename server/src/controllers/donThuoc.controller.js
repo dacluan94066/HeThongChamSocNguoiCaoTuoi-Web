@@ -1,5 +1,7 @@
 const { poolPromise, sql } = require("../config/db");
 const { ok, fail } = require("../utils/response");
+const { todayVietnam } = require("../utils/vietnamDate");
+const { emitToUser, emitToAdmin } = require('../socket');
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -42,6 +44,9 @@ const validatePrescription = (body) => {
   }
   if (!isValidDate(ngayBatDau)) {
     return "ngayBatDau la bat buoc va phai co dinh dang YYYY-MM-DD";
+  }
+  if (ngayBatDau < todayVietnam()) {
+    return "Ngày bắt đầu lịch uống thuốc không được trước ngày hiện tại";
   }
   if (ngayKetThuc != null && ngayKetThuc !== "" && !isValidDate(ngayKetThuc)) {
     return "ngayKetThuc phai co dinh dang YYYY-MM-DD";
@@ -119,7 +124,7 @@ const create = async (req, res, next) => {
       "elderlyId",
       sql.Int,
       elderlyId,
-    ).query(`SELECT NguoiCaoTuoiID
+    ).query(`SELECT NguoiCaoTuoiID, UserID
               FROM HoSoNguoiCaoTuoi
               WHERE NguoiCaoTuoiID=@elderlyId AND TrangThai=N'DangTheoDoi'`);
     if (!elderly.recordset.length) {
@@ -254,6 +259,11 @@ const create = async (req, res, next) => {
 
     await transaction.commit();
     transaction = null;
+    const eventData = { id: prescriptionId, nguoiCaoTuoiId: elderlyId, action: 'created' };
+    emitToAdmin('donthuoc:created', eventData);
+    if (elderly.recordset[0].UserID) {
+      emitToUser(elderly.recordset[0].UserID, 'donthuoc:created', eventData);
+    }
     return ok(
       res,
       {

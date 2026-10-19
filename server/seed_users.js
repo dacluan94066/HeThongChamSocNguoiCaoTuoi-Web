@@ -18,20 +18,6 @@ const usersToSeed = [
     tenVaiTro: 'QuanTriVien',
   },
   {
-    tenDangNhap: 'doctor01',
-    hoTen: 'BS. Trần Thị Minh',
-    email: 'bstranthiminh@qlsuckhoe.vn',
-    soDienThoai: '0912345678',
-    tenVaiTro: 'BacSi',
-  },
-  {
-    tenDangNhap: 'nurse01',
-    hoTen: 'Lê Thị Hoa',
-    email: 'lethihoa@qlsuckhoe.vn',
-    soDienThoai: '0923456789',
-    tenVaiTro: 'BacSi',
-  },
-  {
     tenDangNhap: 'caregiver01',
     hoTen: 'Phạm Văn Đức',
     email: 'phamvanduc@qlsuckhoe.vn',
@@ -91,7 +77,7 @@ async function seedUsers() {
       roleResult.recordset.map((role) => [role.TenVaiTro, role.VaiTroID])
     );
 
-    for (const roleName of ['QuanTriVien', 'BacSi', 'NguoiChamSoc', 'NguoiCaoTuoi']) {
+    for (const roleName of ['QuanTriVien', 'NguoiChamSoc', 'NguoiCaoTuoi']) {
       if (!roleIds[roleName]) {
         throw new Error(`Không tìm thấy vai trò ${roleName}. Hãy chạy file SQL database trước.`);
       }

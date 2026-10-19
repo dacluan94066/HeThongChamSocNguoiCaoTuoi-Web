@@ -12,6 +12,8 @@ class LocalNotificationService {
   );
   static Future<void> _appointmentQueue = Future.value();
   static int _appointmentEpoch = 0;
+  static Future<void> _medicationQueue = Future.value();
+  static int _medicationEpoch = 0;
   static final ValueNotifier<String?> pendingPayload = ValueNotifier(null);
   static Future<void>? _initializing;
   static bool _initialized = false;
@@ -157,86 +159,120 @@ class LocalNotificationService {
     );
   }
 
-  static Future<void> scheduleDailyMedication({
-    required int id,
-    required String medicineName,
-    required int hour,
-    required int minute,
-  }) async {
-    if (id < 0 || id > 2147483647 || id == _testNotificationId) {
-      throw ArgumentError.value(
-        id,
-        'id',
-        'ID không hợp lệ hoặc dành cho kiểm tra.',
-      );
-    }
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      throw ArgumentError('Giờ nhắc phải nằm trong 00:00–23:59.');
-    }
-    if (medicineName.trim().isEmpty) {
-      throw ArgumentError('Tên thuốc không được để trống.');
-    }
-    if (!_supportsNotifications) {
-      throw UnsupportedError('Nhắc thuốc cục bộ hiện chỉ hỗ trợ Android.');
-    }
-    await initialize();
-    if (!await areNotificationsEnabled()) {
-      throw StateError('Hãy cấp quyền thông báo trước khi bật nhắc thuốc.');
-    }
-    final exact = await canScheduleExactNotifications();
-    final now = tz.TZDateTime.now(tz.local);
-
-    var scheduledDate = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
-
-    if (!scheduledDate.isAfter(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
-    }
-
-    const androidDetails = AndroidNotificationDetails(
-      'medication_reminder_channel',
-      'Nhắc uống thuốc',
-      channelDescription: 'Thông báo nhắc người dùng uống thuốc đúng giờ',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-    );
-
-    const details = NotificationDetails(android: androidDetails);
-
-    await _notificationsPlugin.zonedSchedule(
-      id: id,
-      title: 'Đến giờ uống thuốc',
-      body: 'Đã đến giờ uống $medicineName.',
-      scheduledDate: scheduledDate,
-      notificationDetails: details,
-      androidScheduleMode: exact
-          ? AndroidScheduleMode.exactAllowWhileIdle
-          : AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
-      payload: 'medication:$id',
-    );
+  static Future<void> _queueMedications(Future<void> Function() action) {
+    final operation = _medicationQueue.then((_) => action());
+    _medicationQueue = operation.then<void>((_) {}, onError: (Object _) {});
+    return operation;
   }
 
-  static Future<void> cancelMedicationReminders() async {
+  /// Reconcile individual doses, not a repeating daily alarm. This prevents
+  /// reminders from continuing after a prescription ends or a dose is taken.
+  static Future<void> syncMedicationReminders({
+    required String owner,
+    required List<Map<String, dynamic>> schedule,
+    required bool Function() isCurrent,
+  }) {
+    final epoch = ++_medicationEpoch;
+    bool valid() => epoch == _medicationEpoch && isCurrent();
+    return _queueMedications(() async {
+      if (!_supportsNotifications || !valid()) return;
+      await initialize();
+      final enabled = await areNotificationsEnabled();
+      final exact = enabled && await canScheduleExactNotifications();
+      if (!valid()) return;
+
+      final now = DateTime.now();
+      final wanted = <String, ({int id, DateTime at, String name})>{};
+      if (enabled) {
+        for (final item in schedule) {
+          if (item['trangThai'] != 'ChuaDenGio') continue;
+          final rawId = int.tryParse(item['id']?.toString() ?? '');
+          final parsed = DateTime.tryParse(
+            item['thoiGianDuKien']?.toString() ?? '',
+          );
+          if (rawId == null || parsed == null) continue;
+          // SQL timestamps without an offset are Vietnam wall-clock time.
+          final at = parsed.isUtc
+              ? tz.TZDateTime.from(parsed, tz.local)
+              : tz.TZDateTime(
+                  tz.local, parsed.year, parsed.month, parsed.day,
+                  parsed.hour, parsed.minute, parsed.second,
+                );
+          if (!at.isAfter(now)) continue;
+          final id = 100000 + rawId;
+          if (id < 0 || id >= _testNotificationId) continue;
+          final name = [item['tenThuoc'], item['lieuDung']]
+              .map((value) => value?.toString().trim() ?? '')
+              .where((value) => value.isNotEmpty)
+              .join(' - ');
+          final payload = 'medication:$owner:$rawId:${at.toIso8601String()}';
+          wanted[payload] = (
+            id: id,
+            at: at,
+            name: name.isEmpty ? 'thuốc của bạn' : name,
+          );
+        }
+      }
+
+      final pending = await _notificationsPlugin.pendingNotificationRequests();
+      final retained = <String>{};
+      for (final request in pending) {
+        if (!valid()) return;
+        final payload = request.payload;
+        if (payload?.startsWith('medication:') != true ||
+            payload == 'medication:test') {
+          continue;
+        }
+        if (wanted.containsKey(payload) && retained.add(payload!)) continue;
+        await _notificationsPlugin.cancel(id: request.id);
+      }
+      for (final entry in wanted.entries) {
+        if (!valid()) return;
+        if (retained.contains(entry.key) ||
+            !entry.value.at.isAfter(DateTime.now())) {
+          continue;
+        }
+        await _notificationsPlugin.zonedSchedule(
+          id: entry.value.id,
+          title: 'Đến giờ uống thuốc',
+          body: 'Đã đến giờ uống ${entry.value.name}.',
+          scheduledDate: tz.TZDateTime.from(entry.value.at, tz.local),
+          notificationDetails: const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'medication_reminder_channel',
+              'Nhắc uống thuốc',
+              channelDescription:
+                  'Thông báo nhắc người dùng uống thuốc đúng giờ',
+              importance: Importance.high,
+              priority: Priority.high,
+              icon: '@mipmap/ic_launcher',
+            ),
+          ),
+          androidScheduleMode: exact
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: entry.key,
+        );
+      }
+    });
+  }
+
+  static Future<void> cancelMedicationReminders() {
+    _medicationEpoch++;
     if (pendingPayload.value?.startsWith('medication:') == true) {
       pendingPayload.value = null;
     }
-    if (!_supportsNotifications) return;
-    await initialize();
-    final pending = await _notificationsPlugin.pendingNotificationRequests();
-    for (final request in pending) {
-      if (request.payload?.startsWith('medication:') == true &&
-          request.payload != 'medication:test') {
-        await _notificationsPlugin.cancel(id: request.id);
+    return _queueMedications(() async {
+      if (!_supportsNotifications) return;
+      await initialize();
+      final pending = await _notificationsPlugin.pendingNotificationRequests();
+      for (final request in pending) {
+        if (request.payload?.startsWith('medication:') == true &&
+            request.payload != 'medication:test') {
+          await _notificationsPlugin.cancel(id: request.id);
+        }
       }
-    }
+    });
   }
 
   static Future<void> cancelNotification(int id) async {

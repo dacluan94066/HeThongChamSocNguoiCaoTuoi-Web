@@ -1,4 +1,5 @@
 const { poolPromise } = require('../config/db');
+const { emitToUser } = require('../socket');
 
 const APPOINTMENT_REMINDER_INTERVAL_MS = 30_000;
 
@@ -78,6 +79,9 @@ const runWorker = async () => {
   running = true;
   try {
     const created = await materializeDueAppointmentReminders();
+    for (const reminder of created) {
+      emitToUser(reminder.userId, 'thongbao:new', { id: reminder.id, loaiThongBao: 'NhacLichKham' });
+    }
     if (created.length) {
       console.log(`[REMINDER] Da tao ${created.length} thong bao lich kham.`);
     }

@@ -358,6 +358,27 @@
   text-decoration: underline;
 }
 
+.login-register-row {
+  margin: 16px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.caregiver-registration-note {
+  margin: 4px 0 18px;
+  color: #52616b;
+  font-size: 14px;
+}
+
+.caregiver-registration-error {
+  margin-bottom: 16px;
+}
+
+.caregiver-registration-result .ant-btn {
+  margin-top: 20px;
+}
+
 /* Submit button */
 .login-submit-btn.ant-btn {
   height: 54px !important;

@@ -104,7 +104,7 @@ const ownCaregivers = async (req,res) => {
         lk.LaChinh AS laChinh,lk.MoiQuanHe AS moiQuanHe
       FROM NguoiCaoTuoi_NguoiChamSoc lk JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID=lk.NguoiChamSocID
       WHERE lk.NguoiCaoTuoiID=@id AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
-        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
+        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
       ORDER BY laChinh DESC,hoTen,id`);
     return ok(res,result.recordset);
   } catch (_) { return fail(res,'Không tải được người chăm sóc.','DATA_UNAVAILABLE',503); }
@@ -125,7 +125,7 @@ const assignedProfiles = async (req,res) => {
         WHERE kc.NguoiCaoTuoiID=nct.NguoiCaoTuoiID AND kc.TrangThai IN (N'DangGui',N'DaTiepNhan')
         ORDER BY kc.NgayGui DESC,kc.CanhBaoKhanCapID DESC) pending
       WHERE ncs.UserID=@userId AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
-        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)) ORDER BY coCanhBaoKhanCap DESC,nct.HoTen`);
+        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)) ORDER BY coCanhBaoKhanCap DESC,nct.HoTen`);
     return ok(res,result.recordset);
   } catch (_) { return fail(res,'Không tải được hồ sơ được phân công.','DATA_UNAVAILABLE',503); }
 };

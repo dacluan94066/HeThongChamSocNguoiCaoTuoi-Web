@@ -14,8 +14,8 @@ const caregiverScope = (req, alias) => {
     SELECT 1 FROM NguoiCaoTuoi_NguoiChamSoc accessLink
     WHERE accessLink.NguoiChamSocID = ${alias}.NguoiChamSocID
       AND accessLink.NguoiCaoTuoiID IN (${ids.join(",")})
-      AND accessLink.NgayBatDau <= CAST(GETDATE() AS DATE)
-      AND (accessLink.NgayKetThuc IS NULL OR accessLink.NgayKetThuc >= CAST(GETDATE() AS DATE))
+      AND accessLink.NgayBatDau <= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+      AND (accessLink.NgayKetThuc IS NULL OR accessLink.NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
   )`;
 };
 
@@ -69,8 +69,8 @@ const getMine = async (req, res, next) => {
         INNER JOIN NguoiChamSoc ncs
           ON ncs.NguoiChamSocID = lk.NguoiChamSocID
         WHERE nct.UserID = @userId
-          AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
-          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
+          AND lk.NgayBatDau <= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
         ORDER BY lk.LaChinh DESC, ncs.HoTen ASC
       `);
 
@@ -117,8 +117,8 @@ const getMyElderly = async (req, res, next) => {
           ORDER BY kc.NgayGui DESC, kc.CanhBaoKhanCapID DESC
         ) pending
         WHERE ncs.UserID = @userId
-          AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
-          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
+          AND lk.NgayBatDau <= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+          AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
         ORDER BY coCanhBaoKhanCap DESC, nct.HoTen ASC
       `);
     return ok(res, result.recordset, 'Lay danh sach nguoi cao tuoi dang phu trach thanh cong');
@@ -150,9 +150,9 @@ const getAll = async (req, res, next) => {
       FROM NguoiChamSoc ncs
       LEFT JOIN NguoiCaoTuoi_NguoiChamSoc lk
         ON ncs.NguoiChamSocID = lk.NguoiChamSocID
-        AND lk.NgayBatDau <= CAST(GETDATE() AS DATE)
+        AND lk.NgayBatDau <= CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
         AND (lk.NgayKetThuc IS NULL
-          OR lk.NgayKetThuc >= CAST(GETDATE() AS DATE))
+          OR lk.NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
         ${
           isMobileRole(req)
             ? `AND lk.NguoiCaoTuoiID IN (${

@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import 'api_client.dart';
+import 'local_notification_service.dart';
 
 class MedicationScheduleService {
   MedicationScheduleService._();
@@ -18,6 +20,32 @@ class MedicationScheduleService {
   Future<List<Map<String, dynamic>>> getTodaySchedule({bool refresh = false}) {
     final now = DateTime.now();
     return getScheduleByDateRange(now, now, refresh: refresh);
+  }
+
+  /// Keep a rolling month of one-shot Android alarms in sync with server data.
+  /// Fetch failures leave previously scheduled alarms intact for offline use.
+  Future<void> syncUpcomingReminders({bool refresh = false}) async {
+    final version = ApiClient.sessionVersion;
+    final now = DateTime.now();
+    final items = await getScheduleByDateRange(
+      now,
+      now.add(const Duration(days: 29)),
+      refresh: refresh,
+    );
+    if (version != ApiClient.sessionVersion) return;
+    final raw = await ApiClient.storage.read(key: ApiClient.userKey);
+    if (version != ApiClient.sessionVersion) return;
+    final user = raw == null ? null : jsonDecode(raw);
+    if (user is! Map ||
+        user['tenVaiTro'] != 'NguoiCaoTuoi' ||
+        user['userId'] == null) {
+      return;
+    }
+    await LocalNotificationService.syncMedicationReminders(
+      owner: user['userId'].toString(),
+      schedule: items,
+      isCurrent: () => version == ApiClient.sessionVersion,
+    );
   }
 
   Future<List<Map<String, dynamic>>> getScheduleByDateRange(

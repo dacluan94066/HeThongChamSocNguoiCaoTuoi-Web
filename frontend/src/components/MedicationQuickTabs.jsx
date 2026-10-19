@@ -15,7 +15,7 @@ const MedicationQuickTabs = () => {
     },
     {
       path: '/danh-muc-thuoc',
-      label: 'Danh mục thuốc',
+      label: 'Thuốc của NCT',
       icon: <MedicineBoxOutlined />,
       visible: hasPermission('QLTHUOC', 'xem'),
     },

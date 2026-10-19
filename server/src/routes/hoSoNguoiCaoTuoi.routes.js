@@ -11,6 +11,7 @@ const caregiverController = require('../controllers/nguoiChamSoc.controller');
 const alertController = require('../controllers/canhBao.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const { checkPermission } = require('../middlewares/permission.middleware');
+const { fail } = require('../utils/response');
 const scope = require('../middlewares/mobile-scope.middleware');
 const careAssistant = require('../controllers/careAssistant.controller');
 const mobileProfile = require('../controllers/mobileProfile.controller');
@@ -80,6 +81,10 @@ router.post(
 router.put(
   '/:id/caregiver',
   scope.webOnlyWrite,
+  (req, res, next) => req.user.tenVaiTro === 'QuanTriVien'
+    ? next()
+    : fail(res, 'Chi quan tri vien duoc phan cong nguoi cham soc', 'FORBIDDEN', 403),
+  scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
   checkPermission('QLHOSONCT', 'sua'),
   controller.assignCaregiver
 );

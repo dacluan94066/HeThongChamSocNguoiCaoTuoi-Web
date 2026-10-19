@@ -6,6 +6,13 @@ const { ok, fail } = require('../utils/response');
 const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
 const {versionSql,endpoint}=require('../services/careNoteMutation.service');
 
+const NOTE_TYPE_LABELS = {
+  CHAM_SOC_HANG_NGAY: 'Chăm sóc hàng ngày',
+  SU_CO: 'Sự cố',
+  VAT_LY_TRI_LIEU: 'Vật lý trị liệu',
+  CANH_BAO: 'Cảnh báo',
+};
+
 const mapNote = (row,req) => ({
   id:               row.id,
   nguoiCaoTuoiId:   row.nguoiCaoTuoiId,
@@ -13,8 +20,8 @@ const mapNote = (row,req) => ({
   nguoiChamSocId:   row.nguoiChamSocId,
   nguoiChamSocTen:  row.nguoiChamSocTen,
   // Map HoatDong -> tieuDe, MoTaChiTiet -> noiDung cho frontend
-  loaiNhatKy:       'CHAM_SOC_HANG_NGAY',
-  loaiNhatKyLabel:  'Chăm sóc hàng ngày',
+  loaiNhatKy:       row.loaiNhatKy,
+  loaiNhatKyLabel:  NOTE_TYPE_LABELS[row.loaiNhatKy] || 'Chăm sóc hàng ngày',
   tieuDe:           row.hoatDong,
   noiDung:          row.moTaChiTiet,
   ngay:             row.ngayGhi ? row.ngayGhi.slice(0, 10) : '',
@@ -40,7 +47,8 @@ const getAll = async (req, res, next) => {
       SELECT n.NhatKyID AS id, n.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         nct.HoTen AS nguoiCaoTuoiTen, n.NguoiChamSocID AS nguoiChamSocId,
         nd.HoTen AS nguoiChamSocTen, CONVERT(VARCHAR(19),n.NgayGhi,126) AS ngayGhi,
-        n.HoatDong AS hoatDong, n.MoTaChiTiet AS moTaChiTiet, ncs.UserID AS authorUserId,
+        n.HoatDong AS hoatDong, n.MoTaChiTiet AS moTaChiTiet,
+        n.LoaiNhatKy AS loaiNhatKy, ncs.UserID AS authorUserId,
         ${versionSql('n')} AS version
       FROM NhatKyChamSoc n
       JOIN HoSoNguoiCaoTuoi nct ON n.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
@@ -64,7 +72,7 @@ const getAll = async (req, res, next) => {
 const create = async (req, res, next) => {
   let transaction;
   try {
-    const { tieuDe, noiDung } = req.body;
+    const { tieuDe, noiDung, loaiNhatKy = 'CHAM_SOC_HANG_NGAY' } = req.body;
     const nguoiCaoTuoiId = targetElderlyId(req, req.body.nguoiCaoTuoiId);
     if (isMobileRole(req) && nguoiCaoTuoiId == null) return fail(res, 'Khong co quyen ghi nhat ky cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
     if (!nguoiCaoTuoiId || !tieuDe || !noiDung)
@@ -72,6 +80,8 @@ const create = async (req, res, next) => {
     if (typeof tieuDe !== 'string' || !tieuDe.trim() || tieuDe.trim().length > 200 ||
         typeof noiDung !== 'string' || !noiDung.trim() || noiDung.trim().length > 1000)
       return fail(res, 'Tieu de toi da 200 va noi dung toi da 1000 ky tu', 'INVALID_NOTE', 400);
+    if (!Object.hasOwn(NOTE_TYPE_LABELS, loaiNhatKy))
+      return fail(res, 'Loai nhat ky khong hop le', 'INVALID_NOTE_TYPE', 400);
 
     const pool = await poolPromise;
     transaction=new sql.Transaction(pool);
@@ -90,9 +100,10 @@ const create = async (req, res, next) => {
       .input('nguoiChamSocId', sql.Int, nguoiChamSocId)
       .input('hoatDong', sql.NVarChar(200), tieuDe.trim())
       .input('moTa', sql.NVarChar(1000), noiDung.trim())
-      .query(`INSERT INTO NhatKyChamSoc (NguoiCaoTuoiID,NguoiChamSocID,NgayGhi,HoatDong,MoTaChiTiet)
+      .input('loaiNhatKy', sql.NVarChar(30), loaiNhatKy)
+      .query(`INSERT INTO NhatKyChamSoc (NguoiCaoTuoiID,NguoiChamSocID,NgayGhi,LoaiNhatKy,HoatDong,MoTaChiTiet)
               OUTPUT INSERTED.NhatKyID AS id
-              VALUES (@nctId,@nguoiChamSocId,DATEADD(HOUR,7,SYSUTCDATETIME()),@hoatDong,@moTa)`);
+              VALUES (@nctId,@nguoiChamSocId,DATEADD(HOUR,7,SYSUTCDATETIME()),@loaiNhatKy,@hoatDong,@moTa)`);
     await transaction.commit();transaction=null;
     return ok(res, { id: r.recordset[0].id }, 'Them nhat ky thanh cong', 201);
   } catch (err) {

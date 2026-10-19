@@ -111,7 +111,7 @@ const create = async (req, res, next) => {
         JOIN NguoiDung nd ON nd.UserID=ncs.UserID
         WHERE lk.NguoiCaoTuoiID=@elderlyId AND nd.TrangThai=N'HoatDong' AND ncs.TrangThai=N'DangLamViec'
         AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
-        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))`);
+        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))`);
     await transaction.commit();
     transaction = null;
     emitToAdmin('canhbao:new', {

@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { canAccessWeb } from '../../utils/accessControl';
 import loginIllustration from '../../assets/login_illustration.png';
 import ForgotPasswordModal from './ForgotPasswordModal';
+import CaregiverRegistrationModal from './CaregiverRegistrationModal';
 import './Login.css';
 
 const { Title, Text } = Typography;
@@ -76,7 +77,7 @@ const LoginIllustration = () => (
 );
 
 // --- Component form đăng nhập ---
-const LoginForm = ({ onSubmit, onForgotPassword, loading, errorMsg, alertType }) => {
+const LoginForm = ({ onSubmit, onForgotPassword, onRegisterCaregiver, loading, errorMsg, alertType }) => {
   const [form] = Form.useForm();
 
   return (
@@ -181,6 +182,13 @@ const LoginForm = ({ onSubmit, onForgotPassword, loading, errorMsg, alertType })
 
         </Form>
 
+        <div className="login-register-row">
+          Bạn là người chăm sóc?{' '}
+          <button type="button" className="login-forgot-link" onClick={onRegisterCaregiver}>
+            Tạo tài khoản Web
+          </button>
+        </div>
+
         {/* Footer */}
         <div className="login-footer">
           © {new Date().getFullYear()} Hệ thống Quản lý Sức khỏe Người cao tuổi
@@ -198,6 +206,7 @@ const LoginPage = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [alertType, setAlertType] = useState('error');
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [caregiverRegistrationOpen, setCaregiverRegistrationOpen] = useState(false);
 
   // Nếu đã đăng nhập, chuyển về dashboard
   React.useEffect(() => {
@@ -254,6 +263,7 @@ const LoginPage = () => {
       <LoginForm
         onSubmit={handleSubmit}
         onForgotPassword={() => setForgotPasswordOpen(true)}
+        onRegisterCaregiver={() => setCaregiverRegistrationOpen(true)}
         loading={loading}
         errorMsg={errorMsg}
         alertType={alertType}
@@ -261,6 +271,10 @@ const LoginPage = () => {
       <ForgotPasswordModal
         open={forgotPasswordOpen}
         onClose={() => setForgotPasswordOpen(false)}
+      />
+      <CaregiverRegistrationModal
+        open={caregiverRegistrationOpen}
+        onClose={() => setCaregiverRegistrationOpen(false)}
       />
     </div>
   );

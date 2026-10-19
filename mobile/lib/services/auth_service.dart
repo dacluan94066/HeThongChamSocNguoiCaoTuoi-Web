@@ -54,8 +54,7 @@ class AuthService {
       }
 
       final userMap = Map<String, dynamic>.from(user);
-      if (userMap['tenVaiTro'] != 'NguoiCaoTuoi' &&
-          userMap['tenVaiTro'] != 'NguoiChamSoc') {
+      if (userMap['tenVaiTro'] != 'NguoiCaoTuoi') {
         throw const ApiException(
           'Tài khoản này không hỗ trợ trên Mobile. Vui lòng dùng hệ thống Web.',
           statusCode: 403,
@@ -165,8 +164,7 @@ class AuthService {
       throw const ApiException('Phản hồi đăng nhập Google không hợp lệ.');
     }
     final userMap = Map<String, dynamic>.from(user);
-    if (userMap['tenVaiTro'] != 'NguoiCaoTuoi' &&
-        userMap['tenVaiTro'] != 'NguoiChamSoc') {
+    if (userMap['tenVaiTro'] != 'NguoiCaoTuoi') {
       throw const ApiException(
         'Tài khoản này không hỗ trợ trên Mobile. Vui lòng dùng hệ thống Web.',
         statusCode: 403,

@@ -11,12 +11,8 @@ async function authorizeWrite(transaction,user,elderlyId,feature){
  if(actor.role==='QuanTriVien')return;
  if(actor.role==='NguoiChamSoc'){
   const assigned=await new sql.Request(transaction).input('uid',sql.Int,user.userId).input('eid',sql.Int,elderlyId).query(
-   "SELECT TOP 1 n.NguoiChamSocID FROM NguoiChamSoc n JOIN NguoiCaoTuoi_NguoiChamSoc l ON l.NguoiChamSocID=n.NguoiChamSocID WHERE n.UserID=@uid AND n.TrangThai=N'DangLamViec' AND l.NguoiCaoTuoiID=@eid AND l.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE) AND (l.NgayKetThuc IS NULL OR l.NgayKetThuc>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))");
+   "SELECT TOP 1 n.NguoiChamSocID FROM NguoiChamSoc n JOIN NguoiCaoTuoi_NguoiChamSoc l ON l.NguoiChamSocID=n.NguoiChamSocID WHERE n.UserID=@uid AND n.TrangThai=N'DangLamViec' AND l.NguoiCaoTuoiID=@eid AND l.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE) AND (l.NgayKetThuc IS NULL OR l.NgayKetThuc>CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))");
   if(assigned.recordset.length)return;
- }else if(actor.role==='BacSi'&&feature==='QLCANHBAO'){
-  const permission=await new sql.Request(transaction).input('uid',sql.Int,user.userId).query(
-   "SELECT p.ChoPhepSua AS allowed FROM NguoiDung n JOIN PhanQuyen p ON p.VaiTroID=n.VaiTroID JOIN ChucNang c ON c.ChucNangID=p.ChucNangID WHERE n.UserID=@uid AND c.MaChucNang='QLCANHBAO'");
-  if(permission.recordset.some(r=>r.allowed===true||r.allowed===1))return;
  }
  throw problem(403,'FORBIDDEN','Không có quyền thao tác với hồ sơ này.');
 }

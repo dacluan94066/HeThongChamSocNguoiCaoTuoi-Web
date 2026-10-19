@@ -1,7 +1,7 @@
 /* =====================================================================
    DO AN: HE THONG QUAN LY VA CANH BAO CHAM SOC SUC KHOE NGUOI CAO TUOI
    CSDL: SQL Server
-   File nay tao database + toan bo bang + danh muc + 44 dong phan quyen.
+   File nay tao database + toan bo bang + danh muc + 33 dong phan quyen.
    Khong chen tai khoan demo de tranh luu mat khau mac dinh trong source.
    Tai khoan demo duoc tao rieng bang server/seed_users.js (bcrypt).
    ===================================================================== */
@@ -180,7 +180,7 @@ CREATE TABLE NguoiCaoTuoi_NguoiChamSoc (
     MoiQuanHe       NVARCHAR(50) NULL,
     LaChinh         BIT NOT NULL DEFAULT 0,
     NgayBatDau      DATE NOT NULL DEFAULT CAST(GETDATE() AS DATE),
-    NgayKetThuc     DATE NULL,
+    NgayKetThuc     DATE NULL, -- Moc het hieu luc, khong tinh ngay nay vao phan cong
     CONSTRAINT FK_NCT_NCS_NCT FOREIGN KEY (NguoiCaoTuoiID) REFERENCES HoSoNguoiCaoTuoi(NguoiCaoTuoiID) ON DELETE CASCADE,
     CONSTRAINT FK_NCT_NCS_NCS FOREIGN KEY (NguoiChamSocID) REFERENCES NguoiChamSoc(NguoiChamSocID),
     CONSTRAINT UQ_NCT_NCS UNIQUE (NguoiCaoTuoiID, NguoiChamSocID)
@@ -415,13 +415,12 @@ CREATE TABLE NhatKyChamSoc (
 GO
 
 /* =====================================================================
-   DU LIEU MAU: VAI TRO (4 vai tro - khong co Y ta)
+   DU LIEU MAU: VAI TRO (3 vai tro)
    ===================================================================== */
 
 INSERT INTO VaiTro (TenVaiTro, MoTa) VALUES
 (N'QuanTriVien', N'Quan tri toan he thong, dung Web'),
-(N'BacSi', N'Bac si - chuyen mon y te, dung Web'),
-(N'NguoiChamSoc', N'Nguoi cham soc / nguoi than (bao gom ca than nhan va dieu duong, phan biet qua cot MoiQuanHe) - dung Mobile'),
+(N'NguoiChamSoc', N'Nguoi cham soc quan ly nguoi cao tuoi duoc phan cong tren Web'),
 (N'NguoiCaoTuoi', N'Nguoi cao tuoi su dung ung dung Mobile');
 GO
 
@@ -457,12 +456,9 @@ INSERT INTO LoaiChiSoSucKhoe (TenChiSo, DonVi, GiaTriMin, GiaTriMax, GiaTriMin2,
 GO
 
 /* =====================================================================
-   DU LIEU MAU: PHAN QUYEN (Mo hinh B)
-   - QuanTriVien + BacSi: dung duoc Web
-   - NguoiChamSoc + NguoiCaoTuoi: chi dung Mobile (chan o tang API dang nhap,
-     xem server/src/controllers/auth.controller.js - kiem tra "platform")
-   - Du 2 vai tro duoi khong dung Web, van can quyen tren API vi Mobile
-     goi chung 1 bo API nay
+   DU LIEU MAU: PHAN QUYEN (3 vai tro)
+   - QuanTriVien + NguoiChamSoc: dung Web
+   - NguoiCaoTuoi: dung Mobile va chi truy cap du lieu cua minh
    ===================================================================== */
 
 DECLARE @Quyen TABLE (TenVaiTro NVARCHAR(50), MaChucNang VARCHAR(50), Xem BIT, Them BIT, Sua BIT, Xoa BIT);
@@ -476,17 +472,9 @@ INSERT INTO @Quyen VALUES
 (N'QuanTriVien','QLLIENHEKC',1,1,1,1),(N'QuanTriVien','QLNHATKY',1,1,1,1),
 (N'QuanTriVien','QLBAOCAO',1,1,1,1),
 
--- BacSi: dong bo voi server/seed_phanquyen.js
-(N'BacSi','QLNGUOIDUNG',0,0,0,0),(N'BacSi','QLHOSONCT',1,1,1,0),
-(N'BacSi','QLNGUOICHAMSOC',1,1,1,0),(N'BacSi','QLTHUOC',1,1,1,0),
-(N'BacSi','QLLICHUONGTHUOC',1,1,1,1),(N'BacSi','QLLICHKHAM',1,1,1,1),
-(N'BacSi','QLCHISOSK',1,1,1,0),(N'BacSi','QLCANHBAO',1,1,1,0),
-(N'BacSi','QLLIENHEKC',1,1,1,0),(N'BacSi','QLNHATKY',1,1,1,0),
-(N'BacSi','QLBAOCAO',1,0,0,0),
-
--- NguoiChamSoc: dung Mobile, quyen gioi han trong pham vi NCT minh phu trach
+-- NguoiChamSoc: dung Web, quyen gioi han trong pham vi NCT minh phu trach
 (N'NguoiChamSoc','QLNGUOIDUNG',0,0,0,0),(N'NguoiChamSoc','QLHOSONCT',1,0,1,0),
-(N'NguoiChamSoc','QLNGUOICHAMSOC',1,0,0,0),(N'NguoiChamSoc','QLTHUOC',1,0,0,0),
+(N'NguoiChamSoc','QLNGUOICHAMSOC',1,0,0,0),(N'NguoiChamSoc','QLTHUOC',1,1,1,0),
 (N'NguoiChamSoc','QLLICHUONGTHUOC',1,1,1,0),(N'NguoiChamSoc','QLLICHKHAM',1,1,1,0),
 (N'NguoiChamSoc','QLCHISOSK',1,1,1,0),(N'NguoiChamSoc','QLCANHBAO',1,1,1,0),
 (N'NguoiChamSoc','QLLIENHEKC',1,1,1,0),(N'NguoiChamSoc','QLNHATKY',1,1,1,0),
@@ -507,5 +495,5 @@ JOIN VaiTro vt ON vt.TenVaiTro = q.TenVaiTro
 JOIN ChucNang cn ON cn.MaChucNang = q.MaChucNang;
 GO
 
-PRINT N'Tao CSDL QLSucKhoeNguoiCaoTuoi hoan tat - 4 vai tro, 11 chuc nang, 44 dong phan quyen.';
+PRINT N'Tao CSDL QLSucKhoeNguoiCaoTuoi hoan tat - 3 vai tro, 11 chuc nang, 33 dong phan quyen.';
 GO

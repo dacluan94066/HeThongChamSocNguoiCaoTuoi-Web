@@ -5,6 +5,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import 'api_client.dart';
 import 'appointment_service.dart';
+import 'medication_schedule_service.dart';
 
 class MobileRealtimeService {
   MobileRealtimeService._() {
@@ -15,6 +16,8 @@ class MobileRealtimeService {
 
   final ValueNotifier<bool> connected = ValueNotifier(false);
   final ValueNotifier<int> appointmentRevision = ValueNotifier(0);
+  final ValueNotifier<int> medicationRevision = ValueNotifier(0);
+  final ValueNotifier<int> notificationRevision = ValueNotifier(0);
 
   io.Socket? _socket;
   int _session = -1;
@@ -88,6 +91,7 @@ class MobileRealtimeService {
       if (!current()) return;
       connected.value = true;
       unawaited(_refreshAppointments(version, generation));
+      unawaited(_refreshMedications(version, generation));
     });
     socket.onDisconnect((_) {
       if (current()) connected.value = false;
@@ -101,6 +105,15 @@ class MobileRealtimeService {
     socket.on('lichkham:updated', (data) {
       if (!current() || !isAppointmentEvent(data)) return;
       unawaited(_refreshAppointments(version, generation));
+    });
+    socket.on('lichuongthuoc:updated', (_) {
+      if (current()) unawaited(_refreshMedications(version, generation));
+    });
+    socket.on('donthuoc:created', (_) {
+      if (current()) unawaited(_refreshMedications(version, generation));
+    });
+    socket.on('thongbao:new', (_) {
+      if (current()) notificationRevision.value++;
     });
     socket.connect();
   }
@@ -132,6 +145,20 @@ class MobileRealtimeService {
     } finally {
       _pendingRefreshGenerations.remove(generation);
       _refreshingGenerations.remove(generation);
+    }
+  }
+
+  Future<void> _refreshMedications(int version, int generation) async {
+    try {
+      await Future.wait([
+        MedicationScheduleService.instance.getTodaySchedule(refresh: true),
+        MedicationScheduleService.instance.syncUpcomingReminders(refresh: true),
+      ]);
+      if (version == ApiClient.sessionVersion && generation == _generation) {
+        medicationRevision.value++;
+      }
+    } catch (_) {
+      // Home refresh on resume is the fallback if this socket refresh fails.
     }
   }
 

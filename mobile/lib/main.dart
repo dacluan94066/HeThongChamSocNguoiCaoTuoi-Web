@@ -9,8 +9,8 @@ import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/google_sign_in_service.dart';
 import 'screens/home/home_screen.dart';
-import 'screens/caregiver/caregiver_home_screen.dart';
 import 'screens/appointments/appointment_screen.dart';
+import 'screens/medication/medication_screen.dart';
 import 'widgets/appointment_reminder_scope.dart';
 
 Future<void> main() async {
@@ -41,6 +41,7 @@ class ElderlyCareApp extends StatelessWidget {
         '/login': (_) => const LoginScreen(),
         '/home': (_) => const SessionHomeScreen(),
         '/appointments': (_) => const AppointmentScreen(),
+        '/medications': (_) => const MedicationScreen(),
       },
       home: const SplashScreen(),
     );
@@ -48,7 +49,6 @@ class ElderlyCareApp extends StatelessWidget {
 }
 
 Widget homeForRole(String? role) => switch (role) {
-  'NguoiChamSoc' => const CaregiverHomeScreen(),
   'NguoiCaoTuoi' => const AppointmentReminderScope(child: HomeScreen()),
   _ => const LoginScreen(),
 };
@@ -132,7 +132,7 @@ class _SplashScreenState extends State<SplashScreen> {
       final user = await authService.getMe();
       if (!mounted) return;
       final role = user['tenVaiTro']?.toString();
-      if (role == 'NguoiCaoTuoi' || role == 'NguoiChamSoc') {
+      if (role == 'NguoiCaoTuoi') {
         Navigator.pushReplacementNamed(context, '/home');
       } else {
         await authService.logout();
@@ -485,7 +485,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await AuthService.instance.login(username, password);
       if (!mounted) return;
       final role = user['tenVaiTro']?.toString();
-      if (role == 'NguoiCaoTuoi' || role == 'NguoiChamSoc') {
+      if (role == 'NguoiCaoTuoi') {
         Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
       } else {
         await AuthService.instance.logout();

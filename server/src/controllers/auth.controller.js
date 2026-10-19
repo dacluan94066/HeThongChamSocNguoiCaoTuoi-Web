@@ -58,7 +58,7 @@ const writeLoginLog = async (pool, req, userId, ketQua, platform) => {
   }
 };
 
-const PUBLIC_MOBILE_ROLES = new Set(['NguoiCaoTuoi', 'NguoiChamSoc']);
+const PUBLIC_MOBILE_ROLES = new Set(['NguoiCaoTuoi']);
 
 const googleUsername = (subject) => `google_${crypto
   .createHash('sha256')
@@ -82,6 +82,7 @@ const createMobileSession = async (pool, req, user) => {
       userId: user.userId,
       vaiTroId: user.vaiTroId,
       tenVaiTro: user.tenVaiTro,
+      sessionVersion: 2,
     },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
@@ -111,13 +112,13 @@ const register = async (req, res, next) => {
       ? email.trim().toLowerCase()
       : '';
 
-    // Chi hai vai tro Mobile nay duoc phep tu dang ky cong khai. Khong suy dien
+    // Chi nguoi cao tuoi duoc tu dang ky tren Mobile. Khong suy dien
     // VaiTroID tu gia tri bat ky do client gui.
     if (typeof accountType !== 'string'
-      || !['NguoiCaoTuoi', 'NguoiChamSoc'].includes(accountType)) {
+      || !PUBLIC_MOBILE_ROLES.has(accountType)) {
       return fail(
         res,
-        'loaiTaiKhoan chi duoc la NguoiCaoTuoi hoac NguoiChamSoc',
+        'Chi nguoi cao tuoi duoc tu dang ky tren Mobile',
         'INVALID_PUBLIC_ACCOUNT_TYPE',
         400
       );
@@ -323,6 +324,121 @@ const register = async (req, res, next) => {
   }
 };
 
+// Dang ky nguoi cham soc tren Web. Chi Admin duyet va phan cong NCT sau khi
+// kiem tra thong tin; client khong duoc tu chon vai tro hay kich hoat tai khoan.
+const registerCaregiver = async (req, res, next) => {
+  let transaction;
+  try {
+    const { tenDangNhap, matKhau, hoTen, email, soDienThoai } = req.body || {};
+    if ([tenDangNhap, matKhau, hoTen, email, soDienThoai].some((value) => typeof value !== 'string' || !value.trim())) {
+      return fail(res, 'Vui lòng nhập đầy đủ tên đăng nhập, mật khẩu, họ tên, email và số điện thoại', 'MISSING_FIELDS', 400);
+    }
+
+    const username = tenDangNhap.trim();
+    const name = hoTen.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+    const phone = soDienThoai.trim();
+    if (!/^[A-Za-z0-9._-]{3,50}$/.test(username) || name.length > 100) {
+      return fail(res, 'Tên đăng nhập cần 3–50 ký tự (chữ, số, dấu . _ -); họ tên tối đa 100 ký tự', 'INVALID_NAME', 400);
+    }
+    if (matKhau.length < 6 || matKhau.length > 128) {
+      return fail(res, 'Mật khẩu phải có từ 6 đến 128 ký tự', 'WEAK_PASSWORD', 400);
+    }
+    if (normalizedEmail.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return fail(res, 'Email không hợp lệ', 'INVALID_EMAIL', 400);
+    }
+    if (!/^0\d{9,10}$/.test(phone)) {
+      return fail(res, 'Số điện thoại phải có 10–11 chữ số và bắt đầu bằng 0', 'INVALID_PHONE', 400);
+    }
+
+    const pool = await poolPromise;
+    const hash = await bcrypt.hash(matKhau, 10);
+    transaction = new sql.Transaction(pool);
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+
+    const existing = await new sql.Request(transaction)
+      .input('username', sql.VarChar(50), username)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .input('phone', sql.VarChar(15), phone)
+      .query(`
+        SELECT TOP (1)
+          CASE WHEN TenDangNhap=@username THEN 'USERNAME_TAKEN'
+               WHEN LOWER(Email)=@email THEN 'EMAIL_TAKEN'
+               ELSE 'PHONE_TAKEN' END AS reason
+        FROM NguoiDung WITH (UPDLOCK, HOLDLOCK)
+        WHERE TenDangNhap=@username OR LOWER(Email)=@email OR SoDienThoai=@phone
+        ORDER BY CASE WHEN TenDangNhap=@username THEN 0 WHEN LOWER(Email)=@email THEN 1 ELSE 2 END
+      `);
+    if (existing.recordset.length) {
+      const reason = existing.recordset[0].reason;
+      await transaction.rollback();
+      transaction = null;
+      const messages = {
+        USERNAME_TAKEN: 'Tên đăng nhập đã được sử dụng',
+        EMAIL_TAKEN: 'Email đã được sử dụng',
+        PHONE_TAKEN: 'Số điện thoại đã được sử dụng',
+      };
+      return fail(res, messages[reason], reason, 409);
+    }
+
+    // Khong tu dong chiem ho so da duoc Admin tao: ho so do co the da
+    // duoc phan cong NCT va can Admin xac minh chu so huu truoc khi lien ket.
+    const profileExists = await new sql.Request(transaction)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .input('phone', sql.VarChar(15), phone)
+      .query(`
+        SELECT TOP (1) NguoiChamSocID
+        FROM NguoiChamSoc WITH (UPDLOCK, HOLDLOCK)
+        WHERE LOWER(Email)=@email OR SoDienThoai=@phone
+      `);
+    if (profileExists.recordset.length) {
+      await transaction.rollback();
+      transaction = null;
+      return fail(res, 'Email hoặc số điện thoại đã có trong hồ sơ người chăm sóc. Vui lòng liên hệ quản trị viên để tạo tài khoản.', 'CAREGIVER_PROFILE_EXISTS', 409);
+    }
+
+    const role = await new sql.Request(transaction)
+      .query("SELECT VaiTroID FROM VaiTro WHERE TenVaiTro=N'NguoiChamSoc'");
+    if (!role.recordset.length) throw new Error('Thieu vai tro NguoiChamSoc trong co so du lieu');
+
+    const created = await new sql.Request(transaction)
+      .input('username', sql.VarChar(50), username)
+      .input('hash', sql.VarChar(255), hash)
+      .input('name', sql.NVarChar(100), name)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .input('phone', sql.VarChar(15), phone)
+      .input('roleId', sql.Int, role.recordset[0].VaiTroID)
+      .query(`
+        INSERT INTO NguoiDung
+          (TenDangNhap, MatKhauHash, HoTen, Email, SoDienThoai, VaiTroID, TrangThai)
+        OUTPUT INSERTED.UserID AS userId
+        VALUES (@username, @hash, @name, @email, @phone, @roleId, N'ChoDuyet')
+      `);
+    const userId = created.recordset[0].userId;
+    await new sql.Request(transaction)
+      .input('userId', sql.Int, userId)
+      .input('name', sql.NVarChar(100), name)
+      .input('email', sql.VarChar(100), normalizedEmail)
+      .input('phone', sql.VarChar(15), phone)
+      .query(`
+        INSERT INTO NguoiChamSoc (UserID, HoTen, Email, SoDienThoai)
+        VALUES (@userId, @name, @email, @phone)
+      `);
+
+    await transaction.commit();
+    transaction = null;
+    return ok(res, null, 'Đăng ký thành công. Vui lòng chờ quản trị viên duyệt tài khoản.', 201);
+  } catch (err) {
+    if (transaction) {
+      try { await transaction.rollback(); } catch (_) { /* Transaction da ket thuc. */ }
+    }
+    if (err.number === 2601 || err.number === 2627) {
+      return fail(res, 'Tên đăng nhập, email hoặc số điện thoại đã được sử dụng', 'DUPLICATE_ACCOUNT', 409);
+    }
+    next(err);
+  }
+};
+
 // ─── DANG NHAP ───────────────────────────────────────────────────────────────
 // POST /api/auth/login
 // Nhan: { tenDangNhap, matKhau, platform?: 'web' | 'mobile' }
@@ -375,8 +491,13 @@ const login = async (req, res, next) => {
       return fail(res, 'Ten dang nhap hoac mat khau khong chinh xac', 'INVALID_CREDENTIALS', 401);
     }
 
-    // Web quan tri chi danh cho QuanTriVien va BacSi.
-    if (platform === 'web' && !['QuanTriVien', 'BacSi'].includes(user.TenVaiTro)) {
+    if (user.TrangThai === 'ChoDuyet') {
+      await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
+      return fail(res, 'Tài khoản đang chờ quản trị viên duyệt', 'ACCOUNT_PENDING_APPROVAL', 403);
+    }
+
+    // Quan tri vien va nguoi cham soc dung Web; nguoi cao tuoi dung Mobile.
+    if (platform === 'web' && !['QuanTriVien', 'NguoiChamSoc'].includes(user.TenVaiTro)) {
       await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
       return fail(
         res,
@@ -385,6 +506,10 @@ const login = async (req, res, next) => {
         403
       );
     }
+    if (platform !== 'web' && (platform !== 'mobile' || !PUBLIC_MOBILE_ROLES.has(user.TenVaiTro))) {
+      await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
+      return fail(res, 'Tai khoan nay khong duoc dang nhap tren Mobile', 'MOBILE_ACCESS_DENIED', 403);
+    }
 
     // Tao JWT chua thong tin can thiet
     const token = jwt.sign(
@@ -392,6 +517,7 @@ const login = async (req, res, next) => {
         userId: user.UserID,
         vaiTroId: user.VaiTroID,
         tenVaiTro: user.TenVaiTro,
+        sessionVersion: 2,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
@@ -521,7 +647,7 @@ const googleLogin = async (req, res, next) => {
     if (typeof accountType !== 'string' || !PUBLIC_MOBILE_ROLES.has(accountType)) {
       return fail(
         res,
-        'loaiTaiKhoan chi duoc la NguoiCaoTuoi hoac NguoiChamSoc',
+        'Chi nguoi cao tuoi duoc tao tai khoan qua Mobile',
         'INVALID_PUBLIC_ACCOUNT_TYPE',
         400,
       );
@@ -1064,6 +1190,7 @@ const resetPasswordWithToken = async (req, res, next) => {
 
 module.exports = {
   register,
+  registerCaregiver,
   login,
   googleLogin,
   me,

@@ -185,7 +185,7 @@ class _AppointmentScreenState extends State<AppointmentScreen>
               ),
               _DetailRow(
                 icon: Icons.person_outline_rounded,
-                label: 'Bác sĩ phụ trách',
+                label: 'Bác sĩ tại nơi khám',
                 value: _text(appointment['bacSiPhuTrach']),
               ),
               _DetailRow(

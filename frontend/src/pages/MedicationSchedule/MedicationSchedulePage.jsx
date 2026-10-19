@@ -21,6 +21,7 @@ import { formatEntityCode } from '../../utils/displayUtils';
 import RecordDetailModal from '../../components/RecordDetailModal';
 import ModalForm, { FormSection } from '../../components/ModalForm';
 import MedicationQuickTabs from '../../components/MedicationQuickTabs';
+import { todayVietnam } from '../../utils/vietnamDate';
 import { getSocket } from '../../services/socketClient';
 
 const { Option } = Select;
@@ -540,8 +541,28 @@ const MedicationSchedulePage = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="ngayBatDau" label="Ngày bắt đầu" rules={[{ required: true, message: 'Vui lòng chọn ngày bắt đầu' }]}>
-                <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
+              <Form.Item
+                name="ngayBatDau"
+                label="Ngày bắt đầu"
+                rules={[
+                  { required: true, message: 'Vui lòng chọn ngày bắt đầu' },
+                  {
+                    validator(_, value) {
+                      if (!value || value.format('YYYY-MM-DD') >= todayVietnam()) return Promise.resolve();
+                      return Promise.reject(new Error('Ngày bắt đầu không được trước ngày hiện tại'));
+                    },
+                  },
+                ]}
+              >
+                <DatePicker
+                  format="DD/MM/YYYY"
+                  style={{ width: '100%' }}
+                  disabledDate={(date) => date && date.format('YYYY-MM-DD') < todayVietnam()}
+                  onChange={(date) => {
+                    const end = prescriptionForm.getFieldValue('ngayKetThuc');
+                    if (date && end?.isBefore(date, 'day')) prescriptionForm.setFieldValue('ngayKetThuc', null);
+                  }}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -552,12 +573,27 @@ const MedicationSchedulePage = () => {
                 rules={[({ getFieldValue }) => ({
                   validator(_, value) {
                     const start = getFieldValue('ngayBatDau');
-                    if (!value || !start || !value.isBefore(start, 'day')) return Promise.resolve();
-                    return Promise.reject(new Error('Ngày kết thúc không được trước ngày bắt đầu'));
+                    if (!value) return Promise.resolve();
+                    if (value.format('YYYY-MM-DD') < todayVietnam()) {
+                      return Promise.reject(new Error('Ngày kết thúc không được trước ngày hiện tại'));
+                    }
+                    if (start && value.isBefore(start, 'day')) {
+                      return Promise.reject(new Error('Ngày kết thúc không được trước ngày bắt đầu'));
+                    }
+                    return Promise.resolve();
                   },
                 })]}
               >
-                <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
+                <DatePicker
+                  format="DD/MM/YYYY"
+                  style={{ width: '100%' }}
+                  disabledDate={(date) => {
+                    if (!date) return false;
+                    const start = prescriptionForm.getFieldValue('ngayBatDau');
+                    const minimum = start?.format('YYYY-MM-DD') || todayVietnam();
+                    return date.format('YYYY-MM-DD') < minimum;
+                  }}
+                />
               </Form.Item>
             </Col>
           </Row>

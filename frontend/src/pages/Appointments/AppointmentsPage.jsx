@@ -18,6 +18,7 @@ import StatusTag, { getAppointmentStatusMap } from '../../components/StatusTag';
 import usePermission from '../../hooks/usePermission';
 import TableAvatar from '../../components/TableAvatar';
 import { formatEntityCode } from '../../utils/displayUtils';
+import { todayVietnam } from '../../utils/vietnamDate';
 import RecordDetailModal from '../../components/RecordDetailModal';
 import { getSocket } from '../../services/socketClient';
 
@@ -398,8 +399,29 @@ const AppointmentsPage = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="ngayKham" label="Ngày khám" rules={[{ required: true, message: 'Vui lòng chọn ngày khám' }]}>
-                <DatePicker format="DD/MM/YYYY" placeholder="Chọn ngày khám" style={{ width: '100%' }} />
+              <Form.Item
+                name="ngayKham"
+                label="Ngày khám"
+                rules={[
+                  { required: true, message: 'Vui lòng chọn ngày khám' },
+                  {
+                    validator(_, value) {
+                      const date = value?.format('YYYY-MM-DD');
+                      if (!date || date >= todayVietnam() || (editing && date === editing.ngayKham)) {
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(new Error('Ngày khám không được trước ngày hiện tại'));
+                    },
+                  },
+                ]}
+              >
+                <DatePicker
+                  format="DD/MM/YYYY"
+                  placeholder="Chọn ngày khám"
+                  style={{ width: '100%' }}
+                  disabledDate={(date) => date && date.format('YYYY-MM-DD') < todayVietnam()
+                    && (!editing || date.format('YYYY-MM-DD') !== editing.ngayKham)}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -408,7 +430,7 @@ const AppointmentsPage = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="bacSiTen" label="Bác sĩ phụ trách">
+              <Form.Item name="bacSiTen" label="Bác sĩ tại nơi khám">
                 <Input placeholder="VD: BS. Nguyễn Văn An" />
               </Form.Item>
             </Col>

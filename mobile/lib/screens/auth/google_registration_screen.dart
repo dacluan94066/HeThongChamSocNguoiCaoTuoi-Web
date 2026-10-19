@@ -24,7 +24,7 @@ class _GoogleRegistrationScreenState extends State<GoogleRegistrationScreen> {
   late final TextEditingController _nameController;
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _birthController = TextEditingController();
-  String _accountType = 'NguoiCaoTuoi';
+  final String _accountType = 'NguoiCaoTuoi';
   String _gender = 'Nam';
   bool _agreeTerms = false;
   bool _saving = false;
@@ -136,27 +136,8 @@ class _GoogleRegistrationScreenState extends State<GoogleRegistrationScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Chọn loại tài khoản',
+              'Tạo hồ sơ người cao tuổi',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                  value: 'NguoiCaoTuoi',
-                  icon: Icon(Icons.elderly_rounded),
-                  label: Text('Người cao tuổi'),
-                ),
-                ButtonSegment(
-                  value: 'NguoiChamSoc',
-                  icon: Icon(Icons.volunteer_activism_rounded),
-                  label: Text('Người chăm sóc'),
-                ),
-              ],
-              selected: {_accountType},
-              onSelectionChanged: _saving
-                  ? null
-                  : (values) => setState(() => _accountType = values.first),
             ),
             const SizedBox(height: 24),
             TextFormField(

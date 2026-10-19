@@ -11,7 +11,6 @@ import 'support/notification_platform_fake.dart';
 import 'package:elderly_care_app/screens/home/home_screen.dart';
 import 'package:elderly_care_app/main.dart'
     show LoginScreen, SessionHomeScreen, homeForRole;
-import 'package:elderly_care_app/screens/caregiver/caregiver_home_screen.dart';
 import 'package:elderly_care_app/screens/health/health_screen.dart';
 import 'package:elderly_care_app/screens/medication/medication_screen.dart';
 import 'package:elderly_care_app/screens/appointments/appointment_screen.dart';
@@ -62,7 +61,7 @@ class FlowAdapter implements HttpClientAdapter {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('Authenticated role chooses its actual home screen', () {
-    expect(homeForRole('NguoiChamSoc'), isA<CaregiverHomeScreen>());
+    expect(homeForRole('NguoiChamSoc'), isA<LoginScreen>());
     expect(
       homeForRole('NguoiCaoTuoi'),
       isA<AppointmentReminderScope>().having(
@@ -107,79 +106,73 @@ void main() {
     );
     ApiClient.instance.dio.interceptors.addAll(interceptors);
   });
-  testWidgets(
-    'Restored caregiver session opens assignments without loading an elderly own profile',
-    (tester) async {
-      FlutterSecureStorage.setMockInitialValues({
-        'jwt_token': 'test-session',
-        'auth_user': jsonEncode({'userId': 3, 'tenVaiTro': 'NguoiChamSoc'}),
-      });
-      await tester.pumpWidget(const MaterialApp(home: SessionHomeScreen()));
+  testWidgets('Caregiver uses Web, not the elderly-only Mobile home', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({
+      'jwt_token': 'test-session',
+      'auth_user': jsonEncode({'userId': 3, 'tenVaiTro': 'NguoiChamSoc'}),
+    });
+    await tester.pumpWidget(const MaterialApp(home: SessionHomeScreen()));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(adapter.paths, isNot(contains('/caregivers/me/elderly')));
+    expect(adapter.paths, isNot(contains('/elderly/me')));
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+  for (final entry in screens.entries) {
+    testWidgets('Empty ${entry.key}: narrow screen and large text', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(360, 740));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(360, 740),
+              textScaler: TextScaler.linear(1.8),
+            ),
+            child: entry.value,
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 60)),
+      );
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        const Duration(seconds: 5),
+      );
+      expect(tester.takeException(), isNull);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+  }
+  for (final entry in screens.entries) {
+    testWidgets('Network error ${entry.key}: ends loading and offers retry', (
+      tester,
+    ) async {
+      adapter.offline = true;
+      await tester.pumpWidget(MaterialApp(home: entry.value));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 60)),
+      );
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 100)),
       );
       await tester.pump();
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 100)),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(CaregiverHomeScreen), findsOneWidget);
-      expect(adapter.paths, contains('/caregivers/me/elderly'));
-      expect(adapter.paths, isNot(contains('/elderly/me')));
+      expect(find.text('Thử lại'), findsWidgets);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(tester.takeException(), isNull);
-    },
-    variant: TargetPlatformVariant.only(TargetPlatform.linux),
-  );
-  for (final entry in screens.entries) {
-    testWidgets(
-      'Empty ${entry.key}: narrow screen and large text',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(360, 740));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(360, 740),
-                textScaler: TextScaler.linear(1.8),
-              ),
-              child: entry.value,
-            ),
-          ),
-        );
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 60)),
-        );
-        await tester.pumpAndSettle(
-          const Duration(milliseconds: 100),
-          EnginePhase.sendSemanticsUpdate,
-          const Duration(seconds: 5),
-        );
-        expect(tester.takeException(), isNull);
-      },
-      variant: TargetPlatformVariant.only(TargetPlatform.linux),
-    );
-  }
-  for (final entry in screens.entries) {
-    testWidgets(
-      'Network error ${entry.key}: ends loading and offers retry',
-      (tester) async {
-        adapter.offline = true;
-        await tester.pumpWidget(MaterialApp(home: entry.value));
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 60)),
-        );
-        await tester.pump(const Duration(milliseconds: 500));
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 100)),
-        );
-        await tester.pump();
-        expect(find.text('Thử lại'), findsWidgets);
-        expect(find.byType(CircularProgressIndicator), findsNothing);
-        expect(tester.takeException(), isNull);
-      },
-      variant: TargetPlatformVariant.only(TargetPlatform.linux),
-    );
+    }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
   }
   testWidgets(
     'Loading then navigate back: late response does not update disposed health screen',

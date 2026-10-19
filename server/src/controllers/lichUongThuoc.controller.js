@@ -5,7 +5,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
-const { emitToAdmin } = require('../socket');
+const { emitToAdmin, emitToUser } = require('../socket');
 
 const STATUS_MAP = {
   ChuaDenGio: { ma: 'CHUA_DEN_GIO', label: 'Chưa đến giờ' },
@@ -196,6 +196,10 @@ const confirmMine = async (req, res, next) => {
             NguoiXacNhanID=@nguoiXacNhanId
         WHERE LichUongThuocID=@id;
 
+        DELETE FROM ThongBao
+        WHERE LienKetID=@id AND LienKetBang LIKE N'LichUongThuoc:%'
+          AND LoaiThongBao=N'NhacThuoc' AND DaDoc=0;
+
         SELECT l.LichUongThuocID AS id,
           l.NguoiCaoTuoiID AS nguoiCaoTuoiId,
           l.DonThuocChiTietID AS donThuocChiTietId,
@@ -214,6 +218,7 @@ const confirmMine = async (req, res, next) => {
 
     const schedule = mapMySchedule(updated.recordset[0]);
     emitToAdmin('lichuongthuoc:updated', schedule);
+    emitToUser(ownership.recordset[0].ownerUserId, 'lichuongthuoc:updated', schedule);
     return ok(res, schedule, 'Cap nhat trang thai uong thuoc thanh cong');
   } catch (err) { next(err); }
 };
@@ -272,7 +277,10 @@ const updateStatus = async (req, res, next) => {
               OUTPUT INSERTED.LichUongThuocID AS id,
                 INSERTED.NguoiCaoTuoiID AS nguoiCaoTuoiId,
                 INSERTED.TrangThai AS trangThai
-              WHERE LichUongThuocID=@id`);
+              WHERE LichUongThuocID=@id;
+              DELETE FROM ThongBao
+              WHERE LienKetID=@id AND LienKetBang LIKE N'LichUongThuoc:%'
+                AND LoaiThongBao=N'NhacThuoc' AND DaDoc=0;`);
     if (!updated.recordset.length) {
       return fail(res, 'Khong tim thay lich uong thuoc', 'MEDICATION_SCHEDULE_NOT_FOUND', 404);
     }
@@ -283,6 +291,12 @@ const updateStatus = async (req, res, next) => {
       trangThaiDb: updated.recordset[0].trangThai,
     };
     emitToAdmin('lichuongthuoc:updated', eventData);
+    const owner = await pool.request()
+      .input('elderlyId', sql.Int, eventData.nguoiCaoTuoiId)
+      .query('SELECT UserID AS userId FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID=@elderlyId');
+    if (owner.recordset[0]?.userId) {
+      emitToUser(owner.recordset[0].userId, 'lichuongthuoc:updated', eventData);
+    }
     return ok(res, eventData, 'Cap nhat trang thai thanh cong');
   } catch (err) { next(err); }
 };

@@ -65,6 +65,11 @@ export const register = async (userData) => {
   return res.data;
 };
 
+export const registerCaregiver = async (userData) => {
+  const res = await axiosClient.post('/auth/register-caregiver', userData);
+  return res.data;
+};
+
 export const forgotPassword = async ({ email, tenDangNhap }) => {
   const res = await axiosClient.post('/auth/forgot-password', { email, tenDangNhap });
   return res.data;

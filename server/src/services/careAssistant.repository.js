@@ -54,7 +54,7 @@ function createRepository(pool, sql, deadline = Date.now() + 30000) {
     caregivers: `SELECT DISTINCT TOP (51) ncs.NguoiChamSocID AS id,ncs.HoTen AS hoTen,ncs.SoDienThoai AS soDienThoai
       FROM NguoiCaoTuoi_NguoiChamSoc lk JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID=lk.NguoiChamSocID
       WHERE lk.NguoiCaoTuoiID=@elderlyId AND lk.NgayBatDau <= CAST(@localNow AS DATE)
-      AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc >= CAST(@localNow AS DATE)) ORDER BY ncs.HoTen,ncs.NguoiChamSocID`,
+      AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc > CAST(@localNow AS DATE)) ORDER BY ncs.HoTen,ncs.NguoiChamSocID`,
     notifications: 'SELECT COUNT(*) AS soChuaDoc FROM ThongBao WHERE UserID=@userId AND DaDoc=0',
     notes: notes(false), todayNotes: notes(true),
   };

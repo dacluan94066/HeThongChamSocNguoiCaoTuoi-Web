@@ -19,7 +19,6 @@ import RecordDetailModal from '../../components/RecordDetailModal';
 
 const ROLE_OPTIONS = [
   { value: 'QUAN_TRI', name: 'QuanTriVien', label: 'Quản trị viên', tone: 'admin' },
-  { value: 'BAC_SI', name: 'BacSi', label: 'Bác sĩ', tone: 'doctor' },
   { value: 'NGUOI_CHAM_SOC', name: 'NguoiChamSoc', label: 'Người chăm sóc', tone: 'caregiver' },
   { value: 'NGUOI_CAO_TUOI', name: 'NguoiCaoTuoi', label: 'Người cao tuổi', tone: 'elderly' },
 ];
@@ -92,6 +91,7 @@ const UsersPage = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [detailRecord, setDetailRecord] = useState(null);
   const [form] = Form.useForm();
+  const selectedRole = Form.useWatch('vaiTro', form);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -178,7 +178,7 @@ const UsersPage = () => {
     await toggleUserStatus(record.id);
     message.success(record.trangThai === 'HOAT_DONG'
       ? 'Đã khóa tài khoản'
-      : 'Đã kích hoạt tài khoản');
+      : record.trangThai === 'CHO_DUYET' ? 'Đã duyệt tài khoản' : 'Đã kích hoạt tài khoản');
     await loadUsers();
   };
 
@@ -266,14 +266,14 @@ const UsersPage = () => {
           {canEdit && <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(record)} />}
           {canEdit && (
             <Popconfirm
-              title={record.trangThai === 'HOAT_DONG' ? 'Khóa tài khoản này?' : 'Kích hoạt tài khoản này?'}
+              title={record.trangThai === 'HOAT_DONG' ? 'Khóa tài khoản này?' : record.trangThai === 'CHO_DUYET' ? 'Duyệt tài khoản này?' : 'Kích hoạt tài khoản này?'}
               onConfirm={() => handleToggleStatus(record)}
               okText="Xác nhận"
               cancelText="Hủy"
             >
               <TableActionButton
                 type={record.trangThai === 'HOAT_DONG' ? 'delete' : 'view'}
-                tooltip={record.trangThai === 'HOAT_DONG' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
+                tooltip={record.trangThai === 'HOAT_DONG' ? 'Khóa tài khoản' : record.trangThai === 'CHO_DUYET' ? 'Duyệt tài khoản' : 'Mở khóa tài khoản'}
                 icon={record.trangThai === 'HOAT_DONG' ? <LockOutlined /> : <UnlockOutlined />}
               />
             </Popconfirm>
@@ -336,7 +336,7 @@ const UsersPage = () => {
         <div>
           <span><SafetyCertificateOutlined /></span>
           <div>
-            <h2>Ma trận phân quyền 4 vai trò × {matrixData.functions.length} chức năng</h2>
+            <h2>Ma trận phân quyền 3 vai trò × {matrixData.functions.length} chức năng</h2>
             <p>Dữ liệu vai trò, chức năng và quyền được đọc trực tiếp từ hệ thống.</p>
           </div>
         </div>
@@ -408,15 +408,15 @@ const UsersPage = () => {
         <FormSection title="Thông tin tài khoản" description="Thông tin đăng nhập và vai trò người dùng">
           <Row gutter={18}>
             <Col xs={24} md={12}><Form.Item name="hoTen" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }]}><Input placeholder="VD: Nguyễn Văn An" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="vaiTro" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}><Select placeholder="Chọn vai trò" options={ROLE_OPTIONS.map(({ value, label }) => ({ value, label }))} /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="username" label="Tên đăng nhập" rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }, { min: 3, message: 'Tên đăng nhập phải có ít nhất 3 ký tự' }]}><Input placeholder="VD: bacsi.nguyen" disabled={Boolean(editingUser)} /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="vaiTro" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}><Select placeholder="Chọn vai trò" disabled={Boolean(editingUser)} options={ROLE_OPTIONS.map(({ value, label }) => ({ value, label }))} /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="username" label="Tên đăng nhập" rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }, { min: 3, message: 'Tên đăng nhập phải có ít nhất 3 ký tự' }]}><Input placeholder="VD: cham.soc01" disabled={Boolean(editingUser)} /></Form.Item></Col>
             {!editingUser && <Col xs={24} md={12}><Form.Item name="password" label="Mật khẩu" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }, { min: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' }]}><Input.Password placeholder="Tối thiểu 6 ký tự" /></Form.Item></Col>}
           </Row>
         </FormSection>
         <FormSection title="Thông tin liên hệ" description="Email và số điện thoại của tài khoản">
           <Row gutter={18}>
-            <Col xs={24} md={12}><Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email không đúng định dạng' }]}><Input placeholder="VD: nguoidung@email.com" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại" rules={[{ pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' }]}><Input placeholder="VD: 0901234567" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="email" label="Email" rules={[{ required: !editingUser || selectedRole === 'NGUOI_CHAM_SOC', message: 'Vui lòng nhập email' }, { type: 'email', message: 'Email không đúng định dạng' }]}><Input placeholder="VD: nguoidung@email.com" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại" rules={[{ required: selectedRole === 'NGUOI_CHAM_SOC', message: 'Vui lòng nhập số điện thoại người chăm sóc' }, { pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' }]}><Input placeholder="VD: 0901234567" /></Form.Item></Col>
           </Row>
         </FormSection>
       </ModalForm>

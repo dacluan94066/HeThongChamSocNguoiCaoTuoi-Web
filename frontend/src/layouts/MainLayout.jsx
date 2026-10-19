@@ -43,7 +43,6 @@ const TABLET_BREAKPOINT = 1100;
 
 const ROLE_LABELS = {
   QuanTriVien: 'Quản trị viên',
-  BacSi: 'Bác sĩ',
 };
 
 const MAIN_NAVIGATION = [
@@ -53,7 +52,7 @@ const MAIN_NAVIGATION = [
   { key: '/chi-so-suc-khoe', icon: <HeartFilled />, label: 'Chỉ số sức khỏe', permission: 'QLCHISOSK' },
   { key: '/canh-bao', icon: <AlertOutlined />, label: 'Cảnh báo', permission: 'QLCANHBAO', alertItem: true },
   { key: '/lich-uong-thuoc', icon: <ClockCircleOutlined />, label: 'Lịch uống thuốc', permission: 'QLLICHUONGTHUOC' },
-  { key: '/danh-muc-thuoc', icon: <MedicineBoxOutlined />, label: 'Danh mục thuốc', permission: 'QLTHUOC' },
+  { key: '/danh-muc-thuoc', icon: <MedicineBoxOutlined />, label: 'Thuốc của NCT', permission: 'QLTHUOC' },
   { key: '/lich-kham-benh', icon: <CalendarOutlined />, label: 'Lịch khám bệnh', permission: 'QLLICHKHAM' },
   { key: '/nhat-ky-cham-soc', icon: <BookOutlined />, label: 'Nhật ký chăm sóc', permission: 'QLNHATKY' },
   { key: '/lien-he-khan-cap', icon: <PhoneOutlined />, label: 'Liên hệ khẩn cấp', permission: 'QLLIENHEKC' },

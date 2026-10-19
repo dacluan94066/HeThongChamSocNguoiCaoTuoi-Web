@@ -16,7 +16,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool agreeTerms = false;
   bool registering = false;
   String selectedGender = 'Nam';
-  String selectedAccountType = 'NguoiCaoTuoi';
+  final String selectedAccountType = 'NguoiCaoTuoi';
 
   final TextEditingController nameController = TextEditingController();
   final TextEditingController usernameController = TextEditingController();
@@ -180,35 +180,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
             const SizedBox(height: 24),
 
             const Text(
-              'Bạn đăng ký với vai trò nào?',
+              'Đăng ký tài khoản người cao tuổi',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
             ),
 
             const SizedBox(height: 12),
 
-            _RoleChoice(
-              selected: selectedAccountType == 'NguoiCaoTuoi',
-              icon: Icons.elderly_rounded,
-              title: 'Tôi là người cao tuổi',
-              subtitle: 'Theo dõi sức khỏe, thuốc và lịch khám của tôi',
-              onTap: registering
-                  ? null
-                  : () => setState(() => selectedAccountType = 'NguoiCaoTuoi'),
-            ),
-
-            const SizedBox(height: 10),
-
-            _RoleChoice(
-              selected: selectedAccountType == 'NguoiChamSoc',
-              icon: Icons.volunteer_activism_rounded,
-              title: 'Tôi là người chăm sóc, người thân',
-              subtitle: 'Theo dõi người cao tuổi được quản trị viên phân công',
-              onTap: registering
-                  ? null
-                  : () => setState(() => selectedAccountType = 'NguoiChamSoc'),
-            ),
-
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
 
             const Text(
               'Họ và tên',
@@ -546,89 +524,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
             const SizedBox(height: 25),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RoleChoice extends StatelessWidget {
-  const _RoleChoice({
-    required this.selected,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final bool selected;
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? const Color(0xff07856d) : Colors.black54;
-    return Material(
-      color: selected ? const Color(0xffe5f7f1) : Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected ? const Color(0xff07856d) : Colors.black12,
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 25,
-                backgroundColor: selected
-                    ? const Color(0xff07856d)
-                    : const Color(0xffeeeeec),
-                child: Icon(icon, color: selected ? Colors.white : color),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Colors.black54,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_off_rounded,
-                color: color,
-              ),
-            ],
-          ),
         ),
       ),
     );
