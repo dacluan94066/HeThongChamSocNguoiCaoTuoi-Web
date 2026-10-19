@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
+import '../../widgets/care_senior_ui.dart';
 
 import '../../services/api_client.dart';
 import '../../services/local_notification_service.dart';
 import '../../services/medication_schedule_service.dart';
+import '../appointments/appointment_screen.dart';
 
 class MedicationScreen extends StatefulWidget {
   const MedicationScreen({super.key});
@@ -12,6 +15,8 @@ class MedicationScreen extends StatefulWidget {
 }
 
 class _MedicationScreenState extends State<MedicationScreen> {
+  static const _teal = CareSeniorColors.deepGreen;
+  DateTime _selectedDay = DateTime.now();
   List<Map<String, dynamic>> _schedule = [];
   final Set<int> _updatingIds = {};
   bool _loading = true;
@@ -35,9 +40,8 @@ class _MedicationScreenState extends State<MedicationScreen> {
       });
     }
     try {
-      final items = await MedicationScheduleService.instance.getTodaySchedule(
-        refresh: refresh,
-      );
+      final items = await MedicationScheduleService.instance
+          .getScheduleByDateRange(_selectedDay, _selectedDay, refresh: refresh);
       if (!mounted) return;
       setState(() {
         _schedule = items;
@@ -79,7 +83,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
         builder: (context) => AlertDialog(
           icon: const Icon(
             Icons.notifications_active_outlined,
-            color: Color(0xff07856d),
+            color: CareSeniorColors.primary,
             size: 44,
           ),
           title: const Text('Cho phép nhắc uống thuốc?'),
@@ -94,7 +98,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xff07856d),
+                backgroundColor: CareSeniorColors.deepGreen,
               ),
               onPressed: () => Navigator.pop(context, true),
               child: const Text('Tiếp tục'),
@@ -135,6 +139,13 @@ class _MedicationScreenState extends State<MedicationScreen> {
   }
 
   Future<void> _chooseStatus(Map<String, dynamic> item) async {
+    final today = DateTime.now();
+    if (_selectedDay.year != today.year ||
+        _selectedDay.month != today.month ||
+        _selectedDay.day != today.day ||
+        item['trangThai'] != 'ChuaDenGio') {
+      return;
+    }
     final id = _asInt(item['id']);
     if (id == null || _updatingIds.contains(id)) return;
     final selected = await showModalBottomSheet<String>(
@@ -178,10 +189,10 @@ class _MedicationScreenState extends State<MedicationScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                tileColor: const Color(0xffe8f8ee),
+                tileColor: CareSeniorColors.mint,
                 leading: const Icon(
                   Icons.check_circle_rounded,
-                  color: Color(0xff07856d),
+                  color: CareSeniorColors.deepGreen,
                 ),
                 title: const Text(
                   'Đã uống',
@@ -194,10 +205,10 @@ class _MedicationScreenState extends State<MedicationScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                tileColor: const Color(0xffffece8),
+                tileColor: CareSeniorColors.dangerSurface,
                 leading: const Icon(
                   Icons.cancel_rounded,
-                  color: Color(0xffd65a45),
+                  color: CareSeniorColors.danger,
                 ),
                 title: const Text(
                   'Bỏ lỡ',
@@ -252,9 +263,9 @@ class _MedicationScreenState extends State<MedicationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff3f3f1),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff3f3f1),
+        backgroundColor: CareSeniorColors.background,
         elevation: 0,
         centerTitle: true,
         title: const Text(
@@ -269,7 +280,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
   Widget _buildBody() {
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(color: Color(0xff07856d)),
+        child: CircularProgressIndicator(color: CareSeniorColors.primary),
       );
     }
     if (_error != null) {
@@ -295,30 +306,138 @@ class _MedicationScreenState extends State<MedicationScreen> {
     }
 
     final total = _schedule.length;
+    final today = DateTime.now();
+    final selectedToday =
+        _selectedDay.year == today.year &&
+        _selectedDay.month == today.month &&
+        _selectedDay.day == today.day;
+    final days = List.generate(
+      7,
+      (index) => DateTime(today.year, today.month, today.day - 3 + index),
+    );
+    final groups = <String, List<Map<String, dynamic>>>{
+      'Sáng': [],
+      'Trưa': [],
+      'Chiều': [],
+      'Tối': [],
+    };
+    for (final dose in _schedule) {
+      final hour = _parseDateTime(dose['thoiGianDuKien'])?.hour ?? 0;
+      final key = hour < 11
+          ? 'Sáng'
+          : hour < 14
+          ? 'Trưa'
+          : hour < 18
+          ? 'Chiều'
+          : 'Tối';
+      groups[key]!.add(dose);
+    }
     return RefreshIndicator(
-      color: const Color(0xff07856d),
+      color: CareSeniorColors.primary,
       onRefresh: () => _loadSchedule(refresh: true),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
         children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xffffeef1), Color(0xffe9fff6)],
-              ),
-              borderRadius: BorderRadius.circular(28),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AppointmentScreen()),
             ),
+            icon: const Icon(Icons.calendar_month_outlined),
+            label: const Text('Xem lịch khám', style: TextStyle(fontSize: 17)),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Chọn ngày',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 82 * MediaQuery.textScalerOf(context).scale(1),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: days.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final day = days[index];
+                final selected =
+                    day.year == _selectedDay.year &&
+                    day.month == _selectedDay.month &&
+                    day.day == _selectedDay.day;
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedDay = day;
+                      _loading = true;
+                    });
+                    _loadSchedule(refresh: true);
+                  },
+                  child: Container(
+                    width: 70 * MediaQuery.textScalerOf(context).scale(1),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: selected ? _teal : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: selected ? _teal : CareSeniorColors.border,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          index == 3
+                              ? 'Hôm nay'
+                              : day.weekday == 7
+                              ? 'CN'
+                              : 'Th ${day.weekday + 1}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: selected ? Colors.white : _teal,
+                          ),
+                        ),
+                        Text(
+                          '${day.day}',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: selected ? Colors.white : _teal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          AppCard(
+            color: CareSeniorColors.mint,
             child: Row(
               children: [
-                const CircleAvatar(
-                  radius: 31,
-                  backgroundColor: Colors.white,
-                  child: Icon(
-                    Icons.medication_rounded,
-                    color: Color(0xffe85d75),
-                    size: 32,
+                SizedBox(
+                  width: 88,
+                  height: 88,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        value: total == 0 ? 0 : _completedCount / total,
+                        strokeWidth: 6,
+                        color: _teal,
+                        backgroundColor: Colors.white,
+                      ),
+                      Text(
+                        '${total == 0 ? 0 : (_completedCount * 100 / total).round()}%',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: _teal,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -327,8 +446,13 @@ class _MedicationScreenState extends State<MedicationScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Hôm nay • ${_formatToday()}',
-                        style: const TextStyle(color: Colors.black54),
+                        selectedToday
+                            ? 'Hôm nay • ${_formatSelectedDay()}'
+                            : _formatSelectedDay(),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.black54,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -345,8 +469,13 @@ class _MedicationScreenState extends State<MedicationScreen> {
                           value: total == 0 ? 0 : _completedCount / total,
                           minHeight: 9,
                           backgroundColor: Colors.white,
-                          color: const Color(0xff07856d),
+                          color: CareSeniorColors.primary,
                         ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        '${total == 0 ? 0 : (_completedCount * 100 / total).round()}% hoàn thành',
+                        style: const TextStyle(fontSize: 16, color: _teal),
                       ),
                     ],
                   ),
@@ -355,18 +484,13 @@ class _MedicationScreenState extends State<MedicationScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
+          AppCard(
             child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
                   Icons.notifications_active_outlined,
-                  color: Color(0xff07856d),
+                  color: CareSeniorColors.deepGreen,
                 ),
                 SizedBox(width: 10),
                 Expanded(
@@ -379,46 +503,41 @@ class _MedicationScreenState extends State<MedicationScreen> {
             ),
           ),
           const SizedBox(height: 22),
-          const Text(
-            'Các liều thuốc hôm nay',
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-          ),
+          const AppSectionHeader(title: 'Các cữ thuốc trong ngày'),
           const SizedBox(height: 6),
-          const Text(
-            'Chạm vào một liều để xác nhận đã uống hoặc bỏ lỡ.',
-            style: TextStyle(color: Colors.black54),
+          Text(
+            selectedToday
+                ? 'Chỉ các liều hôm nay mới có thể xác nhận.'
+                : 'Ngày khác chỉ dùng để xem lịch thuốc.',
+            style: const TextStyle(fontSize: 16, color: Colors.black54),
           ),
           const SizedBox(height: 12),
           if (_schedule.isEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 42, horizontal: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Column(
-                children: [
-                  Icon(
-                    Icons.event_available_rounded,
-                    size: 52,
-                    color: Color(0xff07856d),
-                  ),
-                  SizedBox(height: 12),
-                  Text(
-                    'Hôm nay chưa có lịch uống thuốc',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 5),
-                  Text(
-                    'Lịch mới do nhân viên quản lý tạo sẽ tự động xuất hiện tại đây.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                ],
-              ),
+            const AppEmptyState(
+              icon: Icons.event_available_rounded,
+              title: 'Ngày này chưa có lịch uống thuốc',
+              message:
+                  'Lịch do người chăm sóc nhập trên Web sẽ xuất hiện tại đây.',
             )
           else
-            ..._schedule.map(_buildMedicationCard),
+            ...groups.entries
+                .where((group) => group.value.isNotEmpty)
+                .expand(
+                  (group) => [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(2, 12, 2, 8),
+                      child: Text(
+                        'Buổi ${group.key}',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: _teal,
+                        ),
+                      ),
+                    ),
+                    ...group.value.map(_buildMedicationCard),
+                  ],
+                ),
         ],
       ),
     );
@@ -429,33 +548,37 @@ class _MedicationScreenState extends State<MedicationScreen> {
     final status = item['trangThai']?.toString() ?? 'ChuaDenGio';
     final updating = id != null && _updatingIds.contains(id);
     final statusColor = switch (status) {
-      'DaUong' => const Color(0xff07856d),
-      'BoLo' => const Color(0xffd65a45),
-      _ => const Color(0xffdf8a19),
+      'DaUong' => CareSeniorColors.deepGreen,
+      'BoLo' || 'TuChoi' => CareSeniorColors.danger,
+      _ => CareSeniorColors.warning,
     };
     final statusLabel = switch (status) {
       'DaUong' => 'Đã uống',
       'BoLo' => 'Bỏ lỡ',
-      _ => 'Chưa xác nhận',
+      'TuChoi' => 'Từ chối',
+      _ => 'Chưa đến giờ',
     };
+    final now = DateTime.now();
+    final canConfirm =
+        _selectedDay.year == now.year &&
+        _selectedDay.month == now.month &&
+        _selectedDay.day == now.day &&
+        status == 'ChuaDenGio' &&
+        !updating;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(22),
-          onTap: updating ? null : () => _chooseStatus(item),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
                 Container(
                   width: 55,
                   height: 55,
                   decoration: BoxDecoration(
-                    color: const Color(0xffffe8ec),
+                    color: CareSeniorColors.mint,
                     borderRadius: BorderRadius.circular(17),
                   ),
                   child: Center(
@@ -467,7 +590,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                           )
                         : const Icon(
                             Icons.medication_rounded,
-                            color: Color(0xffe85d75),
+                            color: CareSeniorColors.deepGreen,
                           ),
                   ),
                 ),
@@ -486,7 +609,10 @@ class _MedicationScreenState extends State<MedicationScreen> {
                       const SizedBox(height: 5),
                       Text(
                         '${_formatTime(item['thoiGianDuKien'])} • ${item['lieuDung'] ?? 'Không rõ liều dùng'}',
-                        style: const TextStyle(color: Colors.black54),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.black54,
+                        ),
                       ),
                       if ((item['cachDung']?.toString() ?? '')
                           .trim()
@@ -496,45 +622,40 @@ class _MedicationScreenState extends State<MedicationScreen> {
                           item['cachDung'].toString(),
                           style: const TextStyle(
                             color: Colors.black45,
-                            fontSize: 12,
+                            fontSize: 16,
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Text(
-                        statusLabel,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Colors.black38,
-                    ),
-                  ],
-                ),
               ],
             ),
-          ),
+            const SizedBox(height: 12),
+            AppStatusChip(
+              label: statusLabel,
+              color: statusColor,
+              background: status == 'DaUong'
+                  ? CareSeniorColors.mint
+                  : status == 'ChuaDenGio'
+                  ? CareSeniorColors.warningSurface
+                  : CareSeniorColors.dangerSurface,
+            ),
+            if (canConfirm) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _chooseStatus(item),
+                  icon: const Icon(Icons.check),
+                  label: const Text(
+                    'Xác nhận cữ thuốc',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -555,9 +676,9 @@ class _MedicationScreenState extends State<MedicationScreen> {
         '${date.minute.toString().padLeft(2, '0')}';
   }
 
-  static String _formatToday() {
-    final now = DateTime.now();
-    return '${now.day.toString().padLeft(2, '0')}/'
-        '${now.month.toString().padLeft(2, '0')}/${now.year}';
+  String _formatSelectedDay() {
+    final day = _selectedDay;
+    return '${day.day.toString().padLeft(2, '0')}/'
+        '${day.month.toString().padLeft(2, '0')}/${day.year}';
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
 
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
@@ -51,9 +52,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff6f7f5),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff6f7f5),
+        backgroundColor: CareSeniorColors.background,
         centerTitle: true,
         title: const Text(
           'Quên mật khẩu',
@@ -67,11 +68,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             const SizedBox(height: 34),
             const CircleAvatar(
               radius: 46,
-              backgroundColor: Color(0xffe2f4ee),
+              backgroundColor: CareSeniorColors.mint,
               child: Icon(
                 Icons.mark_email_read_outlined,
                 size: 44,
-                color: Color(0xff07856d),
+                color: CareSeniorColors.deepGreen,
               ),
             ),
             const SizedBox(height: 26),
@@ -117,7 +118,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               child: FilledButton(
                 onPressed: sending ? null : sendOtp,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
+                  backgroundColor: CareSeniorColors.deepGreen,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),

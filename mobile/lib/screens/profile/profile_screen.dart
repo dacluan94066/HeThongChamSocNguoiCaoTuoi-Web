@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
+import '../../widgets/care_senior_ui.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/api_client.dart';
 import '../../services/elderly_service.dart';
 import '../alerts/alert_history_screen.dart';
-import '../caregiver/caregiver_screen.dart';
 import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
 
@@ -80,9 +81,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     if (loading) {
       return const Scaffold(
-        backgroundColor: Color(0xfff3f3f1),
+        backgroundColor: CareSeniorColors.background,
         body: Center(
-          child: CircularProgressIndicator(color: Color(0xff07856d)),
+          child: CircularProgressIndicator(color: CareSeniorColors.primary),
         ),
       );
     }
@@ -121,9 +122,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final age = ElderlyService.displayAge(profile);
 
     return Scaffold(
-      backgroundColor: const Color(0xfff3f3f1),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff3f3f1),
+        backgroundColor: CareSeniorColors.background,
         elevation: 0,
         centerTitle: true,
         title: const Text(
@@ -135,26 +136,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
         child: Column(
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xffe9fff6), Color(0xffffffe8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(28),
-              ),
+            AppCard(
+              color: CareSeniorColors.mint,
               child: Column(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 46,
                     backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.person_rounded,
-                      size: 52,
-                      color: Color(0xff07856d),
+                    child: Text(
+                      name.trim().isEmpty
+                          ? '?'
+                          : name.trim().substring(0, 1).toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 38,
+                        fontWeight: FontWeight.bold,
+                        color: CareSeniorColors.deepGreen,
+                      ),
                     ),
                   ),
 
@@ -172,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   Text(
                     '$age • $gender',
-                    style: const TextStyle(fontSize: 14, color: Colors.black54),
+                    style: const TextStyle(fontSize: 16, color: Colors.black54),
                   ),
                 ],
               ),
@@ -190,12 +187,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 12),
 
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
+            AppCard(
               child: Column(
                 children: [
                   ProfileItem(
@@ -259,12 +251,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 12),
 
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
+            AppCard(
               child: Column(
                 children: [
                   ProfileItem(
@@ -305,27 +292,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 12),
 
             InkWell(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CaregiverScreen()),
-                );
-              },
               borderRadius: BorderRadius.circular(24),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                ),
+              child: AppCard(
                 child: Row(
                   children: [
                     const CircleAvatar(
                       radius: 28,
-                      backgroundColor: Color(0xffe9efff),
+                      backgroundColor: CareSeniorColors.mint,
                       child: Icon(
                         Icons.support_agent_rounded,
-                        color: Color(0xff4b6edb),
+                        color: CareSeniorColors.deepGreen,
                         size: 30,
                       ),
                     ),
@@ -339,7 +315,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             caregiver,
                             style: const TextStyle(
-                              fontSize: 15,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -368,35 +344,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 12),
 
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
+            AppCard(
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   MenuItem(
-                    icon: Icons.support_agent_rounded,
-                    iconColor: const Color(0xff4b6edb),
-                    iconBackground: const Color(0xffe9efff),
-                    title: 'Người chăm sóc',
-                    subtitle: 'Liên hệ và gửi cảnh báo SOS',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CaregiverScreen(),
-                        ),
-                      );
-                    },
-                  ),
-
-                  const Divider(height: 1, indent: 72),
-
-                  MenuItem(
                     icon: Icons.history_rounded,
-                    iconColor: const Color(0xffd84444),
-                    iconBackground: const Color(0xffffe9e9),
+                    iconColor: CareSeniorColors.danger,
+                    iconBackground: CareSeniorColors.dangerSurface,
                     title: 'Lịch sử cảnh báo',
                     subtitle: 'Xem các cảnh báo đã gửi và xử lý',
                     onTap: () {
@@ -413,8 +368,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   MenuItem(
                     icon: Icons.edit_outlined,
-                    iconColor: const Color(0xff07856d),
-                    iconBackground: const Color(0xffe9f8ef),
+                    iconColor: CareSeniorColors.deepGreen,
+                    iconBackground: CareSeniorColors.mint,
                     title: 'Chỉnh sửa hồ sơ',
                     subtitle: 'Cập nhật thông tin cá nhân',
                     onTap: openEditProfile,
@@ -424,8 +379,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   MenuItem(
                     icon: Icons.lock_outline_rounded,
-                    iconColor: const Color(0xff4b6edb),
-                    iconBackground: const Color(0xffe9efff),
+                    iconColor: CareSeniorColors.deepGreen,
+                    iconBackground: CareSeniorColors.mint,
                     title: 'Đổi mật khẩu',
                     subtitle: 'Thay đổi mật khẩu đăng nhập',
                     onTap: () {
@@ -481,7 +436,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               );
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xffd84444),
+                              backgroundColor: CareSeniorColors.danger,
                               foregroundColor: Colors.white,
                             ),
                             child: const Text('ĐĂNG XUẤT'),
@@ -497,8 +452,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xffd84444),
-                  side: const BorderSide(color: Color(0xffd84444)),
+                  foregroundColor: CareSeniorColors.danger,
+                  side: const BorderSide(color: CareSeniorColors.danger),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),
@@ -517,7 +472,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final email = profile['email']?.toString().trim();
     final phone = profile['soDienThoai']?.toString().trim();
     return Scaffold(
-      backgroundColor: const Color(0xfff3f3f1),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
         title: const Text(
           'Hồ sơ cá nhân',
@@ -527,14 +482,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xffe7fff5), Color(0xffffffe8)],
-              ),
-              borderRadius: BorderRadius.circular(24),
-            ),
+          AppCard(
+            color: CareSeniorColors.mint,
             child: Column(
               children: [
                 const CircleAvatar(
@@ -543,7 +492,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Icon(
                     Icons.support_agent_rounded,
                     size: 48,
-                    color: Color(0xff07856d),
+                    color: CareSeniorColors.deepGreen,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -594,8 +543,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 MenuItem(
                   icon: Icons.edit_outlined,
-                  iconColor: const Color(0xff07856d),
-                  iconBackground: const Color(0xffe9f8ef),
+                  iconColor: CareSeniorColors.deepGreen,
+                  iconBackground: CareSeniorColors.mint,
                   title: 'Chỉnh sửa hồ sơ',
                   subtitle: 'Cập nhật thông tin tài khoản',
                   onTap: openEditProfile,
@@ -603,8 +552,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const Divider(height: 1, indent: 72),
                 MenuItem(
                   icon: Icons.lock_outline_rounded,
-                  iconColor: const Color(0xff4b6edb),
-                  iconBackground: const Color(0xffe9efff),
+                  iconColor: CareSeniorColors.deepGreen,
+                  iconBackground: CareSeniorColors.mint,
                   title: 'Đổi mật khẩu',
                   subtitle: 'Thay đổi mật khẩu đăng nhập',
                   onTap: () => Navigator.push(
@@ -620,8 +569,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 20),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.red,
-              side: const BorderSide(color: Colors.red),
+              foregroundColor: CareSeniorColors.danger,
+              side: const BorderSide(color: CareSeniorColors.danger),
               minimumSize: const Size.fromHeight(52),
             ),
             onPressed: () async {
@@ -662,10 +611,10 @@ class ProfileItem extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: const BoxDecoration(
-            color: Color(0xffeef7f4),
+            color: CareSeniorColors.mint,
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, size: 22, color: const Color(0xff07856d)),
+          child: Icon(icon, size: 22, color: CareSeniorColors.deepGreen),
         ),
 
         const SizedBox(width: 12),
@@ -676,13 +625,16 @@ class ProfileItem extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: CareSeniorColors.secondaryText,
+                ),
               ),
               const SizedBox(height: 3),
               Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -740,14 +692,14 @@ class MenuItem extends StatelessWidget {
                   Text(
                     title,
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    style: const TextStyle(fontSize: 16, color: Colors.black54),
                   ),
                 ],
               ),

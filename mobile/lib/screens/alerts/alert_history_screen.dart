@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
+import '../../widgets/care_senior_ui.dart';
 
 import '../../services/alert_service.dart';
 import '../../services/api_client.dart';
@@ -6,7 +8,9 @@ import '../../widgets/foreground_refresh.dart';
 import '../../widgets/alert_card.dart';
 
 class AlertHistoryScreen extends StatefulWidget {
-  const AlertHistoryScreen({super.key});
+  const AlertHistoryScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<AlertHistoryScreen> createState() => _AlertHistoryScreenState();
@@ -54,15 +58,17 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff3f3f1),
-      appBar: AppBar(
-        backgroundColor: const Color(0xfff3f3f1),
-        centerTitle: true,
-        title: const Text(
-          'Lịch sử cảnh báo',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
+      backgroundColor: CareSeniorColors.background,
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              backgroundColor: CareSeniorColors.background,
+              centerTitle: true,
+              title: const Text(
+                'Lịch sử cảnh báo',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -76,22 +82,10 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen>
                   _Summary(count: _alerts.length),
                   const SizedBox(height: 20),
                   if (_alerts.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 90),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.notifications_off_outlined,
-                            size: 64,
-                            color: Colors.black26,
-                          ),
-                          SizedBox(height: 12),
-                          Text(
-                            'Chưa có cảnh báo nào.',
-                            style: TextStyle(color: Colors.black54),
-                          ),
-                        ],
-                      ),
+                    const AppEmptyState(
+                      icon: Icons.notifications_off_outlined,
+                      title: 'Chưa có cảnh báo nào',
+                      message: 'Các cảnh báo đã gửi sẽ được lưu tại đây.',
                     )
                   else
                     ..._alerts.map((alert) => AlertCard(alert: alert)),
@@ -108,14 +102,8 @@ class _Summary extends StatelessWidget {
   final int count;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        colors: [Color(0xffffeeee), Color(0xfffff8e9)],
-      ),
-      borderRadius: BorderRadius.circular(26),
-    ),
+  Widget build(BuildContext context) => AppCard(
+    color: CareSeniorColors.dangerSurface,
     child: Row(
       children: [
         const CircleAvatar(
@@ -123,23 +111,31 @@ class _Summary extends StatelessWidget {
           backgroundColor: Colors.white,
           child: Icon(
             Icons.notifications_active_rounded,
-            color: Color(0xffd84444),
+            color: CareSeniorColors.danger,
             size: 30,
           ),
         ),
         const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Cảnh báo đã ghi nhận',
-              style: TextStyle(color: Colors.black54),
-            ),
-            Text(
-              '$count cảnh báo',
-              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Cảnh báo đã ghi nhận',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: CareSeniorColors.secondaryText,
+                ),
+              ),
+              Text(
+                '$count cảnh báo',
+                style: const TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     ),

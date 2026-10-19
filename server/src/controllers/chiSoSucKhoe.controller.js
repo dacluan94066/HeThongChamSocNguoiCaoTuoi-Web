@@ -6,6 +6,7 @@ const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
 const { emitToAdmin } = require('../socket');
+const { notifyAlertRecipients, emitAlertNotifications } = require('../services/alertNotification.service');
 
 // Map TenChiSo trong DB -> loaiChiSo frontend
 const MAP_LOAI = {
@@ -83,6 +84,23 @@ const getOwnElderlyId = async (pool, userId) => {
       WHERE UserID = @userId
     `);
   return result.recordset[0]?.id ?? null;
+};
+
+const notifyAbnormalMetric = async (pool, elderlyId, alertId, content, payload) => {
+  try {
+    const person = await pool.request().input('elderlyId', sql.Int, elderlyId)
+      .query('SELECT HoTen AS name FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID=@elderlyId');
+    const elderlyName = person.recordset[0]?.name || 'Người cao tuổi';
+    const delivery = await notifyAlertRecipients(pool, {
+      elderlyId, elderlyName, content, alertId,
+      source: 'CanhBao', sourceId: alertId,
+    });
+    emitAlertNotifications(delivery, { ...payload, nguoiCaoTuoiTen: elderlyName,
+      tenNguoiCaoTuoi: elderlyName, noiDung: content });
+  } catch (error) {
+    console.error('[ALERT] Không thể tạo thông báo chỉ số bất thường:', error);
+    emitToAdmin('canhbao:new', payload);
+  }
 };
 
 const mapMobileMetric = (row) => ({
@@ -341,7 +359,8 @@ const createMine = async (req, res, next) => {
       thoiGianDo: row.thoiGianDo,
     });
     if (row.alertId != null) {
-      emitToAdmin('canhbao:new', {
+      await notifyAbnormalMetric(pool, elderlyId, row.alertId,
+        assessment.description, {
         id: row.alertId,
         canhBaoId: row.alertId,
         nguoiCaoTuoiId: elderlyId,
@@ -355,7 +374,7 @@ const createMine = async (req, res, next) => {
         trangThaiLabel: 'Chưa xử lý',
         nguonBang: 'ChiSoSucKhoe',
         nguonId: row.id,
-      });
+        });
     }
     return ok(res, {
       ...mapMobileMetric(row),
@@ -497,7 +516,8 @@ const create = async (req, res, next) => {
       thoiGianDo,
     });
     if (r.recordset[0].alertId != null) {
-      emitToAdmin('canhbao:new', {
+      await notifyAbnormalMetric(pool, nguoiCaoTuoiId, r.recordset[0].alertId,
+        assessment.description, {
         id: r.recordset[0].alertId,
         canhBaoId: r.recordset[0].alertId,
         nguoiCaoTuoiId,
@@ -511,7 +531,7 @@ const create = async (req, res, next) => {
         trangThaiLabel: 'Chưa xử lý',
         nguonBang: 'ChiSoSucKhoe',
         nguonId: r.recordset[0].id,
-      });
+        });
     }
     return ok(res, {
       id: r.recordset[0].id,

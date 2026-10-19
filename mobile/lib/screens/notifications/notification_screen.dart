@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
+import '../../widgets/care_senior_ui.dart';
 import 'package:dio/dio.dart';
 
 import '../../services/alert_service.dart';
@@ -13,7 +15,9 @@ import '../appointments/appointment_screen.dart';
 import '../medication/medication_screen.dart';
 
 class NotificationScreen extends StatefulWidget {
-  const NotificationScreen({super.key});
+  const NotificationScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<NotificationScreen> createState() => _NotificationScreenState();
@@ -291,31 +295,33 @@ class _NotificationScreenState extends State<NotificationScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff4f6f5),
-      appBar: AppBar(
-        actions: [
-          TextButton(
-            onPressed:
-                _markingAll ||
-                    _loading ||
-                    _unreadCount == 0 ||
-                    _reading.isNotEmpty
-                ? null
-                : _markAllRead,
-            child: _markingAll
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Đọc tất cả'),
-          ),
-        ],
-        title: const Text(
-          'Thông báo',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
+      backgroundColor: CareSeniorColors.background,
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              actions: [
+                TextButton(
+                  onPressed:
+                      _markingAll ||
+                          _loading ||
+                          _unreadCount == 0 ||
+                          _reading.isNotEmpty
+                      ? null
+                      : _markAllRead,
+                  child: _markingAll
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Đọc tất cả'),
+                ),
+              ],
+              title: const Text(
+                'Thông báo',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null && _items.isEmpty
@@ -326,17 +332,27 @@ class _NotificationScreenState extends State<NotificationScreen>
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 30),
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xffe8f7f2),
-                      borderRadius: BorderRadius.circular(20),
+                  if (widget.embedded)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed:
+                            _markingAll ||
+                                _loading ||
+                                _unreadCount == 0 ||
+                                _reading.isNotEmpty
+                            ? null
+                            : _markAllRead,
+                        child: const Text('Đọc tất cả'),
+                      ),
                     ),
+                  AppCard(
+                    color: CareSeniorColors.mint,
                     child: Row(
                       children: [
                         const Icon(
                           Icons.notifications_active_outlined,
-                          color: Color(0xff07856d),
+                          color: CareSeniorColors.deepGreen,
                           size: 32,
                         ),
                         const SizedBox(width: 12),
@@ -376,7 +392,9 @@ class _NotificationScreenState extends State<NotificationScreen>
                           Expanded(
                             child: Text(
                               _error!,
-                              style: const TextStyle(color: Color(0xffc62828)),
+                              style: const TextStyle(
+                                color: CareSeniorColors.danger,
+                              ),
                             ),
                           ),
                           TextButton(
@@ -388,23 +406,14 @@ class _NotificationScreenState extends State<NotificationScreen>
                     ),
                   const SizedBox(height: 10),
                   if (_visibleItems.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 120),
-                      child: Column(
-                        children: [
-                          const Icon(
-                            Icons.notifications_none_rounded,
-                            size: 68,
-                            color: Colors.black26,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _unreadOnly
-                                ? 'Bạn đã đọc hết thông báo.'
-                                : 'Chưa có thông báo nào.',
-                          ),
-                        ],
-                      ),
+                    AppEmptyState(
+                      icon: Icons.notifications_none_rounded,
+                      title: _unreadOnly
+                          ? 'Đã đọc hết thông báo'
+                          : 'Chưa có thông báo',
+                      message: _unreadOnly
+                          ? 'Những thông báo mới sẽ xuất hiện tại đây.'
+                          : 'Lịch thuốc, lịch khám và cảnh báo sẽ được cập nhật tại đây.',
                     )
                   else
                     ..._visibleItems.map(_notificationCard),
@@ -418,16 +427,22 @@ class _NotificationScreenState extends State<NotificationScreen>
     final read = _truthy(item['daDoc']);
     final type = item['loaiThongBao']?.toString();
     final emergency = type == 'KhanCap';
-    final color = emergency ? const Color(0xffc62828) : const Color(0xff07856d);
+    final color = emergency
+        ? CareSeniorColors.danger
+        : CareSeniorColors.deepGreen;
     final background = read
         ? Colors.white
         : emergency
-        ? const Color(0xffffe8e8)
-        : const Color(0xffe9f8f4);
+        ? CareSeniorColors.dangerSurface
+        : CareSeniorColors.mint;
     return Card(
       elevation: 0,
       color: background,
       margin: const EdgeInsets.only(bottom: 9),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: CareSeniorColors.border),
+      ),
       child: ListTile(
         onTap: _markingAll || _reading.isNotEmpty
             ? null
@@ -439,6 +454,7 @@ class _NotificationScreenState extends State<NotificationScreen>
         title: Text(
           item['tieuDe']?.toString() ?? 'Thông báo',
           style: TextStyle(
+            fontSize: 17,
             fontWeight: read ? FontWeight.w500 : FontWeight.bold,
           ),
         ),
@@ -446,11 +462,17 @@ class _NotificationScreenState extends State<NotificationScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text(item['noiDung']?.toString() ?? ''),
+            Text(
+              item['noiDung']?.toString() ?? '',
+              style: const TextStyle(fontSize: 16),
+            ),
             const SizedBox(height: 6),
             Text(
               _dateTime(item['ngayTao']),
-              style: const TextStyle(fontSize: 12, color: Colors.black45),
+              style: const TextStyle(
+                fontSize: 14,
+                color: CareSeniorColors.secondaryText,
+              ),
             ),
           ],
         ),

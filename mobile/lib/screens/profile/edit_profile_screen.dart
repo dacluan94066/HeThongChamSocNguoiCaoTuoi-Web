@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/api_client.dart';
@@ -282,7 +283,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
               borderSide: const BorderSide(
-                color: Color(0xff07856d),
+                color: CareSeniorColors.deepGreen,
                 width: 1.4,
               ),
             ),
@@ -296,9 +297,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     if (widget.accountOnly) return _buildAccountEditor();
     return Scaffold(
-      backgroundColor: const Color(0xfff3f3f1),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff3f3f1),
+        backgroundColor: CareSeniorColors.background,
         elevation: 0,
         centerTitle: true,
         title: const Text(
@@ -308,7 +309,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       body: loading
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xff07856d)),
+              child: CircularProgressIndicator(
+                color: CareSeniorColors.deepGreen,
+              ),
             )
           : loadError != null
           ? Center(
@@ -338,14 +341,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           child: Icon(
                             Icons.person_rounded,
                             size: 62,
-                            color: Color(0xff07856d),
+                            color: CareSeniorColors.deepGreen,
                           ),
                         ),
                         Container(
                           width: 34,
                           height: 34,
                           decoration: const BoxDecoration(
-                            color: Color(0xff07856d),
+                            color: CareSeniorColors.deepGreen,
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -508,7 +511,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xff07856d),
+                        backgroundColor: CareSeniorColors.deepGreen,
                         foregroundColor: Colors.white,
                         disabledBackgroundColor: const Color(0xff7db5a8),
                         elevation: 0,
@@ -526,7 +529,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Widget _buildAccountEditor() {
     return Scaffold(
-      backgroundColor: const Color(0xfff3f3f1),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
         title: const Text(
           'Chỉnh sửa hồ sơ',
@@ -580,7 +583,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   onPressed: saving ? null : saveProfile,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(54),
-                    backgroundColor: const Color(0xff07856d),
+                    backgroundColor: CareSeniorColors.deepGreen,
                   ),
                   icon: saving
                       ? const SizedBox(

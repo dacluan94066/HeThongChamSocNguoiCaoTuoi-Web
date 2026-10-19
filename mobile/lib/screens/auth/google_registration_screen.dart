@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
 
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
@@ -122,9 +123,9 @@ class _GoogleRegistrationScreenState extends State<GoogleRegistrationScreen> {
   Widget build(BuildContext context) {
     final isElderly = _accountType == 'NguoiCaoTuoi';
     return Scaffold(
-      backgroundColor: const Color(0xfff6f7f5),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff6f7f5),
+        backgroundColor: CareSeniorColors.background,
         title: const Text(
           'Hoàn tất đăng ký Google',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -185,7 +186,7 @@ class _GoogleRegistrationScreenState extends State<GoogleRegistrationScreen> {
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: _agreeTerms,
-              activeColor: const Color(0xff07856d),
+              activeColor: CareSeniorColors.deepGreen,
               onChanged: _saving
                   ? null
                   : (value) => setState(() => _agreeTerms = value ?? false),
@@ -202,7 +203,7 @@ class _GoogleRegistrationScreenState extends State<GoogleRegistrationScreen> {
               child: ElevatedButton(
                 onPressed: _saving ? null : _completeRegistration,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
+                  backgroundColor: CareSeniorColors.deepGreen,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),

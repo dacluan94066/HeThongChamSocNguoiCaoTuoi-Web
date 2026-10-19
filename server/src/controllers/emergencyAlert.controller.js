@@ -1,7 +1,7 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const {scopedWhere}=require('../middlewares/mobile-scope.middleware');
-const { emitToAdmin } = require('../socket');
+const { notifyAlertRecipients, emitAlertNotifications } = require('../services/alertNotification.service');
 const getMine=async(req,res,next)=>{
  try{
   const pool=await poolPromise;
@@ -54,6 +54,7 @@ const create = async (req, res, next) => {
     return fail(res, 'Chi tai khoan nguoi cao tuoi duoc gui SOS cho ho so cua minh', 'FORBIDDEN', 403);
   }
   const noiDung = typeof req.body.noiDung === 'string' ? req.body.noiDung.trim() : '';
+  const content = noiDung || 'Cảnh báo SOS khẩn cấp';
   if (noiDung.length > 500) return fail(res, 'Noi dung khong duoc qua 500 ky tu', 'INVALID_CONTENT', 400);
   const parseCoordinate = (value, min, max) => {
     if (value == null) return null;
@@ -78,59 +79,90 @@ const create = async (req, res, next) => {
     const elderlyId = profile.recordset[0].id;
     const elderlyName = profile.recordset[0].name;
     transaction = new sql.Transaction(pool);
-    await transaction.begin();
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const duplicate = await new sql.Request(transaction)
+      .input('elderlyId', sql.Int, elderlyId)
+      .query(`SELECT TOP (1) sos.CanhBaoKhanCapID AS id, sos.TrangThai AS trangThai,
+        sos.ViDo AS viDo, sos.KinhDo AS kinhDo,
+        CONVERT(VARCHAR(19),sos.NgayGui,126) AS ngayGui,
+        linked.CanhBaoID AS canhBaoId,
+        (SELECT COUNT(DISTINCT tb.UserID) FROM ThongBao tb
+          JOIN NguoiDung nd ON nd.UserID=tb.UserID
+          JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID
+          WHERE tb.LienKetBang=N'CanhBaoKhanCap' AND tb.LienKetID=sos.CanhBaoKhanCapID
+            AND vt.TenVaiTro=N'NguoiChamSoc') AS soNguoiChamSocNhan
+        FROM CanhBaoKhanCap sos WITH (UPDLOCK, HOLDLOCK)
+        OUTER APPLY (SELECT TOP (1) CanhBaoID FROM CanhBao
+          WHERE NguonBang=N'CanhBaoKhanCap' AND NguonID=sos.CanhBaoKhanCapID
+          ORDER BY CanhBaoID DESC) linked
+        WHERE sos.NguoiCaoTuoiID=@elderlyId
+          AND sos.NgayGui>=DATEADD(SECOND,-30,SYSDATETIME())
+        ORDER BY sos.NgayGui DESC,sos.CanhBaoKhanCapID DESC`);
+    if (duplicate.recordset.length) {
+      await transaction.commit();
+      transaction = null;
+      const previous = duplicate.recordset[0];
+      return ok(res, { ...previous, nguoiCaoTuoiId: elderlyId,
+        soNguoiChamSocDaThongBao: previous.soNguoiChamSocNhan,
+        trungLap: true }, 'SOS đã được ghi nhận trong 30 giây gần đây');
+    }
     const emergency = await new sql.Request(transaction)
       .input('elderlyId', sql.Int, elderlyId)
       .input('userId', sql.Int, req.user.userId)
       .input('viDo', sql.Decimal(9, 6), viDo)
       .input('kinhDo', sql.Decimal(9, 6), kinhDo)
-      .input('noiDung', sql.NVarChar(500), noiDung || null)
+      .input('noiDung', sql.NVarChar(500), content)
       .query(`
         INSERT INTO CanhBaoKhanCap (NguoiCaoTuoiID, NguoiGuiID, ViDo, KinhDo, NoiDung)
         OUTPUT INSERTED.CanhBaoKhanCapID AS id,
-          CONVERT(VARCHAR(19),INSERTED.NgayGui,126) AS ngayGui,INSERTED.TrangThai AS trangThai
+          CONVERT(VARCHAR(19),INSERTED.NgayGui,126) AS ngayGui,INSERTED.TrangThai AS trangThai,
+          INSERTED.ViDo AS viDo, INSERTED.KinhDo AS kinhDo
         VALUES (@elderlyId, @userId, @viDo, @kinhDo, @noiDung)
       `);
     const emergencyId = emergency.recordset[0].id;
     const alert = await new sql.Request(transaction)
       .input('elderlyId', sql.Int, elderlyId)
       .input('emergencyId', sql.Int, emergencyId)
-      .input('noiDung', sql.NVarChar(500), noiDung || 'Nguoi cao tuoi da gui canh bao SOS.')
+      .input('noiDung', sql.NVarChar(500), content)
       .query(`
         INSERT INTO CanhBao (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID)
         OUTPUT INSERTED.CanhBaoID AS id
         VALUES (@elderlyId, N'KhanCap', @noiDung, N'KhanCap', N'CanhBaoKhanCap', @emergencyId)
       `);
-    const delivery=await new sql.Request(transaction)
-      .input('elderlyId',sql.Int,elderlyId).input('emergencyId',sql.Int,emergencyId)
-      .input('noiDung',sql.NVarChar(500),noiDung||'Người cao tuổi đã gửi SOS.')
-      .query(`INSERT INTO ThongBao(UserID,TieuDe,NoiDung,LoaiThongBao,LienKetBang,LienKetID)
-        OUTPUT INSERTED.ThongBaoID AS id
-        SELECT DISTINCT nd.UserID,N'Cảnh báo SOS',@noiDung,N'KhanCap',N'CanhBaoKhanCap',@emergencyId
-        FROM NguoiCaoTuoi_NguoiChamSoc lk JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID=lk.NguoiChamSocID
-        JOIN NguoiDung nd ON nd.UserID=ncs.UserID
-        WHERE lk.NguoiCaoTuoiID=@elderlyId AND nd.TrangThai=N'HoatDong' AND ncs.TrangThai=N'DangLamViec'
-        AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
-        AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))`);
+    const delivery = await notifyAlertRecipients(transaction, {
+      elderlyId, elderlyName, content, alertId: alert.recordset[0].id,
+      source: 'CanhBaoKhanCap', sourceId: emergencyId, emergency: true,
+      latitude: viDo, longitude: kinhDo,
+    });
     await transaction.commit();
     transaction = null;
-    emitToAdmin('canhbao:new', {
+    const payload = {
       id: alert.recordset[0].id,
       canhBaoId: alert.recordset[0].id,
+      canhBaoKhanCapId: emergencyId,
       nguoiCaoTuoiId: elderlyId,
       nguoiCaoTuoiTen: elderlyName,
+      tenNguoiCaoTuoi: elderlyName,
+      noiDung: content,
+      viDo,
+      kinhDo,
+      ngayGui: emergency.recordset[0].ngayGui,
       loaiCanhBao: 'KhanCap',
       loaiCanhBaoLabel: 'Khẩn cấp',
       mucDo: 'KHAN_CAP',
       mucDoLabel: 'Khẩn cấp',
-      moTa: noiDung || 'Người cao tuổi vừa gửi cảnh báo SOS.',
+      moTa: content,
       thoiGianPhatHien: emergency.recordset[0].ngayGui,
       trangThai: 'CHUA_XU_LY',
       trangThaiLabel: 'Chưa xử lý',
       nguonBang: 'CanhBaoKhanCap',
       nguonId: emergencyId,
-    });
-    return ok(res, { ...emergency.recordset[0], canhBaoId: alert.recordset[0].id, nguoiCaoTuoiId: elderlyId, soNguoiChamSocDaThongBao:delivery.recordset.length }, 'Da gui canh bao SOS', 201);
+    };
+    emitAlertNotifications(delivery, payload);
+    const count = delivery.caregivers.length;
+    return ok(res, { ...emergency.recordset[0], canhBaoId: alert.recordset[0].id,
+      nguoiCaoTuoiId: elderlyId, soNguoiChamSocNhan: count,
+      soNguoiChamSocDaThongBao: count, trungLap: false }, 'Đã gửi cảnh báo SOS', 201);
   } catch (error) {
     if (transaction) {
       try { await transaction.rollback(); } catch (_) { /* SQL da ket thuc transaction */ }

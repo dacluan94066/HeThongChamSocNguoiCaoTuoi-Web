@@ -56,6 +56,7 @@ const initSocket = (server) => {
   io.on('connection', (socket) => {
     const { userId, tenVaiTro } = socket.user;
     socket.join(`user:${userId}`);
+    socket.join(`user_${userId}`);
     socket.join(`role:${tenVaiTro}`);
 
     if (tenVaiTro === 'QuanTriVien') {
@@ -98,8 +99,14 @@ const emitToUser = (userId, eventName, data) => {
   if (!io || !Number.isInteger(Number(userId)) || Number(userId) < 1) {
     return false;
   }
-  io.to(`user:${Number(userId)}`).emit(eventName, data);
+  io.to(`user_${Number(userId)}`).emit(eventName, data);
   return true;
 };
 
-module.exports = { initSocket, emitToAdmin, emitToUser, ADMIN_ROOM };
+const emitToAdminOnly = (eventName, data) => {
+  if (!io) return false;
+  io.to(ADMIN_ROOM).emit(eventName, data);
+  return true;
+};
+
+module.exports = { initSocket, emitToAdmin, emitToAdminOnly, emitToUser, ADMIN_ROOM };

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
 
 import '../../services/api_client.dart';
 import '../../services/elderly_service.dart';
@@ -131,7 +132,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
                 child: const Icon(
                   Icons.check_rounded,
-                  color: Color(0xff07856d),
+                  color: CareSeniorColors.deepGreen,
                   size: 36,
                 ),
               ),
@@ -162,7 +163,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     Navigator.pop(dialogContext);
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xff07856d),
+                    backgroundColor: CareSeniorColors.deepGreen,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -232,7 +233,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
               borderSide: const BorderSide(
-                color: Color(0xff07856d),
+                color: CareSeniorColors.deepGreen,
                 width: 1.3,
               ),
             ),
@@ -245,10 +246,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff3f3f1),
+      backgroundColor: CareSeniorColors.background,
 
       appBar: AppBar(
-        backgroundColor: const Color(0xfff3f3f1),
+        backgroundColor: CareSeniorColors.background,
         elevation: 0,
         centerTitle: true,
         title: const Text(
@@ -267,7 +268,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xffe9fff6), Color(0xffffffe8)],
+                  colors: [CareSeniorColors.mint, CareSeniorColors.background],
                 ),
                 borderRadius: BorderRadius.circular(26),
               ),
@@ -279,7 +280,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     child: Icon(
                       Icons.security_rounded,
                       size: 32,
-                      color: Color(0xff07856d),
+                      color: CareSeniorColors.deepGreen,
                     ),
                   ),
 
@@ -351,7 +352,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               child: ElevatedButton(
                 onPressed: saving ? null : changePassword,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
+                  backgroundColor: CareSeniorColors.deepGreen,
                   foregroundColor: Colors.white,
                   disabledBackgroundColor: Colors.black12,
                   elevation: 0,

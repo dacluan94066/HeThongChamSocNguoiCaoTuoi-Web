@@ -18,6 +18,7 @@ class MobileRealtimeService {
   final ValueNotifier<int> appointmentRevision = ValueNotifier(0);
   final ValueNotifier<int> medicationRevision = ValueNotifier(0);
   final ValueNotifier<int> notificationRevision = ValueNotifier(0);
+  final ValueNotifier<int> alertRevision = ValueNotifier(0);
 
   io.Socket? _socket;
   int _session = -1;
@@ -114,6 +115,9 @@ class MobileRealtimeService {
     });
     socket.on('thongbao:new', (_) {
       if (current()) notificationRevision.value++;
+    });
+    socket.on('canhbao:updated', (_) {
+      if (current()) alertRevision.value++;
     });
     socket.connect();
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
 
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
@@ -147,9 +148,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff6f7f5),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff6f7f5),
+        backgroundColor: CareSeniorColors.background,
         elevation: 0,
         title: const Text(
           'Đăng ký',
@@ -441,7 +442,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               children: [
                 Checkbox(
                   value: agreeTerms,
-                  activeColor: const Color(0xff07856d),
+                  activeColor: CareSeniorColors.deepGreen,
                   onChanged: (value) {
                     setState(() {
                       agreeTerms = value ?? false;
@@ -468,7 +469,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: ElevatedButton(
                 onPressed: registering ? null : register,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
+                  backgroundColor: CareSeniorColors.deepGreen,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -514,7 +515,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: const Text(
                     'Đăng nhập',
                     style: TextStyle(
-                      color: Color(0xff07856d),
+                      color: CareSeniorColors.deepGreen,
                       fontWeight: FontWeight.bold,
                     ),
                   ),

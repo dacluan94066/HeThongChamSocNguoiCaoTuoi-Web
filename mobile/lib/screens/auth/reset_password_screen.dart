@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
 
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
@@ -53,7 +54,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Đặt lại mật khẩu thành công. Vui lòng đăng nhập.'),
-          backgroundColor: Color(0xff07856d),
+          backgroundColor: CareSeniorColors.deepGreen,
         ),
       );
     } on ApiException catch (error) {
@@ -99,9 +100,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff6f7f5),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff6f7f5),
+        backgroundColor: CareSeniorColors.background,
         centerTitle: true,
         title: const Text(
           'Đặt mật khẩu mới',
@@ -115,11 +116,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             const SizedBox(height: 32),
             const CircleAvatar(
               radius: 46,
-              backgroundColor: Color(0xffe2f4ee),
+              backgroundColor: CareSeniorColors.mint,
               child: Icon(
                 Icons.lock_reset_rounded,
                 size: 48,
-                color: Color(0xff07856d),
+                color: CareSeniorColors.deepGreen,
               ),
             ),
             const SizedBox(height: 28),
@@ -145,7 +146,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               child: FilledButton(
                 onPressed: saving ? null : resetPassword,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
+                  backgroundColor: CareSeniorColors.deepGreen,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),

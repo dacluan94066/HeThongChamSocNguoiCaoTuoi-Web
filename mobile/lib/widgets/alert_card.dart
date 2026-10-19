@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../theme/care_senior_theme.dart';
+import 'care_senior_ui.dart';
 
 class AlertVisualStyle {
   const AlertVisualStyle({
@@ -18,23 +20,23 @@ class AlertVisuals {
   static AlertVisualStyle styleForSeverity(Object? severity) {
     return switch (severity?.toString()) {
       'KhanCap' || 'KHAN_CAP' || 'Khẩn cấp' => const AlertVisualStyle(
-        color: Color(0xffc62828),
-        background: Color(0xffffe3e3),
+        color: CareSeniorColors.danger,
+        background: CareSeniorColors.dangerSurface,
         icon: Icons.sos_rounded,
       ),
       'Cao' || 'CAO' => const AlertVisualStyle(
-        color: Color(0xffd76700),
-        background: Color(0xffffead7),
+        color: CareSeniorColors.warning,
+        background: CareSeniorColors.warningSurface,
         icon: Icons.warning_amber_rounded,
       ),
       'TrungBinh' || 'TRUNG_BINH' || 'Trung bình' => const AlertVisualStyle(
-        color: Color(0xffa87300),
-        background: Color(0xfffff3cd),
+        color: CareSeniorColors.warning,
+        background: CareSeniorColors.warningSurface,
         icon: Icons.warning_amber_rounded,
       ),
       _ => const AlertVisualStyle(
-        color: Color(0xff667078),
-        background: Color(0xffedf0f2),
+        color: CareSeniorColors.secondaryText,
+        background: CareSeniorColors.mint,
         icon: Icons.info_outline_rounded,
       ),
     };
@@ -99,7 +101,7 @@ class AlertCard extends StatelessWidget {
       margin: EdgeInsets.only(bottom: compact ? 8 : 12),
       padding: EdgeInsets.all(compact ? 12 : 15),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: CareSeniorColors.surface,
         borderRadius: BorderRadius.circular(compact ? 16 : 22),
         border: Border.all(color: style.color.withValues(alpha: 0.28)),
       ),
@@ -120,40 +122,29 @@ class AlertCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        AlertVisuals.typeLabel(alert),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: style.background,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        alert['mucDoLabel']?.toString() ??
-                            _severityLabel(severity),
-                        style: TextStyle(
-                          color: style.color,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
+                Text(
+                  AlertVisuals.typeLabel(alert),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                AppStatusChip(
+                  label:
+                      alert['mucDoLabel']?.toString() ??
+                      _severityLabel(severity),
+                  color: style.color,
+                  background: style.background,
                 ),
                 const SizedBox(height: 5),
                 Text(
                   AlertVisuals.content(alert),
-                  style: const TextStyle(color: Colors.black54, height: 1.35),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: CareSeniorColors.text,
+                    height: 1.35,
+                  ),
                 ),
                 const SizedBox(height: 7),
                 Wrap(
@@ -163,15 +154,15 @@ class AlertCard extends StatelessWidget {
                     Text(
                       AlertVisuals.dateTime(alert),
                       style: const TextStyle(
-                        color: Colors.black45,
-                        fontSize: 12,
+                        color: CareSeniorColors.secondaryText,
+                        fontSize: 14,
                       ),
                     ),
                     Text(
                       AlertVisuals.statusLabel(alert),
                       style: TextStyle(
                         color: style.color,
-                        fontSize: 12,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -183,8 +174,8 @@ class AlertCard extends StatelessWidget {
                   Text(
                     'Kết quả: ${alert['ghiChuXuLy']}',
                     style: const TextStyle(
-                      color: Color(0xff087965),
-                      fontSize: 12,
+                      color: CareSeniorColors.deepGreen,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

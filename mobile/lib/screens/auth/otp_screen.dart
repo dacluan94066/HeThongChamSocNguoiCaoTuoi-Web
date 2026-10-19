@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/care_senior_theme.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/api_client.dart';
@@ -81,9 +82,9 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff6f7f5),
+      backgroundColor: CareSeniorColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff6f7f5),
+        backgroundColor: CareSeniorColors.background,
         centerTitle: true,
         title: const Text(
           'Xác nhận OTP',
@@ -98,7 +99,7 @@ class _OtpScreenState extends State<OtpScreen> {
             const Icon(
               Icons.password_rounded,
               size: 74,
-              color: Color(0xff07856d),
+              color: CareSeniorColors.deepGreen,
             ),
             const SizedBox(height: 22),
             const Text(
@@ -144,7 +145,7 @@ class _OtpScreenState extends State<OtpScreen> {
               child: FilledButton(
                 onPressed: verifying ? null : verify,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
+                  backgroundColor: CareSeniorColors.deepGreen,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),

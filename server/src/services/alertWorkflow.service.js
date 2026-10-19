@@ -1,5 +1,5 @@
 const {poolPromise, sql}=require('../config/db');
-const {emitToAdmin}=require('../socket');
+const {emitToAdmin,emitToUser}=require('../socket');
 const problem=(status,code,message)=>Object.assign(new Error(message),{status,code});
 const positiveId=value=>Number.isInteger(Number(value))&&Number(value)>0&&Number(value)<=2147483647;
 
@@ -64,8 +64,15 @@ async function transition({user,alertId,emergencyId,action,note}){
     `UPDATE CanhBao SET TrangThai=@state,NguoiXuLyID=@uid,NgayXuLy=DATEADD(HOUR,7,SYSUTCDATETIME()),GhiChuXuLy=CASE WHEN @state=N'DaXuLy' THEN @note ELSE GhiChuXuLy END
      WHERE ${linked?"NguonBang=N'CanhBaoKhanCap' AND NguonID=@sid":'CanhBaoID=@id'}`);
   await transaction.commit();
-  const result={id:emergencyId!=null?Number(emergencyId):alert.id,canhBaoId:alert.id,trangThai:linked?(action==='seen'?'DaTiepNhan':'DaXuLy'):next};
+  const result={id:emergencyId!=null?Number(emergencyId):alert.id,canhBaoId:alert.id,nguoiCaoTuoiId:alert.elderlyId,trangThai:linked?(action==='seen'?'DaTiepNhan':'DaXuLy'):next};
   emitToAdmin('canhbao:updated',result);
+  try {
+   const owner=(await (await poolPromise).request().input('eid',sql.Int,alert.elderlyId).query(
+     'SELECT UserID FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID=@eid')).recordset[0]?.UserID;
+   if(owner)emitToUser(owner,'canhbao:updated',result);
+  } catch(error) {
+   console.error('[ALERT] Không thể gửi cập nhật SOS tới Mobile:',error);
+  }
   return result;
  }catch(error){try{await transaction.rollback();}catch(_){}throw error;}
 }

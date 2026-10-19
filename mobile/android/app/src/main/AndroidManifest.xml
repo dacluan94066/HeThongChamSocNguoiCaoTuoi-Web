@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- TAM THOI CHO PHEP HTTP TRONG MOI TRUONG PHAT TRIEN.
          Khi trien khai that, can dung HTTPS va tat usesCleartextTraffic. -->
     <application

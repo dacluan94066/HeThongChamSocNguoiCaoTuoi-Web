@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'theme/care_senior_theme.dart';
 
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
@@ -8,7 +10,7 @@ import 'services/auth_storage.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/google_sign_in_service.dart';
-import 'screens/home/home_screen.dart';
+import 'screens/home/elderly_home_screen.dart';
 import 'screens/appointments/appointment_screen.dart';
 import 'screens/medication/medication_screen.dart';
 import 'widgets/appointment_reminder_scope.dart';
@@ -31,11 +33,7 @@ class ElderlyCareApp extends StatelessWidget {
       navigatorKey: ApiClient.navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Chăm sóc người cao tuổi',
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Arial',
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff07856d)),
-      ),
+      theme: CareSeniorTheme.data,
       routes: {
         '/welcome': (_) => const WelcomeScreen(),
         '/login': (_) => const LoginScreen(),
@@ -172,7 +170,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xff07856d),
+      backgroundColor: CareSeniorColors.deepGreen,
       body: Center(
         child: _connectionError == null
             ? const CircularProgressIndicator(color: Colors.white)
@@ -232,193 +230,86 @@ class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xffdfe8dc), Color(0xff3bbf9b), Color(0xff049b7d)],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-            child: Column(
-              children: [
-                const Spacer(),
-
-                const Icon(
-                  Icons.health_and_safety_rounded,
-                  size: 100,
-                  color: Colors.white,
-                ),
-
-                const SizedBox(height: 30),
-
-                const Text(
-                  'An Tâm Tuổi Già',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                    height: 1.1,
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                const Text(
-                  'Người bạn đồng hành sức khỏe mỗi ngày',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    height: 1.4,
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                const Text(
-                  'Theo dõi sức khỏe, nhắc uống thuốc và hỗ trợ khẩn cấp khi cần.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-
-                const Spacer(),
-
-                // ==================================================
-                // ĐĂNG NHẬP
-                // ==================================================
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xff07856d),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                    ),
-                    child: const Text(
-                      'Đăng nhập',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                // ==================================================
-                // ĐĂNG KÝ
-                // ==================================================
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const RegisterScreen(),
-                        ),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white, width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                    ),
-                    child: const Text(
-                      'Đăng ký tài khoản',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                const Text(
-                  'hoặc',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-
-                const SizedBox(height: 14),
-
-                // ==================================================
-                // GOOGLE - CHƯA NỐI THẬT
-                // ==================================================
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Đăng nhập Google sẽ được kết nối ở bước sau.',
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Text(
-                      'G',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 19,
-                      ),
-                    ),
-                    label: const Text(
-                      'Tiếp tục với Google',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-              ],
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: CareSeniorColors.background,
+    body: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: Image.asset(
+              'assets/login_hero.png',
+              height: 300,
+              width: double.infinity,
+              fit: BoxFit.cover,
             ),
           ),
-        ),
+          const SizedBox(height: 24),
+          const Text(
+            'CareSenior',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              color: CareSeniorColors.deepGreen,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Đồng hành chăm sóc sức khỏe người cao tuổi',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              color: CareSeniorColors.text,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Theo dõi sức khỏe, nhắc uống thuốc và hỗ trợ khẩn cấp khi cần.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              height: 1.4,
+              color: CareSeniorColors.secondaryText,
+            ),
+          ),
+          const SizedBox(height: 30),
+          FilledButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            ),
+            child: const Text('Đăng nhập'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RegisterScreen()),
+            ),
+            child: const Text('Đăng ký tài khoản'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Đăng nhập Google sẽ được kết nối ở bước sau.'),
+                ),
+              );
+            },
+            icon: const Text(
+              'G',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+            ),
+            label: const Text('Tiếp tục với Google'),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 // ======================================================
@@ -433,6 +324,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const _deepGreen = Color(0xff185a49);
+  static const _fieldGreen = Color(0xfff1f8f3);
   final TextEditingController usernameController = TextEditingController();
 
   final TextEditingController passwordController = TextEditingController();
@@ -440,6 +333,42 @@ class _LoginScreenState extends State<LoginScreen> {
   bool obscurePassword = true;
 
   bool loggingIn = false;
+  bool rememberUsername = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedUsername();
+  }
+
+  Future<void> _loadRememberedUsername() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      final remembered =
+          preferences.getBool('login_remember_username') ?? false;
+      setState(() => rememberUsername = remembered);
+      if (remembered && usernameController.text.isEmpty) {
+        usernameController.text = preferences.getString('login_username') ?? '';
+      }
+    } catch (_) {
+      // Ghi nhớ tên đăng nhập là tiện ích tùy chọn, không chặn đăng nhập.
+    }
+  }
+
+  Future<void> _saveRememberedUsername(String username) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool('login_remember_username', rememberUsername);
+      if (rememberUsername) {
+        await preferences.setString('login_username', username);
+      } else {
+        await preferences.remove('login_username');
+      }
+    } catch (_) {
+      // Không lưu mật khẩu và không làm thất bại phiên đăng nhập.
+    }
+  }
 
   @override
   void dispose() {
@@ -486,6 +415,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       final role = user['tenVaiTro']?.toString();
       if (role == 'NguoiCaoTuoi') {
+        await _saveRememberedUsername(username);
+        if (!mounted) return;
         Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
       } else {
         await AuthService.instance.logout();
@@ -567,276 +498,420 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  InputDecoration _inputDecoration(
+    String hint,
+    IconData icon, {
+    Widget? suffixIcon,
+  }) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(15),
+      borderSide: const BorderSide(color: Color(0xffd8e8dc)),
+    );
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: Color(0xff688078), fontSize: 16),
+      prefixIcon: Icon(icon, color: _deepGreen),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: _fieldGreen,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      border: border,
+      enabledBorder: border,
+      focusedBorder: border.copyWith(
+        borderSide: const BorderSide(color: Color(0xff278d63), width: 2),
+      ),
+    );
+  }
+
+  Widget _hero(BuildContext context) => SizedBox(
+    width: double.infinity,
+    height: 244,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.asset(
+          'assets/login_hero.png',
+          fit: BoxFit.cover,
+          alignment: Alignment.centerRight,
+        ),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Color(0xeafffff7), Color(0xaafffff7), Color(0x00ffffff)],
+              stops: [0, 0.40, 0.72],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 18, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.favorite_rounded,
+                color: Color(0xff278d63),
+                size: 43,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'CareSenior',
+                style: TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.w800,
+                  color: _deepGreen,
+                ),
+              ),
+              if (MediaQuery.textScalerOf(context).scale(1) <= 1.4) ...[
+                const Text(
+                  'Đồng hành chăm sóc',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _deepGreen,
+                  ),
+                ),
+                const Text(
+                  'sức khỏe người cao tuổi',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _deepGreen,
+                  ),
+                ),
+              ],
+              const Spacer(),
+              if (MediaQuery.textScalerOf(context).scale(1) <= 1.4)
+                const Text(
+                  'Sống khỏe hơn\nmỗi ngày ♡',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w600,
+                    color: _deepGreen,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (Navigator.canPop(context))
+          Positioned(
+            top: 10,
+            right: 10,
+            child: IconButton.filledTonal(
+              tooltip: 'Quay lại',
+              constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back),
+            ),
+          ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff6f7f5),
-
-      appBar: AppBar(
-        backgroundColor: const Color(0xfff6f7f5),
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Đăng nhập',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 10),
-
-            const Text(
-              'Chào mừng bạn trở lại',
-              style: TextStyle(fontSize: 27, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 8),
-
-            const Text(
-              'Đăng nhập để tiếp tục theo dõi sức khỏe của bạn.',
-              style: TextStyle(
-                fontSize: 15,
-                color: Colors.black54,
-                height: 1.4,
-              ),
-            ),
-
-            const SizedBox(height: 35),
-
-            // ==================================================
-            // TÊN ĐĂNG NHẬP
-            // ==================================================
-            const Text(
-              'Tên đăng nhập',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-
-            const SizedBox(height: 8),
-
-            TextField(
-              controller: usernameController,
-              keyboardType: TextInputType.text,
-              textInputAction: TextInputAction.next,
-              autocorrect: false,
-              decoration: InputDecoration(
-                hintText: 'Nhập tên đăng nhập',
-                prefixIcon: const Icon(Icons.person_outline),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: const BorderSide(
-                    color: Color(0xff07856d),
-                    width: 1.5,
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // ==================================================
-            // MẬT KHẨU
-            // ==================================================
-            const Text(
-              'Mật khẩu',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-
-            const SizedBox(height: 8),
-
-            TextField(
-              controller: passwordController,
-              obscureText: obscurePassword,
-              onSubmitted: (_) {
-                if (!loggingIn) {
-                  login();
-                }
-              },
-              decoration: InputDecoration(
-                hintText: 'Nhập mật khẩu',
-                prefixIcon: const Icon(Icons.lock_outline),
-                suffixIcon: IconButton(
-                  onPressed: () {
-                    setState(() {
-                      obscurePassword = !obscurePassword;
-                    });
-                  },
-                  icon: Icon(
-                    obscurePassword
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                  ),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: const BorderSide(
-                    color: Color(0xff07856d),
-                    width: 1.5,
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // ==================================================
-            // QUÊN MẬT KHẨU
-            // ==================================================
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ForgotPasswordScreen(),
-                    ),
-                  );
-                },
-                child: const Text(
-                  'Quên mật khẩu?',
-                  style: TextStyle(
-                    color: Color(0xff07856d),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ==================================================
-            // NÚT ĐĂNG NHẬP
-            // ==================================================
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: loggingIn ? null : login,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff07856d),
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: const Color(0xff8dbeb3),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                child: loggingIn
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
+      backgroundColor: const Color(0xffedf7ee),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                children: [
+                  _hero(context),
+                  Transform.translate(
+                    offset: const Offset(0, -22),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(22, 24, 22, 26),
+                        decoration: BoxDecoration(
                           color: Colors.white,
+                          borderRadius: BorderRadius.circular(30),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x190e5b47),
+                              blurRadius: 24,
+                              offset: Offset(0, 10),
+                            ),
+                          ],
                         ),
-                      )
-                    : const Text(
-                        'ĐĂNG NHẬP',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Đăng nhập',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 27,
+                                fontWeight: FontWeight.w800,
+                                color: _deepGreen,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Chào mừng bạn quay trở lại!',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: _deepGreen,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Vui lòng đăng nhập để tiếp tục sử dụng.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Color(0xff5c746b),
+                              ),
+                            ),
+                            const SizedBox(height: 25),
+                            const Text(
+                              'Tên đăng nhập',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: _deepGreen,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: usernameController,
+                              keyboardType: TextInputType.text,
+                              textInputAction: TextInputAction.next,
+                              autofillHints: const [AutofillHints.username],
+                              autocorrect: false,
+                              style: const TextStyle(fontSize: 17),
+                              decoration: _inputDecoration(
+                                'Nhập tên đăng nhập',
+                                Icons.person_outline,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Mật khẩu',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: _deepGreen,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: passwordController,
+                              obscureText: obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              autofillHints: const [AutofillHints.password],
+                              style: const TextStyle(fontSize: 17),
+                              onSubmitted: (_) {
+                                if (!loggingIn) login();
+                              },
+                              decoration: _inputDecoration(
+                                'Nhập mật khẩu',
+                                Icons.lock_outline,
+                                suffixIcon: IconButton(
+                                  tooltip: obscurePassword
+                                      ? 'Hiện mật khẩu'
+                                      : 'Ẩn mật khẩu',
+                                  constraints: const BoxConstraints(
+                                    minWidth: 56,
+                                    minHeight: 56,
+                                  ),
+                                  onPressed: () => setState(
+                                    () => obscurePassword = !obscurePassword,
+                                  ),
+                                  icon: Icon(
+                                    obscurePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Material(
+                              type: MaterialType.transparency,
+                              child: CheckboxListTile(
+                                value: rememberUsername,
+                                onChanged: (value) => setState(
+                                  () => rememberUsername = value ?? false,
+                                ),
+                                activeColor: const Color(0xff278d63),
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text(
+                                  'Ghi nhớ tên đăng nhập',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: _deepGreen,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const ForgotPasswordScreen(),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Quên mật khẩu?',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Color(0xff278d63),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              height: 58,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xff5caf6d),
+                                      Color(0xff16875c),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: ElevatedButton.icon(
+                                  onPressed: loggingIn ? null : login,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: Colors.white,
+                                    disabledBackgroundColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(30),
+                                    ),
+                                  ),
+                                  icon: loggingIn
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(Icons.arrow_forward),
+                                  label: Text(
+                                    loggingIn
+                                        ? 'Đang đăng nhập...'
+                                        : 'Đăng nhập',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 21),
+                            const Row(
+                              children: [
+                                Expanded(
+                                  child: Divider(color: Color(0xffdce8df)),
+                                ),
+                                Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 14),
+                                  child: Text(
+                                    'hoặc',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Color(0xff6b8279),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Divider(color: Color(0xffdce8df)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 18),
+                            SizedBox(
+                              height: 56,
+                              child: OutlinedButton.icon(
+                                onPressed: loggingIn ? null : loginWithGoogle,
+                                icon: const Text(
+                                  'G',
+                                  style: TextStyle(
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xff4285f4),
+                                  ),
+                                ),
+                                label: const Text(
+                                  'Tiếp tục với Google',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _deepGreen,
+                                  side: const BorderSide(
+                                    color: Color(0xffd8e8dc),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 15),
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                const Text(
+                                  'Chưa có tài khoản?',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const RegisterScreen(),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Đăng ký ngay',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xff278d63),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-              ),
-            ),
-
-            const SizedBox(height: 25),
-
-            const Row(
-              children: [
-                Expanded(child: Divider()),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('Hoặc', style: TextStyle(color: Colors.black45)),
-                ),
-                Expanded(child: Divider()),
-              ],
-            ),
-
-            const SizedBox(height: 22),
-
-            // ==================================================
-            // GOOGLE
-            // ==================================================
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: OutlinedButton.icon(
-                onPressed: loggingIn ? null : loginWithGoogle,
-                icon: const Text(
-                  'G',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                label: const Text('Tiếp tục với Google'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.black87,
-                  backgroundColor: Colors.white,
-                  side: BorderSide.none,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 25),
-
-            // ==================================================
-            // ĐĂNG KÝ NGAY
-            // ==================================================
-            Wrap(
-              alignment: WrapAlignment.center,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                const Text(
-                  'Chưa có tài khoản? ',
-                  style: TextStyle(color: Colors.black54),
-                ),
-
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                    );
-                  },
-                  child: const Text(
-                    'Đăng ký ngay',
-                    style: TextStyle(
-                      color: Color(0xff07856d),
-                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-
-            const SizedBox(height: 20),
-          ],
+          ),
         ),
       ),
     );

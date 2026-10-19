@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/care_senior_theme.dart';
 import '../services/api_client.dart';
 import '../services/appointment_service.dart';
 import '../services/local_notification_service.dart';
@@ -119,6 +120,9 @@ class _AppointmentReminderBannerState extends State<AppointmentReminderBanner> {
             'Chưa đồng bộ được lịch nhắc. Vui lòng thử lại.',
         };
         return Card(
+          color: ready
+              ? CareSeniorColors.mint
+              : CareSeniorColors.warningSurface,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -127,7 +131,10 @@ class _AppointmentReminderBannerState extends State<AppointmentReminderBanner> {
                 Text(
                   message,
                   style: TextStyle(
-                    color: ready ? Colors.teal : Colors.deepOrange,
+                    color: ready
+                        ? CareSeniorColors.deepGreen
+                        : CareSeniorColors.warning,
+                    fontSize: 16,
                   ),
                 ),
                 if (!ready && state != AppointmentReminderState.loading)

@@ -8,7 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:elderly_care_app/services/api_client.dart';
 import 'package:elderly_care_app/widgets/appointment_reminder_scope.dart';
 import 'support/notification_platform_fake.dart';
-import 'package:elderly_care_app/screens/home/home_screen.dart';
+import 'package:elderly_care_app/screens/home/elderly_home_screen.dart';
 import 'package:elderly_care_app/main.dart'
     show LoginScreen, SessionHomeScreen, homeForRole;
 import 'package:elderly_care_app/screens/health/health_screen.dart';
@@ -16,10 +16,12 @@ import 'package:elderly_care_app/screens/medication/medication_screen.dart';
 import 'package:elderly_care_app/screens/appointments/appointment_screen.dart';
 import 'package:elderly_care_app/screens/notifications/notification_screen.dart';
 import 'package:elderly_care_app/screens/profile/profile_screen.dart';
+import 'package:elderly_care_app/theme/care_senior_theme.dart';
 import 'package:elderly_care_app/screens/caregiver/caregiver_elderly_detail_screen.dart';
 
 class FlowAdapter implements HttpClientAdapter {
   final paths = <String>[];
+  List<Map<String, dynamic>> metrics = const [];
   bool offline = false;
   Completer<void>? held;
   @override
@@ -47,6 +49,8 @@ class FlowAdapter implements HttpClientAdapter {
             'ngaySinh': '1950-01-01',
             'gioiTinh': 'Nam',
           }
+        : options.path == '/elderly/me/health-metrics'
+        ? metrics
         : <dynamic>[];
     return ResponseBody.fromString(
       jsonEncode({'data': data}),
@@ -125,6 +129,70 @@ void main() {
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(adapter.paths, isNot(contains('/caregivers/me/elderly')));
     expect(adapter.paths, isNot(contains('/elderly/me')));
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+  testWidgets('Elderly home keeps appointment access and loads reminders', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pumpAndSettle();
+    expect(adapter.paths, contains('/elderly/me/appointments'));
+    expect(adapter.paths, contains('/elderly/me/appointments/upcoming'));
+    await tester.scrollUntilVisible(
+      find.text('Xem tất cả lịch khám'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -220));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xem tất cả lịch khám'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppointmentScreen), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lịch khám'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppointmentScreen), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+  testWidgets('Elderly metric cards fit with real values and large text', (
+    tester,
+  ) async {
+    adapter.metrics = [
+      {
+        'tenChiSo': 'Huyết áp',
+        'giaTri': 120,
+        'giaTriPhu': 80,
+        'donVi': 'mmHg',
+        'laBatThuong': false,
+        'thoiGianDo': DateTime.now().toIso8601String(),
+      },
+    ];
+    await tester.binding.setSurfaceSize(const Size(360, 740));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: CareSeniorTheme.data,
+        home: const MediaQuery(
+          data: MediaQueryData(
+            size: Size(360, 740),
+            textScaler: TextScaler.linear(1.8),
+          ),
+          child: HomeScreen(),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('120/80'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
   for (final entry in screens.entries) {
