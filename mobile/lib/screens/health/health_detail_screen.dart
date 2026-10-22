@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../theme/care_senior_theme.dart';
 import '../../widgets/draggable_assistant_fab.dart';
+import '../../widgets/care_senior_ui.dart';
+import 'health_dashboard_ui.dart';
 
 import '../../services/api_client.dart';
 import '../../services/health_metric_service.dart';
@@ -28,6 +30,8 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  bool _sheetOpen =
+      false; // Presentation only; existing data state is unchanged.
 
   @override
   void initState() {
@@ -212,6 +216,7 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
             ),
             Expanded(
               child: TextField(
+                key: ValueKey('health-field-$label'),
                 controller: controller,
                 keyboardType: TextInputType.number,
                 textAlign: TextAlign.center,
@@ -256,6 +261,61 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
   String _valueOf(Map<String, dynamic> item) =>
       '${item['giaTri'] ?? '—'}${item['giaTriPhu'] == null ? '' : '/${item['giaTriPhu']}'} ${item['donVi'] ?? ''}';
 
+  Widget _inputFields(Map<String, dynamic>? selectedType) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (_selected == 'Huyết áp') ...[
+        _stepper('Tâm thu', _systolic, 40, 280),
+        const SizedBox(height: 10),
+        _stepper('Tâm trương', _diastolic, 30, 200),
+        const SizedBox(height: 10),
+        _stepper('Nhịp tim (nhịp/phút)', _pulse, 25, 240),
+      ] else
+        TextField(
+          key: const ValueKey('health-value-field'),
+          controller: _value,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          decoration: InputDecoration(
+            labelText: 'Giá trị ${selectedType?['donVi'] ?? ''}',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+    ],
+  );
+
+  // Presentation-only sheet. Keeping it on this Scaffold also keeps the
+  // original _save SnackBars above the sheet, including backend error text.
+  void _openAddSheet(BuildContext sheetContext) {
+    if (_sheetOpen) return;
+    final selectedType = _type(_selected);
+    late PersistentBottomSheetController controller;
+    setState(() => _sheetOpen = true);
+    controller = showBottomSheet(
+      context: sheetContext,
+      backgroundColor: Colors.white,
+      enableDrag: true,
+      constraints: BoxConstraints(
+        maxWidth: 760,
+        maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.72,
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      builder: (_) => HealthMeasurementSheet(
+        name: _selected,
+        range: _range(selectedType),
+        fields: _inputFields(selectedType),
+        onSave: _save,
+        onClose: () => controller.close(),
+      ),
+    );
+    controller.closed.whenComplete(() {
+      if (mounted) setState(() => _sheetOpen = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedType = _type(_selected);
@@ -274,201 +334,239 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
         .toList()
         .reversed
         .toList();
+    final latest = selectedMetrics.isEmpty ? null : selectedMetrics.first;
+    final unit =
+        latest?['donVi']?.toString() ??
+        selectedType?['donVi']?.toString() ??
+        '';
     return Scaffold(
       backgroundColor: CareSeniorColors.background,
-      appBar: AppBar(title: const Text('Chi tiết sinh hiệu')),
-      body: DraggableAssistantFabHost(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const CareAssistantScreen()),
-        ),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: () => _load(refresh: true),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
-                  children: [
-                    if (_error != null)
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(fontSize: 16, color: red),
-                          ),
-                        ),
-                      ),
-                    const Text(
-                      'Chọn loại chỉ số',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _types.map((type) {
-                        final name = type['tenChiSo']?.toString() ?? '';
-                        return ChoiceChip(
-                          label: Text(
-                            name,
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                          selected: _selected == name,
-                          onSelected: (_) => setState(() => _selected = name),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              'Nhập $_selected',
-                              style: const TextStyle(
-                                fontSize: 21,
-                                fontWeight: FontWeight.bold,
+      body: SafeArea(
+        bottom: false,
+        child: Stack(
+          children: [
+            DraggableAssistantFabHost(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CareAssistantScreen()),
+              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : RefreshIndicator(
+                      onRefresh: () => _load(refresh: true),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: ListView(
+                            key: const ValueKey('health-dashboard-scroll'),
+                            padding: const EdgeInsets.only(bottom: 104),
+                            children: [
+                              HealthScreenHeader(
+                                subtitle: latest == null
+                                    ? 'Chưa có dữ liệu đo'
+                                    : 'Cập nhật gần nhất: ${HealthDisplay.time(latest['thoiGianDo'])}',
                               ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _range(selectedType),
-                              style: const TextStyle(fontSize: 16, color: teal),
-                            ),
-                            const SizedBox(height: 14),
-                            if (_selected == 'Huyết áp') ...[
-                              _stepper('Tâm thu', _systolic, 40, 280),
-                              const SizedBox(height: 10),
-                              _stepper('Tâm trương', _diastolic, 30, 200),
-                              const SizedBox(height: 10),
-                              _stepper('Nhịp tim (nhịp/phút)', _pulse, 25, 240),
-                            ] else
-                              TextField(
-                                controller: _value,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                style: const TextStyle(fontSize: 20),
-                                decoration: InputDecoration(
-                                  labelText:
-                                      'Giá trị ${selectedType?['donVi'] ?? ''}',
-                                  border: const OutlineInputBorder(),
-                                ),
-                              ),
-                            const SizedBox(height: 14),
-                            FilledButton.icon(
-                              onPressed: _saving ? null : _save,
-                              icon: const Icon(Icons.save_outlined),
-                              label: Text(
-                                _saving ? 'Đang lưu...' : 'Lưu chỉ số',
-                                style: const TextStyle(fontSize: 17),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Xu hướng 7 ngày',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (trend.isEmpty)
-                              const Text(
-                                'Chưa có dữ liệu trong 7 ngày.',
-                                style: TextStyle(fontSize: 16),
-                              )
-                            else
-                              SizedBox(
-                                height: 180,
-                                width: double.infinity,
-                                child: CustomPaint(
-                                  painter: _TrendPainter(trend),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Lịch sử đo gần đây',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (selectedMetrics.isEmpty)
-                              const Text(
-                                'Chưa có lần đo nào.',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                            ...selectedMetrics
-                                .take(8)
-                                .map(
-                                  (item) => ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(
-                                      _valueOf(item),
+                              if (_error != null)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    20,
+                                    20,
+                                    20,
+                                    0,
+                                  ),
+                                  child: AppCard(
+                                    child: Text(
+                                      _error!,
                                       style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      item['thoiGianDo']?.toString() ?? '',
-                                      style: const TextStyle(fontSize: 16),
-                                    ),
-                                    trailing: Text(
-                                      item['laBatThuong'] == true
-                                          ? 'Bất thường'
-                                          : 'Bình thường',
-                                      style: TextStyle(
                                         fontSize: 16,
-                                        color: item['laBatThuong'] == true
-                                            ? red
-                                            : teal,
+                                        color: red,
                                       ),
                                     ),
                                   ),
                                 ),
-                          ],
+                              const SizedBox(height: 20),
+                              if (_types.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 20),
+                                  child: Text(
+                                    'Chưa có dữ liệu loại chỉ số.',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                )
+                              else
+                                SingleChildScrollView(
+                                  key: const ValueKey('health-metric-tabs'),
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  child: Row(
+                                    children: _types.map((type) {
+                                      final name =
+                                          type['tenChiSo']?.toString() ?? '';
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 10,
+                                        ),
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            minHeight: 56,
+                                          ),
+                                          child: ChoiceChip(
+                                            key: ValueKey('health-type-$name'),
+                                            avatar: Icon(
+                                              HealthDisplay.icon(name),
+                                              size: 22,
+                                              color: _selected == name
+                                                  ? Colors.white
+                                                  : teal,
+                                            ),
+                                            label: Text(
+                                              name,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                                color: _selected == name
+                                                    ? Colors.white
+                                                    : teal,
+                                              ),
+                                            ),
+                                            selectedColor: const Color(
+                                              0xff21966f,
+                                            ),
+                                            backgroundColor: Colors.white,
+                                            showCheckmark: false,
+                                            selected: _selected == name,
+                                            onSelected: (_) => setState(
+                                              () => _selected = name,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  16,
+                                  20,
+                                  0,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    HealthLatestCard(
+                                      name: _selected,
+                                      latest: latest,
+                                      unit: unit,
+                                      range: _range(selectedType),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    HealthTrendCard(
+                                      rows: trend,
+                                      unit: unit,
+                                      bloodPressure: _selected == 'Huyết áp',
+                                      chart: SizedBox(
+                                        height: 180,
+                                        width: double.infinity,
+                                        child: CustomPaint(
+                                          key: const ValueKey(
+                                            'health-trend-chart',
+                                          ),
+                                          painter: _TrendPainter(trend),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    AppCard(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          const Text(
+                                            'Lịch sử đo gần đây',
+                                            style: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          if (selectedMetrics.isEmpty)
+                                            const Text(
+                                              'Chưa có lần đo nào.',
+                                              style: TextStyle(fontSize: 16),
+                                            ),
+                                          for (final item
+                                              in selectedMetrics.take(8)) ...[
+                                            HealthHistoryRow(
+                                              value: _valueOf(item),
+                                              row: item,
+                                            ),
+                                            const Divider(height: 1),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'Nếu chỉ số bất thường, người chăm sóc sẽ được thông báo.',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: teal,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Nếu chỉ số bất thường, người chăm sóc sẽ được thông báo.',
-                      style: TextStyle(fontSize: 16, color: teal),
+            ),
+            if (_sheetOpen)
+              ModalBarrier(
+                color: Colors.black.withValues(alpha: 0.4),
+                dismissible: false,
+                semanticsLabel: 'Biểu mẫu thêm số đo đang mở',
+              ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _sheetOpen || _loading
+          ? null
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child: Builder(
+                  builder: (sheetContext) => FilledButton.icon(
+                    key: const ValueKey('health-add-measurement'),
+                    onPressed: _types.isEmpty
+                        ? null
+                        : () => _openAddSheet(sheetContext),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xff21966f),
                     ),
-                  ],
+                    icon: const Icon(Icons.add, size: 24),
+                    label: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'Thêm số đo ${_selected.toLowerCase()}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-      ),
+            ),
     );
   }
 }

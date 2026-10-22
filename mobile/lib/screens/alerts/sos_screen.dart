@@ -11,6 +11,7 @@ import '../../services/alert_service.dart';
 import '../../services/api_client.dart';
 import '../../services/caregiver_service.dart';
 import '../../services/mobile_realtime_service.dart';
+import 'alerts_dashboard_ui.dart';
 
 class SosScreen extends StatefulWidget {
   const SosScreen({super.key});
@@ -235,223 +236,251 @@ class _SosScreenState extends State<SosScreen>
         0;
     return Scaffold(
       backgroundColor: CareSeniorColors.background,
-      appBar: AppBar(title: const Text('SOS khẩn cấp')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        children: [
-          _card(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Cần giúp đỡ ngay?',
-                  style: TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.bold,
-                    color: red,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Nhấn giữ nút SOS đủ 3 giây để gửi cảnh báo cho người chăm sóc và quản trị viên.',
-                  style: TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 26),
-                Center(
-                  child: GestureDetector(
-                    onTapDown: _startHold,
-                    onTapUp: (_) => _stopHold(),
-                    onTapCancel: _stopHold,
-                    child: AnimatedBuilder(
-                      animation: _hold,
-                      builder: (context, _) => Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          SizedBox(
-                            width: 218,
-                            height: 218,
-                            child: CircularProgressIndicator(
-                              value: _hold.value,
-                              strokeWidth: 13,
-                              color: red,
-                              backgroundColor: const Color(0xfff8d4d0),
-                            ),
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          key: const ValueKey('sos-list'),
+          padding: const EdgeInsets.only(bottom: 32),
+          children: [
+            const AlertsScreenHeader(
+              title: 'Cảnh báo khẩn cấp',
+              subtitle: 'Kết nối với người chăm sóc khi cần giúp đỡ',
+              emergency: true,
+            ),
+            const SizedBox(height: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _card(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Nhấn và giữ 3 giây để gửi cảnh báo',
+                          style: TextStyle(
+                            fontSize: 23,
+                            fontWeight: FontWeight.bold,
+                            color: red,
                           ),
-                          Container(
-                            width: 172,
-                            height: 172,
-                            decoration: const BoxDecoration(
-                              color: red,
-                              shape: BoxShape.circle,
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              _sending ? 'ĐANG GỬI' : 'SOS',
-                              style: const TextStyle(
-                                fontSize: 31,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Nhấn giữ nút SOS đủ 3 giây để gửi cảnh báo cho người chăm sóc và quản trị viên.',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(height: 26),
+                        Center(
+                          child: GestureDetector(
+                            key: const ValueKey('sos-hold-target'),
+                            behavior: HitTestBehavior.opaque,
+                            onTapDown: _startHold,
+                            onTapUp: (_) => _stopHold(),
+                            onTapCancel: _stopHold,
+                            child: AnimatedBuilder(
+                              animation: _hold,
+                              builder: (context, _) => SosHoldVisual(
+                                progress: _hold.value,
+                                sending: _sending,
                               ),
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Center(
+                          child: Text(
+                            _gettingPosition
+                                ? 'Đang lấy vị trí...'
+                                : _sending
+                                ? 'Đang gửi cảnh báo...'
+                                : _releasedEarly
+                                ? 'Giữ đủ 3 giây để gửi SOS'
+                                : 'Giữ nút SOS trong 3 giây',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: red,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    color: CareSeniorColors.dangerSurface,
+                  ),
+                  if (_sent != null) ...[
+                    const SizedBox(height: 16),
+                    _card(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Đã gửi cảnh báo',
+                            style: TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.bold,
+                              color: teal,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            count == 0
+                                ? 'Bạn chưa có người chăm sóc, cảnh báo đã gửi tới quản trị viên.'
+                                : 'Đã gửi cảnh báo tới $count người chăm sóc.',
+                            style: const TextStyle(fontSize: 17),
+                          ),
+                          if (_sent?['trungLap'] == true)
+                            const Text(
+                              'SOS trước đó đã được ghi nhận; không tạo cảnh báo trùng.',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                          if (_locationNote != null)
+                            Text(
+                              _locationNote!,
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                          if (_sent?['viDo'] != null &&
+                              _sent?['kinhDo'] != null)
+                            Text(
+                              'Tọa độ: ${_sent!['viDo']}, ${_sent!['kinhDo']}',
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                          Text(
+                            'Giờ gửi: ${alertsDisplayTime(_sent?['ngayGui'] ?? 'Vừa xong')}',
+                            style: const TextStyle(fontSize: 16),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Center(
-                  child: Text(
-                    _gettingPosition
-                        ? 'Đang lấy vị trí...'
-                        : _sending
-                        ? 'Đang gửi cảnh báo...'
-                        : _releasedEarly
-                        ? 'Giữ đủ 3 giây để gửi SOS'
-                        : 'Giữ nút SOS trong 3 giây',
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: red,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            color: CareSeniorColors.dangerSurface,
-          ),
-          if (_sent != null) ...[
-            const SizedBox(height: 16),
-            _card(
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Đã gửi cảnh báo',
-                    style: TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.bold,
-                      color: teal,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    count == 0
-                        ? 'Bạn chưa có người chăm sóc, cảnh báo đã gửi tới quản trị viên.'
-                        : 'Đã gửi cảnh báo tới $count người chăm sóc.',
-                    style: const TextStyle(fontSize: 17),
-                  ),
-                  if (_sent?['trungLap'] == true)
-                    const Text(
-                      'SOS trước đó đã được ghi nhận; không tạo cảnh báo trùng.',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  if (_locationNote != null)
-                    Text(_locationNote!, style: const TextStyle(fontSize: 16)),
-                  if (_sent?['viDo'] != null && _sent?['kinhDo'] != null)
-                    Text(
-                      'Tọa độ: ${_sent!['viDo']}, ${_sent!['kinhDo']}',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  Text(
-                    'Giờ gửi: ${_sent?['ngayGui'] ?? 'Vừa xong'}',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            _card(
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    _error!,
-                    style: const TextStyle(fontSize: 16, color: red),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton(onPressed: _send, child: const Text('Thử lại')),
-                ],
-              ),
-              color: CareSeniorColors.dangerSurface,
-            ),
-          ],
-          const SizedBox(height: 16),
-          _card(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Cảnh báo gần nhất',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                if (_latest == null)
-                  const Text(
-                    'Chưa có cảnh báo SOS.',
-                    style: TextStyle(fontSize: 16),
-                  )
-                else
-                  AppStatusChip(
-                    label: _latestStatus,
-                    color: _latestStatus == 'Đã xử lý' ? teal : red,
-                    background: _latestStatus == 'Đã xử lý'
-                        ? CareSeniorColors.mint
-                        : CareSeniorColors.dangerSurface,
-                  ),
-                if (_latest != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_latest?['ngayGui'] ?? ''}',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _card(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Gọi thủ công khi cần',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                if (_caregivers.isEmpty)
-                  const Text(
-                    'Chưa có người chăm sóc được phân công.',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ..._caregivers.map(
-                  (person) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: OutlinedButton.icon(
-                      onPressed: () => _call(person['soDienThoai']?.toString()),
-                      icon: const Icon(Icons.call),
-                      label: Text(
-                        'Gọi ${person['hoTen'] ?? 'người chăm sóc'}',
-                        style: const TextStyle(fontSize: 16),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    _card(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            _error!,
+                            style: const TextStyle(fontSize: 16, color: red),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: _send,
+                            child: const Text('Thử lại'),
+                          ),
+                        ],
                       ),
+                      color: CareSeniorColors.dangerSurface,
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  _card(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Cảnh báo gần nhất',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (_latest == null)
+                          const Text(
+                            'Chưa có cảnh báo SOS.',
+                            style: TextStyle(fontSize: 16),
+                          )
+                        else
+                          AlertsBadge(
+                            label: _latestStatus,
+                            color: _latestStatus == 'Đã xử lý' ? teal : red,
+                            background: _latestStatus == 'Đã xử lý'
+                                ? CareSeniorColors.mint
+                                : CareSeniorColors.dangerSurface,
+                          ),
+                        if (_latest != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            alertsDisplayTime(_latest?['ngayGui']),
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _call('115'),
-                  style: FilledButton.styleFrom(backgroundColor: red),
-                  icon: const Icon(Icons.call),
-                  label: const Text(
-                    'Gọi 115 (thủ công)',
-                    style: TextStyle(fontSize: 16),
+                  const SizedBox(height: 16),
+                  _card(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Gọi thủ công khi cần',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (_caregivers.isEmpty)
+                          const Text(
+                            'Chưa có người chăm sóc được phân công.',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                        ..._caregivers.map(
+                          (person) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: OutlinedButton(
+                              onPressed: () =>
+                                  _call(person['soDienThoai']?.toString()),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.call),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        'Gọi ${person['hoTen'] ?? 'người chăm sóc'}',
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        FilledButton(
+                          onPressed: () => _call('115'),
+                          style: FilledButton.styleFrom(backgroundColor: red),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              children: [
+                                Icon(Icons.call),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Gọi 115 (thủ công)',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

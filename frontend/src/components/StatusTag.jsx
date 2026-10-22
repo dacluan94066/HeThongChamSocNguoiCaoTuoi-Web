@@ -1,5 +1,6 @@
 import React from 'react';
 import { Tag } from 'antd';
+import { medicationPendingLabel } from '../utils/medicationStatus';
 
 const STATUS_MAP = {
   success: { color: '#2F8F6B', bg: '#E8F8F1', border: '#B8E3D2' },
@@ -59,9 +60,9 @@ export const getAlertStatusMap = (value) => ({
   BO_QUA: { status: 'inactive', label: 'Bỏ qua' },
 }[value] || unknownStatus);
 
-export const getMedStatusMap = (value) => ({
-  ChuaDenGio: { status: 'default', label: 'Chưa đến giờ' },
-  CHUA_DEN_GIO: { status: 'default', label: 'Chưa đến giờ' },
+export const getMedStatusMap = (value, scheduledAt, now) => ({
+  ChuaDenGio: { status: 'warning', label: medicationPendingLabel(scheduledAt, now) },
+  CHUA_DEN_GIO: { status: 'warning', label: medicationPendingLabel(scheduledAt, now) },
   DaUong: { status: 'success', label: 'Đã uống' },
   DA_UONG: { status: 'success', label: 'Đã uống' },
   BoLo: { status: 'danger', label: 'Bỏ lỡ' },

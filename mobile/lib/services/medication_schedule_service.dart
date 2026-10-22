@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
 import 'local_notification_service.dart';
@@ -26,15 +27,20 @@ class MedicationScheduleService {
   /// Fetch failures leave previously scheduled alarms intact for offline use.
   Future<void> syncUpcomingReminders({bool refresh = false}) async {
     final version = ApiClient.sessionVersion;
+    final generation = _generation;
     final now = DateTime.now();
     final items = await getScheduleByDateRange(
       now,
       now.add(const Duration(days: 29)),
       refresh: refresh,
     );
-    if (version != ApiClient.sessionVersion) return;
+    if (version != ApiClient.sessionVersion || generation != _generation) {
+      return;
+    }
     final raw = await ApiClient.storage.read(key: ApiClient.userKey);
-    if (version != ApiClient.sessionVersion) return;
+    if (version != ApiClient.sessionVersion || generation != _generation) {
+      return;
+    }
     final user = raw == null ? null : jsonDecode(raw);
     if (user is! Map ||
         user['tenVaiTro'] != 'NguoiCaoTuoi' ||
@@ -44,7 +50,8 @@ class MedicationScheduleService {
     await LocalNotificationService.syncMedicationReminders(
       owner: user['userId'].toString(),
       schedule: items,
-      isCurrent: () => version == ApiClient.sessionVersion,
+      isCurrent: () =>
+          version == ApiClient.sessionVersion && generation == _generation,
     );
   }
 
@@ -92,6 +99,7 @@ class MedicationScheduleService {
     int id,
     String trangThai,
   ) async {
+    final version = ApiClient.sessionVersion;
     if (!const {'DaUong', 'BoLo'}.contains(trangThai)) {
       throw const ApiException('Trạng thái uống thuốc không hợp lệ.');
     }
@@ -109,6 +117,18 @@ class MedicationScheduleService {
         );
       }
       _invalidate();
+      // The API has already succeeded: a cleanup failure must not pretend that
+      // confirmation failed or encourage a duplicate confirmation.
+      try {
+        await LocalNotificationService.cancelMedicationDoseReminders(
+          id,
+          isCurrent: () => version == ApiClient.sessionVersion,
+        );
+      } catch (_) {
+        debugPrint(
+          'Chưa dọn được nhắc thuốc cục bộ; sẽ đồng bộ lại khi tải lịch.',
+        );
+      }
       return Map<String, dynamic>.from(data);
     } on DioException catch (error) {
       throw ApiException.fromDio(error);

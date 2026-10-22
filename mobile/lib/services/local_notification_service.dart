@@ -12,7 +12,7 @@ class LocalNotificationService {
   );
   static Future<void> _appointmentQueue = Future.value();
   static int _appointmentEpoch = 0;
-  static Future<void> _medicationQueue = Future.value();
+  static Future<void>? _medicationQueue;
   static int _medicationEpoch = 0;
   static final ValueNotifier<String?> pendingPayload = ValueNotifier(null);
   static Future<void>? _initializing;
@@ -160,13 +160,34 @@ class LocalNotificationService {
   }
 
   static Future<void> _queueMedications(Future<void> Function() action) {
-    final operation = _medicationQueue.then((_) => action());
-    _medicationQueue = operation.then<void>((_) {}, onError: (Object _) {});
+    final previous = _medicationQueue;
+    final operation = previous == null
+        ? Future<void>.sync(action)
+        : previous.then((_) => action());
+    late final Future<void> tail;
+    void clearIdleQueue() {
+      if (identical(_medicationQueue, tail)) _medicationQueue = null;
+    }
+
+    tail = operation.then<void>(
+      (_) => clearIdleQueue(),
+      onError: (Object _) => clearIdleQueue(),
+    );
+    _medicationQueue = tail;
     return operation;
   }
 
-  /// Reconcile individual doses, not a repeating daily alarm. This prevents
-  /// reminders from continuing after a prescription ends or a dose is taken.
+  /// Finite one-shot alarms: due time, then every five minutes within the
+  /// existing 60-minute missed-dose window. Never an endless daily alarm.
+  /// Terminal API statuses always stop the entire dose's remaining reminders.
+  static const medicationRetryInterval = Duration(minutes: 5);
+  static const medicationRetryWindow = Duration(minutes: 60);
+
+  static String? _medicationRetryTag(String? payload) {
+    final marker = payload?.indexOf(':repeat:') ?? -1;
+    return marker < 0 ? null : payload!.substring(0, marker);
+  }
+
   static Future<void> syncMedicationReminders({
     required String owner,
     required List<Map<String, dynamic>> schedule,
@@ -182,7 +203,13 @@ class LocalNotificationService {
       if (!valid()) return;
 
       final now = DateTime.now();
-      final wanted = <String, ({int id, DateTime at, String name})>{};
+      final wanted =
+          <
+            String,
+            ({int id, DateTime at, String name, String? tag, bool repeat})
+          >{};
+      final keepDoseTags = <String>{};
+      final keepOriginalIds = <int>{};
       if (enabled) {
         for (final item in schedule) {
           if (item['trangThai'] != 'ChuaDenGio') continue;
@@ -195,26 +222,65 @@ class LocalNotificationService {
           final at = parsed.isUtc
               ? tz.TZDateTime.from(parsed, tz.local)
               : tz.TZDateTime(
-                  tz.local, parsed.year, parsed.month, parsed.day,
-                  parsed.hour, parsed.minute, parsed.second,
+                  tz.local,
+                  parsed.year,
+                  parsed.month,
+                  parsed.day,
+                  parsed.hour,
+                  parsed.minute,
+                  parsed.second,
                 );
-          if (!at.isAfter(now)) continue;
+          if (!at.add(medicationRetryWindow).isAfter(now)) continue;
           final id = 100000 + rawId;
           if (id < 0 || id >= _testNotificationId) continue;
           final name = [item['tenThuoc'], item['lieuDung']]
               .map((value) => value?.toString().trim() ?? '')
               .where((value) => value.isNotEmpty)
               .join(' - ');
-          final payload = 'medication:$owner:$rawId:${at.toIso8601String()}';
-          wanted[payload] = (
-            id: id,
-            at: at,
-            name: name.isEmpty ? 'thuốc của bạn' : name,
-          );
+          final doseTag = 'medication:$owner:$rawId:${at.toIso8601String()}';
+          keepDoseTags.add(doseTag);
+          keepOriginalIds.add(id);
+          for (
+            var minute = 0;
+            minute < medicationRetryWindow.inMinutes;
+            minute += medicationRetryInterval.inMinutes
+          ) {
+            final fireAt = at.add(Duration(minutes: minute));
+            if (!fireAt.isAfter(now)) continue; // No burst of past reminders.
+            final repeat = minute > 0;
+            final payload = repeat ? '$doseTag:repeat:$minute' : doseTag;
+            wanted[payload] = (
+              id: repeat ? 0 : id,
+              at: fireAt,
+              name: name.isEmpty ? 'thuốc của bạn' : name,
+              tag: repeat ? doseTag : null,
+              repeat: repeat,
+            );
+          }
         }
       }
 
       final pending = await _notificationsPlugin.pendingNotificationRequests();
+      final active = await _notificationsPlugin.getActiveNotifications();
+      final usedIds = <int>{
+        _testNotificationId,
+        ...pending.map((p) => p.id),
+        ...active.map((p) => p.id).whereType<int>(),
+        ...keepOriginalIds,
+      };
+      var nextRetryId = _testNotificationId - 1;
+      int allocateRetryId() {
+        while (usedIds.contains(nextRetryId)) {
+          nextRetryId--;
+        }
+        if (nextRetryId <= 0) {
+          throw StateError('Không còn mã thông báo khả dụng.');
+        }
+        final id = nextRetryId--;
+        usedIds.add(id);
+        return id;
+      }
+
       final retained = <String>{};
       for (final request in pending) {
         if (!valid()) return;
@@ -223,8 +289,34 @@ class LocalNotificationService {
             payload == 'medication:test') {
           continue;
         }
-        if (wanted.containsKey(payload) && retained.add(payload!)) continue;
-        await _notificationsPlugin.cancel(id: request.id);
+        if (wanted.containsKey(payload) &&
+            !(wanted[payload]!.repeat &&
+                keepOriginalIds.contains(request.id)) &&
+            retained.add(payload!)) {
+          continue;
+        }
+        await _notificationsPlugin.cancel(
+          id: request.id,
+          tag: _medicationRetryTag(payload),
+        );
+      }
+      // Also clear already displayed reminders for completed/cancelled/old doses.
+      for (final notification in active) {
+        if (!valid()) return;
+        if (notification.channelId != medicationChannel.id ||
+            notification.id == null ||
+            notification.id == _testNotificationId) {
+          continue;
+        }
+        final keep = notification.tag?.startsWith('medication:') == true
+            ? keepDoseTags.contains(notification.tag)
+            : keepOriginalIds.contains(notification.id);
+        if (!keep) {
+          await _notificationsPlugin.cancel(
+            id: notification.id!,
+            tag: notification.tag,
+          );
+        }
       }
       for (final entry in wanted.entries) {
         if (!valid()) return;
@@ -233,16 +325,21 @@ class LocalNotificationService {
           continue;
         }
         await _notificationsPlugin.zonedSchedule(
-          id: entry.value.id,
-          title: 'Đến giờ uống thuốc',
-          body: 'Đã đến giờ uống ${entry.value.name}.',
+          id: entry.value.repeat ? allocateRetryId() : entry.value.id,
+          title: entry.value.repeat
+              ? 'Nhắc lại uống thuốc'
+              : 'Đến giờ uống thuốc',
+          body: entry.value.repeat
+              ? 'Chưa có xác nhận uống ${entry.value.name}. Nếu đã uống, hãy xác nhận trong ứng dụng; không uống thêm chỉ vì lời nhắc.'
+              : 'Đã đến giờ uống ${entry.value.name}.',
           scheduledDate: tz.TZDateTime.from(entry.value.at, tz.local),
-          notificationDetails: const NotificationDetails(
+          notificationDetails: NotificationDetails(
             android: AndroidNotificationDetails(
               'medication_reminder_channel',
               'Nhắc uống thuốc',
               channelDescription:
                   'Thông báo nhắc người dùng uống thuốc đúng giờ',
+              tag: entry.value.tag,
               importance: Importance.high,
               priority: Priority.high,
               icon: '@mipmap/ic_launcher',
@@ -269,7 +366,60 @@ class LocalNotificationService {
       for (final request in pending) {
         if (request.payload?.startsWith('medication:') == true &&
             request.payload != 'medication:test') {
-          await _notificationsPlugin.cancel(id: request.id);
+          await _notificationsPlugin.cancel(
+            id: request.id,
+            tag: _medicationRetryTag(request.payload),
+          );
+        }
+      }
+      for (final notification
+          in await _notificationsPlugin.getActiveNotifications()) {
+        if (notification.id != null &&
+            notification.id != _testNotificationId &&
+            notification.channelId == medicationChannel.id) {
+          await _notificationsPlugin.cancel(
+            id: notification.id!,
+            tag: notification.tag,
+          );
+        }
+      }
+    });
+  }
+
+  /// Cancel every pending retry and visible notification after API confirmation.
+  static Future<void> cancelMedicationDoseReminders(
+    int doseId, {
+    required bool Function() isCurrent,
+  }) {
+    if (!isCurrent()) return Future.value();
+    final epoch = ++_medicationEpoch;
+    bool valid() => epoch == _medicationEpoch && isCurrent();
+    bool matches(String? payload) =>
+        payload?.startsWith('medication:') == true &&
+        payload?.split(':').elementAtOrNull(2) == doseId.toString();
+    return _queueMedications(() async {
+      if (!_supportsNotifications || !valid()) return;
+      await initialize();
+      if (!valid()) return;
+      await _notificationsPlugin.cancel(id: 100000 + doseId);
+      for (final request
+          in await _notificationsPlugin.pendingNotificationRequests()) {
+        if (!valid()) return;
+        if (matches(request.payload)) {
+          await _notificationsPlugin.cancel(
+            id: request.id,
+            tag: _medicationRetryTag(request.payload),
+          );
+        }
+      }
+      for (final notification
+          in await _notificationsPlugin.getActiveNotifications()) {
+        if (!valid()) return;
+        if (notification.id != null && matches(notification.tag)) {
+          await _notificationsPlugin.cancel(
+            id: notification.id!,
+            tag: notification.tag,
+          );
         }
       }
     });

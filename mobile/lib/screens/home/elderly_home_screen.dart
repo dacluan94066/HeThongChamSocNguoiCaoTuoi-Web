@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'home_dashboard_ui.dart';
 import '../../theme/care_senior_theme.dart';
 import '../../widgets/care_senior_ui.dart';
 import '../../widgets/draggable_assistant_fab.dart';
@@ -228,66 +229,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _panel(Widget child, {Color color = Colors.white}) =>
       AppCard(color: color, child: child);
 
-  Widget _metricCard(String name, IconData icon) {
+  Widget _metricCard(String name, IconData icon, {required double width}) {
     final metric = _latest(name);
     final abnormal = metric?['laBatThuong'] == true;
     final value = metric == null
-        ? 'Chưa có'
+        ? 'Chưa có dữ liệu'
         : '${_number(metric['giaTri'])}${metric['giaTriPhu'] == null ? '' : '/${_number(metric['giaTriPhu'])}'}';
-    return InkWell(
+    return HomeMetricTile(
+      width: width,
+      name: name,
+      value: value,
+      icon: icon,
+      unit: metric?['donVi']?.toString() ?? '',
+      measuredAt: metric == null
+          ? 'Chưa cập nhật'
+          : _time(metric['thoiGianDo']),
+      status: metric == null
+          ? 'Chưa có dữ liệu'
+          : abnormal
+          ? 'Bất thường'
+          : 'Bình thường',
+      abnormal: abnormal,
+      hasData: metric != null,
       onTap: _openHealth,
-      borderRadius: BorderRadius.circular(18),
-      child: _panel(
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              backgroundColor: CareSeniorColors.mint,
-              child: Icon(icon, color: teal, size: 25),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              name,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.bold,
-                color: teal,
-              ),
-            ),
-            if (metric != null &&
-                (metric['donVi']?.toString().isNotEmpty ?? false))
-              Text(
-                metric['donVi'].toString(),
-                style: const TextStyle(fontSize: 16),
-              ),
-            const SizedBox(height: 7),
-            AppStatusChip(
-              label: metric == null
-                  ? 'Chưa có dữ liệu'
-                  : abnormal
-                  ? 'Bất thường'
-                  : 'Bình thường',
-              color: abnormal ? red : teal,
-              background: abnormal
-                  ? CareSeniorColors.dangerSurface
-                  : CareSeniorColors.mint,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              metric == null ? 'Chưa cập nhật' : _time(metric['thoiGianDo']),
-              style: const TextStyle(
-                fontSize: 14,
-                color: CareSeniorColors.secondaryText,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -319,289 +283,357 @@ class _HomeScreenState extends State<HomeScreen> {
           _loadAppointment(refresh: true),
         ]);
       },
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
-        children: [
-          if (_error != null)
-            _panel(
-              Column(
-                children: [
-                  Text(
-                    _error!,
-                    style: const TextStyle(fontSize: 16, color: red),
-                  ),
-                  TextButton(
-                    onPressed: () => _load(refresh: true),
-                    child: const Text('Thử lại'),
-                  ),
-                ],
-              ),
-            ),
-          _panel(
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: SafeArea(
+        bottom: false,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ListView(
+              // Leave scroll space so the floating shortcut need not cover
+              // the last card's text or actions.
+              padding: const EdgeInsets.only(bottom: 92),
               children: [
-                CircleAvatar(
-                  radius: 27,
-                  backgroundColor: Colors.white,
-                  child: Text(
-                    (ElderlyService.text(_profile, 'hoTen').trim().isEmpty
-                            ? '?'
-                            : ElderlyService.text(
-                                _profile,
-                                'hoTen',
-                              ).trim().substring(0, 1))
-                        .toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 23,
-                      fontWeight: FontWeight.w800,
-                      color: teal,
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: _panel(
+                      Column(
+                        children: [
+                          Text(
+                            _error!,
+                            style: const TextStyle(fontSize: 16, color: red),
+                          ),
+                          TextButton(
+                            onPressed: () => _load(refresh: true),
+                            child: const Text('Thử lại'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                HomeWelcomeHeader(
+                  name: ElderlyService.text(_profile, 'hoTen'),
+                  initial:
+                      (ElderlyService.text(_profile, 'hoTen').trim().isEmpty
+                              ? '?'
+                              : ElderlyService.text(
+                                  _profile,
+                                  'hoTen',
+                                ).trim().substring(0, 1))
+                          .toUpperCase(),
+                  greeting: greeting,
+                  age: ElderlyService.displayAge(_profile),
+                  needsAttention: _needsAttention,
+                  onAlerts: () => setState(() => _tab = 4),
+                  quickActions: HomeQuickActions(
+                    onProfile: () => setState(() => _tab = 5),
+                    onHealth: _openHealth,
+                    onMedication: () => setState(() => _tab = 1),
+                    onSos: () => setState(() => _tab = 3),
+                  ),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        greeting,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: CareSeniorColors.secondaryText,
+                      const AppSectionHeader(title: 'Chỉ số sức khỏe mới nhất'),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Theo dõi tình trạng sức khỏe của bạn',
+                        style: TextStyle(fontSize: 16, color: HomeVisuals.sub),
+                      ),
+                      const SizedBox(height: 16),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final largeText =
+                              MediaQuery.textScalerOf(context).scale(1) > 1.25;
+                          final singleColumn =
+                              largeText || constraints.maxWidth < 310;
+                          final cardWidth = singleColumn
+                              ? constraints.maxWidth
+                              : (constraints.maxWidth - 12) / 2;
+                          final metricCards = [
+                            _metricCard(
+                              'Huyết áp',
+                              Icons.speed_outlined,
+                              width: cardWidth,
+                            ),
+                            _metricCard(
+                              'Đường huyết',
+                              Icons.water_drop_outlined,
+                              width: cardWidth,
+                            ),
+                            _metricCard(
+                              'Nhịp tim',
+                              Icons.monitor_heart_outlined,
+                              width: cardWidth,
+                            ),
+                            _metricCard('SpO2', Icons.air, width: cardWidth),
+                            _metricCard(
+                              'Nhiệt độ',
+                              Icons.thermostat_outlined,
+                              width: cardWidth,
+                            ),
+                            _metricCard(
+                              'Cân nặng',
+                              Icons.monitor_weight_outlined,
+                              width: cardWidth,
+                            ),
+                          ];
+                          if (singleColumn) {
+                            return Column(
+                              children: [
+                                for (final card in metricCards) ...[
+                                  card,
+                                  const SizedBox(height: 12),
+                                ],
+                              ],
+                            );
+                          }
+                          return Column(
+                            children: [
+                              for (
+                                var index = 0;
+                                index < metricCards.length;
+                                index += 2
+                              ) ...[
+                                IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(child: metricCards[index]),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: metricCards[index + 1]),
+                                    ],
+                                  ),
+                                ),
+                                if (index + 2 < metricCards.length)
+                                  const SizedBox(height: 12),
+                              ],
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _openHealth,
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          child: Text(
+                            'Đo & Cập nhật chỉ số mới',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 17),
+                          ),
                         ),
                       ),
-                      Text(
-                        ElderlyService.text(_profile, 'hoTen'),
-                        style: const TextStyle(
-                          fontSize: 23,
-                          fontWeight: FontWeight.w800,
-                          color: CareSeniorColors.text,
+                      const SizedBox(height: 28),
+                      const AppSectionHeader(title: 'Lịch uống thuốc hôm nay'),
+                      const SizedBox(height: 16),
+                      _panel(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              spacing: 12,
+                              runSpacing: 4,
+                              children: [
+                                Text(
+                                  'Đã uống $taken/$total cữ',
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  '${total == 0 ? 0 : (taken / total * 100).round()}%',
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    color: HomeVisuals.brand,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                value: total == 0 ? 0 : taken / total,
+                                minHeight: 10,
+                                color: HomeVisuals.brand,
+                                backgroundColor: CareSeniorColors.mint,
+                              ),
+                            ),
+                            if (_medications.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 18),
+                                child: Text(
+                                  'Chưa có dữ liệu lịch uống thuốc hôm nay.',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              )
+                            else
+                              for (final item in _medications.take(3)) ...[
+                                HomeMedicationPreviewRow(
+                                  name:
+                                      item['tenThuoc']?.toString() ??
+                                      'Chưa có dữ liệu',
+                                  dosage: item['lieuDung']?.toString() ?? '',
+                                  time: _time(
+                                    item['thoiGianDuKien'],
+                                  ).split(' · ').first,
+                                  status: item['trangThai']?.toString() ?? '',
+                                ),
+                                const Divider(height: 1),
+                              ],
+                            const SizedBox(height: 12),
+                            Text(
+                              next == null
+                                  ? 'Không có cữ thuốc tiếp theo hôm nay.'
+                                  : '${_time(next['thoiGianDuKien'])} · ${next['tenThuoc'] ?? 'Thuốc'} · ${next['lieuDung'] ?? ''}',
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                            if (next != null) ...[
+                              const SizedBox(height: 12),
+                              FilledButton(
+                                onPressed: () => _confirmNext(next),
+                                child: const Text(
+                                  'Tôi đã uống cữ này',
+                                  style: TextStyle(fontSize: 17),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: () => setState(() => _tab = 1),
+                              icon: const Icon(Icons.arrow_forward_rounded),
+                              label: const Text(
+                                'Xem lịch thuốc',
+                                style: TextStyle(fontSize: 17),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        ElderlyService.displayAge(_profile),
-                        style: const TextStyle(fontSize: 16),
+                      const SizedBox(height: 24),
+                      HomeSosEntry(onTap: () => setState(() => _tab = 3)),
+                      const SizedBox(height: 24),
+                      _panel(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Lịch khám sắp tới',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            if (_appointmentLoading)
+                              const LinearProgressIndicator(),
+                            if (_appointmentError != null)
+                              Text(
+                                _appointmentError!,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: red,
+                                ),
+                              )
+                            else if (!_appointmentLoading &&
+                                _nextAppointment == null)
+                              const Text(
+                                'Chưa có lịch khám sắp tới.',
+                                style: TextStyle(fontSize: 16),
+                              )
+                            else if (_nextAppointment != null) ...[
+                              Text(
+                                _time(_nextAppointment!['thoiGianKham']),
+                                style: const TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.bold,
+                                  color: teal,
+                                ),
+                              ),
+                              Text(
+                                'Nơi khám: ${_nextAppointment!['tenBenhVien'] ?? _nextAppointment!['noiKham'] ?? 'Chưa cập nhật'}',
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                              if ((_nextAppointment!['lyDoKham']?.toString() ??
+                                      '')
+                                  .isNotEmpty)
+                                Text(
+                                  'Lý do: ${_nextAppointment!['lyDoKham']}',
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                            ],
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _openAppointments,
+                              icon: const Icon(Icons.calendar_month_outlined),
+                              label: const Text(
+                                'Xem tất cả lịch khám',
+                                style: TextStyle(fontSize: 17),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 9),
-                      AppStatusChip(
-                        label: _needsAttention ? 'Cần chú ý' : 'Ổn định',
-                        color: _needsAttention ? red : teal,
-                        background: _needsAttention
-                            ? CareSeniorColors.dangerSurface
-                            : Colors.white,
+
+                      const SizedBox(height: 24),
+                      _panel(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Người chăm sóc của bạn',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            if (_caregivers.isEmpty)
+                              const Text(
+                                'Chưa có người chăm sóc được phân công.',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                            ..._caregivers.map(
+                              (person) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _call(person['soDienThoai']),
+                                  icon: CircleAvatar(
+                                    backgroundColor: const Color(0xffe8f5f4),
+                                    child: Text(
+                                      (person['hoTen']?.toString().trim() ??
+                                              '?')
+                                          .substring(0, 1)
+                                          .toUpperCase(),
+                                    ),
+                                  ),
+                                  label: Text(
+                                    'Gọi ${person['hoTen'] ?? 'người chăm sóc'}',
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-            color: CareSeniorColors.mint,
           ),
-          const SizedBox(height: 16),
-          InkWell(
-            onTap: () => setState(() => _tab = 3),
-            borderRadius: BorderRadius.circular(20),
-            child: _panel(
-              const Row(
-                children: [
-                  Icon(Icons.sos, size: 42, color: red),
-                  SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      'Cần hỗ trợ khẩn cấp?\nMở màn SOS',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: red,
-                      ),
-                    ),
-                  ),
-                  Icon(Icons.arrow_forward_ios, color: red),
-                ],
-              ),
-              color: CareSeniorColors.dangerSurface,
-            ),
-          ),
-          const SizedBox(height: 20),
-          const AppSectionHeader(title: 'Chỉ số sức khỏe mới nhất'),
-          const SizedBox(height: 10),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final metricCards = [
-                _metricCard('Huyết áp', Icons.monitor_heart_outlined),
-                _metricCard('Nhịp tim', Icons.favorite_outline),
-                _metricCard('Đường huyết', Icons.water_drop_outlined),
-                _metricCard('SpO2', Icons.air),
-              ];
-              final largeText =
-                  MediaQuery.textScalerOf(context).scale(1) > 1.25;
-              if (largeText || constraints.maxWidth < 310) {
-                return Column(
-                  children: [
-                    for (final card in metricCards) ...[
-                      card,
-                      const SizedBox(height: 10),
-                    ],
-                  ],
-                );
-              }
-              return GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                mainAxisExtent: 265,
-                children: metricCards,
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 56,
-            child: FilledButton.icon(
-              onPressed: _openHealth,
-              icon: const Icon(Icons.add_circle_outline),
-              label: const Text(
-                'Đo & Cập nhật chỉ số mới',
-                style: TextStyle(fontSize: 17),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          _panel(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Lịch uống thuốc hôm nay',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Đã uống $taken/$total cữ',
-                  style: const TextStyle(fontSize: 17),
-                ),
-                const SizedBox(height: 8),
-                LinearProgressIndicator(
-                  value: total == 0 ? 0 : taken / total,
-                  minHeight: 10,
-                  color: CareSeniorColors.primary,
-                  backgroundColor: CareSeniorColors.border,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  next == null
-                      ? 'Không có cữ thuốc tiếp theo hôm nay.'
-                      : '${_time(next['thoiGianDuKien'])} · ${next['tenThuoc'] ?? 'Thuốc'} · ${next['lieuDung'] ?? ''}',
-                  style: const TextStyle(fontSize: 16),
-                ),
-                if (next != null) ...[
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () => _confirmNext(next),
-                    child: const Text(
-                      'Tôi đã uống cữ này',
-                      style: TextStyle(fontSize: 17),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          _panel(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Lịch khám sắp tới',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                if (_appointmentLoading) const LinearProgressIndicator(),
-                if (_appointmentError != null)
-                  Text(
-                    _appointmentError!,
-                    style: const TextStyle(fontSize: 16, color: red),
-                  )
-                else if (!_appointmentLoading && _nextAppointment == null)
-                  const Text(
-                    'Chưa có lịch khám sắp tới.',
-                    style: TextStyle(fontSize: 16),
-                  )
-                else if (_nextAppointment != null) ...[
-                  Text(
-                    _time(_nextAppointment!['thoiGianKham']),
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                      color: teal,
-                    ),
-                  ),
-                  Text(
-                    'Nơi khám: ${_nextAppointment!['tenBenhVien'] ?? _nextAppointment!['noiKham'] ?? 'Chưa cập nhật'}',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  if ((_nextAppointment!['lyDoKham']?.toString() ?? '')
-                      .isNotEmpty)
-                    Text(
-                      'Lý do: ${_nextAppointment!['lyDoKham']}',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                ],
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: _openAppointments,
-                  icon: const Icon(Icons.calendar_month_outlined),
-                  label: const Text(
-                    'Xem tất cả lịch khám',
-                    style: TextStyle(fontSize: 17),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          _panel(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Người chăm sóc của bạn',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                if (_caregivers.isEmpty)
-                  const Text(
-                    'Chưa có người chăm sóc được phân công.',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ..._caregivers.map(
-                  (person) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: OutlinedButton.icon(
-                      onPressed: () => _call(person['soDienThoai']),
-                      icon: CircleAvatar(
-                        backgroundColor: const Color(0xffe8f5f4),
-                        child: Text(
-                          (person['hoTen']?.toString().trim() ?? '?')
-                              .substring(0, 1)
-                              .toUpperCase(),
-                        ),
-                      ),
-                      label: Text(
-                        'Gọi ${person['hoTen'] ?? 'người chăm sóc'}',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -610,6 +642,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: CareSeniorColors.background,
     body: DraggableAssistantFabHost(
+      compact: _tab == 0,
       visible: _tab <= 2,
       onPressed: _openAssistant,
       child: _tab == 0

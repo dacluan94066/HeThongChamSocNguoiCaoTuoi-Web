@@ -14,11 +14,15 @@ class DraggableAssistantFabHost extends StatefulWidget {
     required this.child,
     required this.onPressed,
     this.visible = true,
+    this.compact = false,
   });
 
   final Widget child;
   final VoidCallback onPressed;
   final bool visible;
+
+  /// Presentation opt-in for Home; other screens keep the existing shortcut.
+  final bool compact;
 
   @override
   State<DraggableAssistantFabHost> createState() =>
@@ -29,7 +33,6 @@ class _DraggableAssistantFabHostState extends State<DraggableAssistantFabHost> {
   static const _sideKey = 'assistant_fab_right_edge';
   static const _heightKey = 'assistant_fab_vertical_fraction';
   static const _hintKey = 'assistant_fab_hint_seen';
-  static const _width = 132.0;
   static const _height = 56.0;
   static const _margin = 12.0;
 
@@ -96,22 +99,43 @@ class _DraggableAssistantFabHostState extends State<DraggableAssistantFabHost> {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      var compactExtent = _height;
+      if (widget.compact) {
+        final painter = TextPainter(
+          text: TextSpan(
+            text: 'AI',
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+              fontSize: 16,
+              height: 1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        for (final extent in [painter.width + 12, painter.height + 20 + 8]) {
+          if (extent > compactExtent) compactExtent = extent.ceilToDouble();
+        }
+        painter.dispose();
+      }
+      final width = widget.compact ? compactExtent : 132.0;
+      final height = widget.compact ? compactExtent : _height;
       final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
       if (!widget.visible ||
           keyboardOpen ||
-          constraints.maxWidth < _width + 24 ||
-          constraints.maxHeight < _height + 24) {
+          constraints.maxWidth < width + 24 ||
+          constraints.maxHeight < height + 24) {
         return widget.child;
       }
 
       final minY = _margin + MediaQuery.paddingOf(context).top;
       final maxY =
           constraints.maxHeight -
-          _height -
+          height -
           _margin -
           MediaQuery.paddingOf(context).bottom;
       if (maxY < minY) return widget.child;
-      final maxX = constraints.maxWidth - _width - _margin;
+      final maxX = constraints.maxWidth - width - _margin;
       final x = (_dragPosition?.dx ?? (_rightEdge ? maxX : _margin)).clamp(
         _margin,
         maxX,
@@ -125,11 +149,11 @@ class _DraggableAssistantFabHostState extends State<DraggableAssistantFabHost> {
           widget.child,
           if (_showHint && constraints.maxWidth >= 235 + _margin * 2)
             Positioned(
-              left: (x + _width - 235).clamp(
+              left: (x + width - 235).clamp(
                 _margin,
                 constraints.maxWidth - 235 - _margin,
               ),
-              top: y >= minY + 72 ? y - 69 : y + _height + 8,
+              top: y >= minY + 72 ? y - 69 : y + height + 8,
               width: 235,
               child: IgnorePointer(
                 child: Material(
@@ -179,7 +203,7 @@ class _DraggableAssistantFabHostState extends State<DraggableAssistantFabHost> {
                   final dropped = _dragPosition ?? Offset(x, y);
                   setState(() {
                     _rightEdge =
-                        dropped.dx + _width / 2 > constraints.maxWidth / 2;
+                        dropped.dx + width / 2 > constraints.maxWidth / 2;
                     _verticalFraction = maxY == minY
                         ? 0
                         : ((dropped.dy - minY) / (maxY - minY)).clamp(0, 1);
@@ -192,33 +216,56 @@ class _DraggableAssistantFabHostState extends State<DraggableAssistantFabHost> {
                   color: CareSeniorColors.deepGreen,
                   borderRadius: BorderRadius.circular(28),
                   elevation: 6,
-                  child: const SizedBox(
-                    width: _width,
-                    height: _height,
-                    child: Row(
-                      children: [
-                        SizedBox(width: 17),
-                        Icon(
-                          Icons.chat_bubble_outline_rounded,
-                          color: Colors.white,
-                          size: 23,
-                        ),
-                        SizedBox(width: 7),
-                        Flexible(
-                          child: Text(
-                            'Hỏi AI',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
+                  child: SizedBox(
+                    width: width,
+                    height: height,
+                    child: widget.compact
+                        ? const Tooltip(
+                            message: 'Hỏi AI · Kéo để di chuyển',
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.chat_bubble_outline_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                Text(
+                                  'AI',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    height: 1,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
+                          )
+                        : const Row(
+                            children: [
+                              SizedBox(width: 17),
+                              Icon(
+                                Icons.chat_bubble_outline_rounded,
+                                color: Colors.white,
+                                size: 23,
+                              ),
+                              SizedBox(width: 7),
+                              Flexible(
+                                child: Text(
+                                  'Hỏi AI',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                            ],
                           ),
-                        ),
-                        SizedBox(width: 12),
-                      ],
-                    ),
                   ),
                 ),
               ),

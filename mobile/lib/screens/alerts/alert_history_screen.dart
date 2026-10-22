@@ -5,7 +5,7 @@ import '../../widgets/care_senior_ui.dart';
 import '../../services/alert_service.dart';
 import '../../services/api_client.dart';
 import '../../widgets/foreground_refresh.dart';
-import '../../widgets/alert_card.dart';
+import 'alerts_dashboard_ui.dart';
 
 class AlertHistoryScreen extends StatefulWidget {
   const AlertHistoryScreen({super.key, this.embedded = false});
@@ -77,7 +77,8 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen>
               onRefresh: () => _load(refresh: true),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
+                key: const ValueKey('alert-history-list'),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 children: [
                   _Summary(count: _alerts.length),
                   const SizedBox(height: 20),
@@ -88,7 +89,12 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen>
                       message: 'Các cảnh báo đã gửi sẽ được lưu tại đây.',
                     )
                   else
-                    ..._alerts.map((alert) => AlertCard(alert: alert)),
+                    ..._alerts.map(
+                      (alert) => AlertHistoryDashboardCard(
+                        key: ValueKey('history-alert-${alert['id']}'),
+                        alert: alert,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -103,7 +109,7 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AppCard(
-    color: CareSeniorColors.dangerSurface,
+    color: CareSeniorColors.mint,
     child: Row(
       children: [
         const CircleAvatar(
@@ -111,7 +117,7 @@ class _Summary extends StatelessWidget {
           backgroundColor: Colors.white,
           child: Icon(
             Icons.notifications_active_rounded,
-            color: CareSeniorColors.danger,
+            color: CareSeniorColors.deepGreen,
             size: 30,
           ),
         ),
@@ -150,7 +156,7 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Padding(
+    child: SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisSize: MainAxisSize.min,

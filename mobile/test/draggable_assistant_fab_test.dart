@@ -13,6 +13,7 @@ void main() {
     Key? hostKey,
     Size size = const Size(360, 740),
     double textScale = 1,
+    bool compact = false,
   }) => MaterialApp(
     home: Scaffold(
       body: MediaQuery(
@@ -27,6 +28,7 @@ void main() {
           key: hostKey,
           onPressed: onPressed,
           visible: visible,
+          compact: compact,
           child: const SizedBox.expand(),
         ),
       ),
@@ -93,4 +95,44 @@ void main() {
     expect(rect.right, lessThanOrEqualTo(size.width));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'Home compact shortcut fits scaled text and retains tap, drag and restore',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 740));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      var taps = 0;
+      final button = find.byKey(const ValueKey('draggable-assistant-fab'));
+      for (final scale in [1.0, 1.2, 1.4, 1.6, 1.8]) {
+        await tester.pumpWidget(
+          app(onPressed: () => taps++, compact: true, textScale: scale),
+        );
+        await tester.pumpAndSettle();
+        final size = tester.getSize(button);
+        expect(size.width, inInclusiveRange(56, 80));
+        expect(size.height, size.width);
+        expect(find.text('AI'), findsOneWidget);
+        expect(find.byTooltip('Hỏi AI · Kéo để di chuyển'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(taps, 1);
+      await tester.drag(button, const Offset(-280, -160));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(button).dx, closeTo(12, 1));
+      expect(taps, 1);
+      await tester.pumpWidget(
+        app(
+          hostKey: const ValueKey('compact-restored'),
+          onPressed: () => taps++,
+          compact: true,
+          textScale: 1.8,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(button).dx, closeTo(12, 1));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

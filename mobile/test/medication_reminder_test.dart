@@ -36,21 +36,21 @@ void main() {
   });
 
   test(
-    'Each dose is one-shot; refresh, status change, and reschedule reconcile alarms',
+    'Each dose has finite one-shot retries; refresh, status and reschedule reconcile',
     () async {
       final first = dose();
       await sync([first]);
-      expect(platform.scheduled, hasLength(1));
+      expect(platform.scheduled, hasLength(12));
       expect(
-        platform.scheduled.single.containsKey('matchDateTimeComponents'),
+        platform.scheduled.first.containsKey('matchDateTimeComponents'),
         isFalse,
       );
-      expect(platform.scheduled.single['id'], 100042);
+      expect(platform.scheduled.first['id'], 100042);
       await sync([first]);
-      expect(platform.scheduled, hasLength(1));
+      expect(platform.scheduled, hasLength(12));
 
       await sync([dose(at: DateTime.now().add(const Duration(days: 2)))]);
-      expect(platform.scheduled, hasLength(2));
+      expect(platform.scheduled, hasLength(24));
       expect(platform.cancelled, contains(100042));
 
       await sync([dose(status: 'DaUong')]);
@@ -65,7 +65,7 @@ void main() {
       await sync(data);
       await sync(data, owner: '2');
       expect(
-        platform.pending.values.single['payload'].toString(),
+        platform.pending.values.first['payload'].toString(),
         startsWith('medication:2:'),
       );
       platform.enabled = false;

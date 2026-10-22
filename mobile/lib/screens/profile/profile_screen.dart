@@ -8,6 +8,7 @@ import '../../services/elderly_service.dart';
 import '../alerts/alert_history_screen.dart';
 import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
+import 'profile_dashboard_ui.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.accountOnly = false});
@@ -79,34 +80,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
-      return const Scaffold(
-        backgroundColor: CareSeniorColors.background,
-        body: Center(
-          child: CircularProgressIndicator(color: CareSeniorColors.primary),
-        ),
-      );
-    }
-
+    if (loading) return const ProfileStatePage(loading: true);
     if (loadError != null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Hồ sơ cá nhân')),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(loadError!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: loadProfile,
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return ProfileStatePage(message: loadError!, onRetry: loadProfile);
     }
-
     if (widget.accountOnly) return _buildAccountProfile();
 
     final name = ElderlyService.text(profile, 'hoTen');
@@ -123,341 +100,213 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: CareSeniorColors.background,
-      appBar: AppBar(
-        backgroundColor: CareSeniorColors.background,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Hồ sơ cá nhân',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
-        child: Column(
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          key: const ValueKey('profile-list'),
+          padding: const EdgeInsets.only(bottom: 32),
           children: [
-            AppCard(
-              color: CareSeniorColors.mint,
+            ProfileIdentityHeader(
+              name: name,
+              role: 'Người cao tuổi',
+              subtitle: '$age • $gender',
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  CircleAvatar(
-                    radius: 46,
-                    backgroundColor: Colors.white,
-                    child: Text(
-                      name.trim().isEmpty
-                          ? '?'
-                          : name.trim().substring(0, 1).toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 38,
-                        fontWeight: FontWeight.bold,
-                        color: CareSeniorColors.deepGreen,
-                      ),
+                  if (profile.isEmpty)
+                    const AppEmptyState(
+                      icon: Icons.person_outline,
+                      title: 'Chưa có dữ liệu hồ sơ',
+                      message:
+                          'Các thông tin chưa có sẽ hiển thị là chưa cập nhật.',
+                    ),
+                  const _SectionTitle('Thông tin cá nhân'),
+                  AppCard(
+                    child: Column(
+                      children: [
+                        ProfileItem(
+                          icon: Icons.badge_outlined,
+                          title: 'Họ và tên',
+                          value: name,
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.cake_outlined,
+                          title: 'Ngày sinh',
+                          value: birthDate,
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.people_outline_rounded,
+                          title: 'Giới tính',
+                          value: gender,
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.phone_outlined,
+                          title: 'Số điện thoại',
+                          value: phone,
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.email_outlined,
+                          title: 'Email',
+                          value: email,
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.location_on_outlined,
+                          title: 'Địa chỉ',
+                          value: address,
+                        ),
+                      ],
                     ),
                   ),
-
-                  const SizedBox(height: 14),
-
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: openEditProfile,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xff21966f),
+                    ),
+                    child: const ProfileButtonLabel(
+                      label: 'Chỉnh sửa hồ sơ',
+                      icon: Icons.edit_outlined,
                     ),
                   ),
-
-                  const SizedBox(height: 5),
-
-                  Text(
-                    '$age • $gender',
-                    style: const TextStyle(fontSize: 16, color: Colors.black54),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 22),
-
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Thông tin cá nhân',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            AppCard(
-              child: Column(
-                children: [
-                  ProfileItem(
-                    icon: Icons.badge_outlined,
-                    title: 'Họ và tên',
-                    value: name,
-                  ),
-
-                  const Divider(height: 24),
-
-                  ProfileItem(
-                    icon: Icons.cake_outlined,
-                    title: 'Ngày sinh',
-                    value: birthDate,
-                  ),
-
-                  const Divider(height: 24),
-
-                  ProfileItem(
-                    icon: Icons.people_outline_rounded,
-                    title: 'Giới tính',
-                    value: gender,
-                  ),
-
-                  const Divider(height: 24),
-
-                  ProfileItem(
-                    icon: Icons.phone_outlined,
-                    title: 'Số điện thoại',
-                    value: phone,
-                  ),
-
-                  const Divider(height: 24),
-
-                  ProfileItem(
-                    icon: Icons.email_outlined,
-                    title: 'Email',
-                    value: email,
-                  ),
-
-                  const Divider(height: 24),
-
-                  ProfileItem(
-                    icon: Icons.location_on_outlined,
-                    title: 'Địa chỉ',
-                    value: address,
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 22),
-
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Thông tin sức khỏe',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            AppCard(
-              child: Column(
-                children: [
-                  ProfileItem(
-                    icon: Icons.bloodtype_outlined,
-                    title: 'Nhóm máu',
-                    value: bloodType,
-                  ),
-
-                  const Divider(height: 24),
-
-                  ProfileItem(
-                    icon: Icons.medical_information_outlined,
-                    title: 'Bệnh nền',
-                    value: benhNen,
-                  ),
-
-                  const Divider(height: 24),
-
-                  ProfileItem(
-                    icon: Icons.healing_outlined,
-                    title: 'Dị ứng',
-                    value: diUng,
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 22),
-
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Người chăm sóc',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            InkWell(
-              borderRadius: BorderRadius.circular(24),
-              child: AppCard(
-                child: Row(
-                  children: [
-                    const CircleAvatar(
-                      radius: 28,
-                      backgroundColor: CareSeniorColors.mint,
-                      child: Icon(
-                        Icons.support_agent_rounded,
-                        color: CareSeniorColors.deepGreen,
-                        size: 30,
-                      ),
+                  const SizedBox(height: 24),
+                  const _SectionTitle('Thông tin sức khỏe'),
+                  AppCard(
+                    child: Column(
+                      children: [
+                        ProfileItem(
+                          icon: Icons.bloodtype_outlined,
+                          title: 'Nhóm máu',
+                          value: bloodType,
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.medical_information_outlined,
+                          title: 'Bệnh nền',
+                          value: benhNen,
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.healing_outlined,
+                          title: 'Dị ứng',
+                          value: diUng,
+                        ),
+                      ],
                     ),
-
-                    const SizedBox(width: 12),
-
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            caregiver,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                  ),
+                  const SizedBox(height: 24),
+                  const _SectionTitle('Người chăm sóc'),
+                  AppCard(
+                    child: ProfileItem(
+                      icon: Icons.support_agent_rounded,
+                      title: 'Người chăm sóc',
+                      value: caregiver,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const _SectionTitle('Tiện ích'),
+                  AppCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        MenuItem(
+                          icon: Icons.history_rounded,
+                          iconColor: CareSeniorColors.danger,
+                          iconBackground: CareSeniorColors.dangerSurface,
+                          title: 'Lịch sử cảnh báo',
+                          subtitle: 'Xem các cảnh báo đã gửi và xử lý',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const AlertHistoryScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1, indent: 20, endIndent: 20),
+                        MenuItem(
+                          icon: Icons.lock_outline_rounded,
+                          iconColor: CareSeniorColors.deepGreen,
+                          iconBackground: CareSeniorColors.mint,
+                          title: 'Đổi mật khẩu',
+                          subtitle: 'Thay đổi mật khẩu đăng nhập',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ChangePasswordScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  OutlinedButton(
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (dialogContext) {
+                          return AlertDialog(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(22),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
+                            title: const Text(
+                              'Đăng xuất',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            content: const Text(
+                              'Bạn có chắc muốn đăng xuất khỏi tài khoản?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.pop(dialogContext);
+                                },
+                                child: const Text('Hủy'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  await AuthService.instance.logout();
 
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Colors.black38,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+                                  if (!context.mounted) return;
 
-            const SizedBox(height: 22),
-
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Tiện ích',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            AppCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  MenuItem(
-                    icon: Icons.history_rounded,
-                    iconColor: CareSeniorColors.danger,
-                    iconBackground: CareSeniorColors.dangerSurface,
-                    title: 'Lịch sử cảnh báo',
-                    subtitle: 'Xem các cảnh báo đã gửi và xử lý',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const AlertHistoryScreen(),
-                        ),
+                                  Navigator.of(context).pushNamedAndRemoveUntil(
+                                    '/login',
+                                    (route) => false,
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: CareSeniorColors.danger,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('ĐĂNG XUẤT'),
+                              ),
+                            ],
+                          );
+                        },
                       );
                     },
-                  ),
-
-                  const Divider(height: 1, indent: 72),
-
-                  MenuItem(
-                    icon: Icons.edit_outlined,
-                    iconColor: CareSeniorColors.deepGreen,
-                    iconBackground: CareSeniorColors.mint,
-                    title: 'Chỉnh sửa hồ sơ',
-                    subtitle: 'Cập nhật thông tin cá nhân',
-                    onTap: openEditProfile,
-                  ),
-
-                  const Divider(height: 1, indent: 72),
-
-                  MenuItem(
-                    icon: Icons.lock_outline_rounded,
-                    iconColor: CareSeniorColors.deepGreen,
-                    iconBackground: CareSeniorColors.mint,
-                    title: 'Đổi mật khẩu',
-                    subtitle: 'Thay đổi mật khẩu đăng nhập',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const ChangePasswordScreen(),
-                        ),
-                      );
-                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: CareSeniorColors.danger,
+                      side: const BorderSide(color: CareSeniorColors.danger),
+                      minimumSize: const Size.fromHeight(56),
+                    ),
+                    child: const ProfileButtonLabel(
+                      icon: Icons.logout_rounded,
+                      label: 'ĐĂNG XUẤT',
+                    ),
                   ),
                 ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (dialogContext) {
-                      return AlertDialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        title: const Text(
-                          'Đăng xuất',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        content: const Text(
-                          'Bạn có chắc muốn đăng xuất khỏi tài khoản?',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
-                            },
-                            child: const Text('Hủy'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () async {
-                              await AuthService.instance.logout();
-
-                              if (!context.mounted) return;
-
-                              Navigator.of(context).pushNamedAndRemoveUntil(
-                                '/login',
-                                (route) => false,
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: CareSeniorColors.danger,
-                              foregroundColor: Colors.white,
-                            ),
-                            child: const Text('ĐĂNG XUẤT'),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text(
-                  'ĐĂNG XUẤT',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: CareSeniorColors.danger,
-                  side: const BorderSide(color: CareSeniorColors.danger),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
               ),
             ),
           ],
@@ -471,189 +320,204 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final username = profile['tenDangNhap']?.toString() ?? 'Chưa cập nhật';
     final email = profile['email']?.toString().trim();
     final phone = profile['soDienThoai']?.toString().trim();
+    final role = switch (profile['tenVaiTro']?.toString()) {
+      'Admin' => 'Quản trị viên',
+      'NguoiChamSoc' => 'Người chăm sóc',
+      'NguoiCaoTuoi' => 'Người cao tuổi',
+      _ => 'Tài khoản',
+    };
     return Scaffold(
       backgroundColor: CareSeniorColors.background,
-      appBar: AppBar(
-        title: const Text(
-          'Hồ sơ cá nhân',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          AppCard(
-            color: CareSeniorColors.mint,
-            child: Column(
-              children: [
-                const CircleAvatar(
-                  radius: 45,
-                  backgroundColor: Colors.white,
-                  child: Icon(
-                    Icons.support_agent_rounded,
-                    size: 48,
-                    color: CareSeniorColors.deepGreen,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  name,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Text('Người chăm sóc'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            elevation: 0,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          key: const ValueKey('profile-list'),
+          padding: const EdgeInsets.only(bottom: 32),
+          children: [
+            ProfileIdentityHeader(name: name, role: role),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ProfileItem(
-                    icon: Icons.account_circle_outlined,
-                    title: 'Tên đăng nhập',
-                    value: username,
+                  if (profile.isEmpty)
+                    const AppEmptyState(
+                      icon: Icons.person_outline,
+                      title: 'Chưa có dữ liệu hồ sơ',
+                      message:
+                          'Các thông tin chưa có sẽ hiển thị là chưa cập nhật.',
+                    ),
+                  const _SectionTitle('Thông tin tài khoản'),
+                  AppCard(
+                    child: Column(
+                      children: [
+                        ProfileItem(
+                          icon: Icons.account_circle_outlined,
+                          title: 'Tên đăng nhập',
+                          value: username,
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.email_outlined,
+                          title: 'Email',
+                          value: email?.isNotEmpty == true
+                              ? email!
+                              : 'Chưa cập nhật',
+                        ),
+                        const Divider(height: 28),
+                        ProfileItem(
+                          icon: Icons.phone_outlined,
+                          title: 'Số điện thoại',
+                          value: phone?.isNotEmpty == true
+                              ? phone!
+                              : 'Chưa cập nhật',
+                        ),
+                      ],
+                    ),
                   ),
-                  const Divider(height: 24),
-                  ProfileItem(
-                    icon: Icons.email_outlined,
-                    title: 'Email',
-                    value: email?.isNotEmpty == true ? email! : 'Chưa cập nhật',
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: openEditProfile,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xff21966f),
+                    ),
+                    child: const ProfileButtonLabel(
+                      label: 'Chỉnh sửa hồ sơ',
+                      icon: Icons.edit_outlined,
+                    ),
                   ),
-                  const Divider(height: 24),
-                  ProfileItem(
-                    icon: Icons.phone_outlined,
-                    title: 'Số điện thoại',
-                    value: phone?.isNotEmpty == true ? phone! : 'Chưa cập nhật',
+                  const SizedBox(height: 24),
+                  AppCard(
+                    padding: EdgeInsets.zero,
+                    child: MenuItem(
+                      icon: Icons.lock_outline_rounded,
+                      iconColor: CareSeniorColors.deepGreen,
+                      iconBackground: CareSeniorColors.mint,
+                      title: 'Đổi mật khẩu',
+                      subtitle: 'Thay đổi mật khẩu đăng nhập',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ChangePasswordScreen(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  OutlinedButton(
+                    onPressed: () async {
+                      await AuthService.instance.logout();
+                      if (!mounted) return;
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        '/login',
+                        (route) => false,
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: CareSeniorColors.danger,
+                      side: const BorderSide(color: CareSeniorColors.danger),
+                      minimumSize: const Size.fromHeight(56),
+                    ),
+                    child: const ProfileButtonLabel(
+                      icon: Icons.logout_rounded,
+                      label: 'ĐĂNG XUẤT',
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Card(
-            elevation: 0,
-            child: Column(
-              children: [
-                MenuItem(
-                  icon: Icons.edit_outlined,
-                  iconColor: CareSeniorColors.deepGreen,
-                  iconBackground: CareSeniorColors.mint,
-                  title: 'Chỉnh sửa hồ sơ',
-                  subtitle: 'Cập nhật thông tin tài khoản',
-                  onTap: openEditProfile,
-                ),
-                const Divider(height: 1, indent: 72),
-                MenuItem(
-                  icon: Icons.lock_outline_rounded,
-                  iconColor: CareSeniorColors.deepGreen,
-                  iconBackground: CareSeniorColors.mint,
-                  title: 'Đổi mật khẩu',
-                  subtitle: 'Thay đổi mật khẩu đăng nhập',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ChangePasswordScreen(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: CareSeniorColors.danger,
-              side: const BorderSide(color: CareSeniorColors.danger),
-              minimumSize: const Size.fromHeight(52),
-            ),
-            onPressed: () async {
-              await AuthService.instance.logout();
-              if (!mounted) return;
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login',
-                (route) => false,
-              );
-            },
-            icon: const Icon(Icons.logout_rounded),
-            label: const Text('ĐĂNG XUẤT'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class ProfileItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String value;
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.label);
+  final String label;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: Text(
+      label,
+      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+    ),
+  );
+}
 
+class ProfileItem extends StatelessWidget {
   const ProfileItem({
     super.key,
     required this.icon,
     required this.title,
     required this.value,
   });
-
+  final IconData icon;
+  final String title, value;
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: const BoxDecoration(
-            color: CareSeniorColors.mint,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, size: 22, color: CareSeniorColors.deepGreen),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final symbol = Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: CareSeniorColors.mint,
+          borderRadius: BorderRadius.circular(16),
         ),
-
-        const SizedBox(width: 12),
-
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: CareSeniorColors.secondaryText,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+        child: Icon(icon, size: 24, color: const Color(0xff21966f)),
+      );
+      final label = Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          color: CareSeniorColors.secondaryText,
         ),
-      ],
-    );
-  }
+      );
+      final text = Text(
+        value,
+        style: const TextStyle(
+          fontSize: 18,
+          height: 1.4,
+          fontWeight: FontWeight.w600,
+        ),
+      );
+      if (constraints.maxWidth < 300 &&
+          MediaQuery.textScalerOf(context).scale(1) > 1.3) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                symbol,
+                const SizedBox(width: 14),
+                Expanded(child: label),
+              ],
+            ),
+            const SizedBox(height: 10),
+            text,
+          ],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          symbol,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [label, const SizedBox(height: 4), text],
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 class MenuItem extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBackground;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
   const MenuItem({
     super.key,
     required this.icon,
@@ -663,52 +527,58 @@ class MenuItem extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
   });
-
+  final IconData icon;
+  final Color iconColor, iconBackground;
+  final String title, subtitle;
+  final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: iconBackground,
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(icon, color: iconColor, size: 24),
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(22),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: iconBackground,
+              borderRadius: BorderRadius.circular(16),
             ),
-
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 16, color: Colors.black54),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    height: 1.4,
+                    color: CareSeniorColors.secondaryText,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-
-            const Icon(Icons.chevron_right_rounded, color: Colors.black38),
-          ],
-        ),
+          ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: CareSeniorColors.secondaryText,
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }

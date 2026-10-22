@@ -10,6 +10,7 @@ import '../../services/caregiver_dashboard_service.dart';
 import '../../widgets/foreground_refresh.dart';
 import '../caregiver/caregiver_elderly_detail_screen.dart';
 import '../alerts/alert_history_screen.dart';
+import '../alerts/alerts_dashboard_ui.dart';
 import '../alerts/emergency_alert_history_screen.dart';
 import '../appointments/appointment_screen.dart';
 import '../medication/medication_screen.dart';
@@ -330,7 +331,8 @@ class _NotificationScreenState extends State<NotificationScreen>
               onRefresh: () => _load(refresh: true),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 30),
+                key: const ValueKey('notification-list'),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                 children: [
                   if (widget.embedded)
                     Align(
@@ -371,14 +373,23 @@ class _NotificationScreenState extends State<NotificationScreen>
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
                       ChoiceChip(
-                        label: const Text('Tất cả'),
+                        label: const Text(
+                          'Tất cả',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        padding: const EdgeInsets.all(12),
                         selected: !_unreadOnly,
                         onSelected: (_) => setState(() => _unreadOnly = false),
                       ),
                       ChoiceChip(
-                        label: Text('Chưa đọc ($_unreadCount)'),
+                        label: Text(
+                          'Chưa đọc ($_unreadCount)',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        padding: const EdgeInsets.all(12),
                         selected: _unreadOnly,
                         onSelected: (_) => setState(() => _unreadOnly = true),
                       ),
@@ -435,57 +446,19 @@ class _NotificationScreenState extends State<NotificationScreen>
         : emergency
         ? CareSeniorColors.dangerSurface
         : CareSeniorColors.mint;
-    return Card(
-      elevation: 0,
-      color: background,
-      margin: const EdgeInsets.only(bottom: 9),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: CareSeniorColors.border),
-      ),
-      child: ListTile(
-        onTap: _markingAll || _reading.isNotEmpty
-            ? null
-            : () => _openNotification(item),
-        leading: CircleAvatar(
-          backgroundColor: color.withValues(alpha: 0.12),
-          child: Icon(_iconFor(type), color: color),
-        ),
-        title: Text(
-          item['tieuDe']?.toString() ?? 'Thông báo',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: read ? FontWeight.w500 : FontWeight.bold,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              item['noiDung']?.toString() ?? '',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _dateTime(item['ngayTao']),
-              style: const TextStyle(
-                fontSize: 14,
-                color: CareSeniorColors.secondaryText,
-              ),
-            ),
-          ],
-        ),
-        trailing: _reading.contains(int.tryParse(item['id']?.toString() ?? ''))
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : read
-            ? null
-            : Icon(Icons.circle, size: 10, color: color),
-      ),
+    return NotificationDashboardCard(
+      key: ValueKey('notification-${item['id']}'),
+      title: item['tieuDe']?.toString() ?? 'Thông báo',
+      content: item['noiDung']?.toString() ?? '',
+      time: _dateTime(item['ngayTao']),
+      read: read,
+      busy: _reading.contains(int.tryParse(item['id']?.toString() ?? '')),
+      color: color,
+      background: background,
+      icon: _iconFor(type),
+      onTap: _markingAll || _reading.isNotEmpty
+          ? null
+          : () => _openNotification(item),
     );
   }
 
@@ -514,13 +487,16 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        FilledButton(onPressed: onRetry, child: const Text('Thử lại')),
-      ],
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: onRetry, child: const Text('Thử lại')),
+        ],
+      ),
     ),
   );
 }

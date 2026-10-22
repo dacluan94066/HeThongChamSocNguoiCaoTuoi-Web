@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 import '../../services/elderly_service.dart';
+import 'profile_dashboard_ui.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key, this.accountOnly = false});
@@ -255,12 +256,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
 
         const SizedBox(height: 8),
 
         TextField(
+          key: ValueKey('profile-field-$label'),
+          style: const TextStyle(fontSize: 18),
+          scrollPadding: const EdgeInsets.all(28),
+          minLines: 1,
+          maxLines:
+              controller == addressController ||
+                  controller == benhNenController ||
+                  controller == diUngController
+              ? 4
+              : 1,
           controller: controller,
           keyboardType: keyboardType,
           inputFormatters: inputFormatters,
@@ -271,14 +282,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             suffixText: suffixText,
             prefixIcon: Icon(icon),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: const Color(0xfff7faf8),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide.none,
+              borderSide: const BorderSide(color: CareSeniorColors.border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide.none,
+              borderSide: const BorderSide(color: CareSeniorColors.border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
@@ -296,278 +307,80 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     if (widget.accountOnly) return _buildAccountEditor();
-    return Scaffold(
-      backgroundColor: CareSeniorColors.background,
-      appBar: AppBar(
-        backgroundColor: CareSeniorColors.background,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Chỉnh sửa hồ sơ',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: loading
+    return ProfileFormPage(
+      title: 'Chỉnh sửa hồ sơ',
+      subtitle: 'Thông tin cá nhân và sức khỏe của bạn',
+      scrollKey: const ValueKey('profile-edit-scroll'),
+      child: loading
           ? const Center(
               child: CircularProgressIndicator(
                 color: CareSeniorColors.deepGreen,
               ),
             )
           : loadError != null
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(loadError!, textAlign: TextAlign.center),
-                  ElevatedButton(
-                    onPressed: loadProfile,
-                    child: const Text('Thử lại'),
-                  ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        const CircleAvatar(
-                          radius: 52,
-                          backgroundColor: Color(0xffe8f8ee),
-                          child: Icon(
-                            Icons.person_rounded,
-                            size: 62,
-                            color: CareSeniorColors.deepGreen,
-                          ),
-                        ),
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: const BoxDecoration(
-                            color: CareSeniorColors.deepGreen,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.camera_alt_outlined,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 26),
-
-                  const Text(
-                    'Thông tin cá nhân',
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  buildTextField(
-                    label: 'Họ và tên',
-                    controller: nameController,
-                    icon: Icons.badge_outlined,
-                    hint: 'Nhập họ và tên',
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  buildTextField(
-                    label: 'Ngày sinh',
-                    controller: birthController,
-                    icon: Icons.cake_outlined,
-                    readOnly: true,
-                    onTap: selectBirthDate,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  const Text(
-                    'Giới tính',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  DropdownButtonFormField<String>(
-                    initialValue: gender,
-                    items: const [
-                      DropdownMenuItem(value: 'Nam', child: Text('Nam')),
-                      DropdownMenuItem(value: 'Nữ', child: Text('Nữ')),
-                      DropdownMenuItem(value: 'Khác', child: Text('Khác')),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) {
-                        return;
-                      }
-
-                      setState(() {
-                        gender = value;
-                      });
-                    },
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.people_outline_rounded),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  buildTextField(
-                    label: 'Số điện thoại',
-                    controller: phoneController,
-                    icon: Icons.phone_outlined,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(10),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  buildTextField(
-                    label: 'Email dùng để khôi phục mật khẩu',
-                    controller: emailController,
-                    icon: Icons.email_outlined,
-                    hint: 'Nhập địa chỉ email',
-                    keyboardType: TextInputType.emailAddress,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  buildTextField(
-                    label: 'Địa chỉ',
-                    controller: addressController,
-                    icon: Icons.location_on_outlined,
-                  ),
-
-                  const SizedBox(height: 26),
-
-                  const Text(
-                    'Thông tin sức khỏe',
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  buildTextField(
-                    label: 'Nhóm máu',
-                    controller: bloodTypeController,
-                    icon: Icons.bloodtype_outlined,
-                    hint: 'Ví dụ: O+',
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  buildTextField(
-                    label: 'Bệnh nền',
-                    controller: benhNenController,
-                    icon: Icons.medical_information_outlined,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  buildTextField(
-                    label: 'Dị ứng',
-                    controller: diUngController,
-                    icon: Icons.healing_outlined,
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton.icon(
-                      onPressed: saving ? null : saveProfile,
-                      icon: saving
-                          ? const SizedBox(
-                              width: 19,
-                              height: 19,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.save_outlined),
-                      label: Text(
-                        saving ? 'ĐANG LƯU...' : 'LƯU THAY ĐỔI',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: CareSeniorColors.deepGreen,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xff7db5a8),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-    );
-  }
-
-  Widget _buildAccountEditor() {
-    return Scaffold(
-      backgroundColor: CareSeniorColors.background,
-      appBar: AppBar(
-        title: const Text(
-          'Chỉnh sửa hồ sơ',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : loadError != null
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(loadError!, textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: loadProfile,
-                    child: const Text('Thử lại'),
-                  ),
-                ],
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.all(18),
+          ? _editorError()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const Text(
+                  'Thông tin cá nhân',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 20),
                 buildTextField(
                   label: 'Họ và tên',
                   controller: nameController,
                   icon: Icons.badge_outlined,
+                  hint: 'Nhập họ và tên',
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 buildTextField(
-                  label: 'Email',
-                  controller: emailController,
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
+                  label: 'Ngày sinh',
+                  controller: birthController,
+                  icon: Icons.cake_outlined,
+                  readOnly: true,
+                  onTap: selectBirthDate,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
+                const Text(
+                  'Giới tính',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  key: const ValueKey('profile-gender'),
+                  initialValue: gender,
+                  isExpanded: true,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    color: CareSeniorColors.text,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Nam', child: Text('Nam')),
+                    DropdownMenuItem(value: 'Nữ', child: Text('Nữ')),
+                    DropdownMenuItem(value: 'Khác', child: Text('Khác')),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() {
+                      gender = value;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.people_outline_rounded),
+                    filled: true,
+                    fillColor: const Color(0xfff7faf8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(
+                        color: CareSeniorColors.border,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
                 buildTextField(
                   label: 'Số điện thoại',
                   controller: phoneController,
@@ -578,24 +391,140 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     LengthLimitingTextInputFormatter(10),
                   ],
                 ),
-                const SizedBox(height: 28),
-                FilledButton.icon(
+                const SizedBox(height: 18),
+                buildTextField(
+                  label: 'Email dùng để khôi phục mật khẩu',
+                  controller: emailController,
+                  icon: Icons.email_outlined,
+                  hint: 'Nhập địa chỉ email',
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 18),
+                buildTextField(
+                  label: 'Địa chỉ',
+                  controller: addressController,
+                  icon: Icons.location_on_outlined,
+                ),
+                const SizedBox(height: 26),
+                const Text(
+                  'Thông tin sức khỏe',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 20),
+                buildTextField(
+                  label: 'Nhóm máu',
+                  controller: bloodTypeController,
+                  icon: Icons.bloodtype_outlined,
+                  hint: 'Ví dụ: O+',
+                ),
+                const SizedBox(height: 18),
+                buildTextField(
+                  label: 'Bệnh nền',
+                  controller: benhNenController,
+                  icon: Icons.medical_information_outlined,
+                ),
+                const SizedBox(height: 18),
+                buildTextField(
+                  label: 'Dị ứng',
+                  controller: diUngController,
+                  icon: Icons.healing_outlined,
+                ),
+                const SizedBox(height: 26),
+                FilledButton(
                   onPressed: saving ? null : saveProfile,
                   style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    backgroundColor: CareSeniorColors.deepGreen,
+                    backgroundColor: const Color(0xff21966f),
                   ),
-                  icon: saving
-                      ? const SizedBox(
-                          width: 19,
-                          height: 19,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.save_outlined),
-                  label: Text(saving ? 'ĐANG LƯU...' : 'LƯU THAY ĐỔI'),
+                  child: ProfileButtonLabel(
+                    label: saving ? 'ĐANG LƯU...' : 'LƯU THAY ĐỔI',
+                    icon: Icons.save_outlined,
+                    busy: saving,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () => Navigator.maybePop(context),
+                  child: const ProfileButtonLabel(label: 'Hủy'),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _editorError() => Column(
+    children: [
+      const Icon(
+        Icons.info_outline_rounded,
+        color: CareSeniorColors.deepGreen,
+        size: 44,
+      ),
+      const SizedBox(height: 16),
+      Text(
+        loadError!,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 17),
+      ),
+      const SizedBox(height: 16),
+      FilledButton(onPressed: loadProfile, child: const Text('Thử lại')),
+    ],
+  );
+
+  Widget _buildAccountEditor() {
+    return ProfileFormPage(
+      title: 'Chỉnh sửa hồ sơ',
+      subtitle: 'Cập nhật thông tin tài khoản của bạn',
+      scrollKey: const ValueKey('profile-edit-scroll'),
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : loadError != null
+          ? _editorError()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Thông tin tài khoản',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 20),
+                buildTextField(
+                  label: 'Họ và tên',
+                  controller: nameController,
+                  icon: Icons.badge_outlined,
+                ),
+                const SizedBox(height: 18),
+                buildTextField(
+                  label: 'Email',
+                  controller: emailController,
+                  icon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 18),
+                buildTextField(
+                  label: 'Số điện thoại',
+                  controller: phoneController,
+                  icon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                ),
+                const SizedBox(height: 26),
+                FilledButton(
+                  onPressed: saving ? null : saveProfile,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xff21966f),
+                  ),
+                  child: ProfileButtonLabel(
+                    label: saving ? 'ĐANG LƯU...' : 'LƯU THAY ĐỔI',
+                    icon: Icons.save_outlined,
+                    busy: saving,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () => Navigator.maybePop(context),
+                  child: const ProfileButtonLabel(label: 'Hủy'),
                 ),
               ],
             ),

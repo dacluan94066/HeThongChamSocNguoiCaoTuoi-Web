@@ -167,6 +167,12 @@ const MedicationSchedulePage = () => {
   const [detailRecord, setDetailRecord] = useState(null);
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
   const [prescriptionForm] = Form.useForm();
+  const [displayNow, setDisplayNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setDisplayNow(new Date()), 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     Promise.all([getElders(), getMedications()]).then(([elderlyList, medicationList]) => {
@@ -206,8 +212,8 @@ const MedicationSchedulePage = () => {
 
   const todaySchedules = useMemo(() => schedules.filter((schedule) => {
     const time = getScheduleTime(schedule);
-    return time?.isSame(dayjs(), 'day');
-  }), [schedules]);
+    return time?.isSame(dayjs(displayNow), 'day');
+  }), [schedules, displayNow]);
 
   const kpis = useMemo(() => {
     const total = todaySchedules.length;
@@ -216,7 +222,7 @@ const MedicationSchedulePage = () => {
       ['BO_LO', 'TU_CHOI'].includes(item.trangThaiHom_nay)
     )).length;
     const upcoming = todaySchedules.filter((item) => item.trangThaiHom_nay === 'CHUA_DEN_GIO'
-      && getScheduleTime(item)?.isAfter(dayjs())).length;
+      && getScheduleTime(item)?.isAfter(dayjs(displayNow))).length;
     return {
       total,
       taken,
@@ -224,7 +230,7 @@ const MedicationSchedulePage = () => {
       upcoming,
       completionRate: total ? Math.round((taken / total) * 100) : 0,
     };
-  }, [todaySchedules]);
+  }, [todaySchedules, displayNow]);
 
   const filteredSchedules = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase('vi');
@@ -359,7 +365,7 @@ const MedicationSchedulePage = () => {
     },
     {
       title: 'Trạng thái', dataIndex: 'trangThaiHom_nay', key: 'trangThai', width: 145,
-      render: (value) => <StatusTag {...getMedStatusMap(value || 'CHUA_DEN_GIO')} />,
+      render: (value, record) => <StatusTag {...getMedStatusMap(value || 'CHUA_DEN_GIO', record.thoiGianDuKien, displayNow)} />,
     },
     {
       title: 'Người xác nhận', dataIndex: 'nguoiXacNhanTen', key: 'nguoiXacNhanTen', width: 180,
@@ -495,7 +501,7 @@ const MedicationSchedulePage = () => {
               value={filterStatus || undefined}
               onChange={(value) => setFilterStatus(value || '')}
             >
-              <Option value="CHUA_DEN_GIO">Chưa đến giờ</Option>
+              <Option value="CHUA_DEN_GIO">Chưa xác nhận uống</Option>
               <Option value="DA_UONG">Đã uống</Option>
               <Option value="BO_LO">Bỏ lỡ</Option>
               <Option value="TU_CHOI">Từ chối</Option>
@@ -544,7 +550,7 @@ const MedicationSchedulePage = () => {
           { label: 'Thuốc', key: 'tenThuoc' },
           { label: 'Liều dùng', key: 'lieuDung' },
           { label: 'Thời gian dự kiến', key: 'thoiGianDuKien', render: (value) => value ? dayjs(value).format('HH:mm DD/MM/YYYY') : '—' },
-          { label: 'Trạng thái', key: 'trangThaiHom_nay', render: (value) => <StatusTag {...getMedStatusMap(value)} /> },
+          { label: 'Trạng thái', key: 'trangThaiHom_nay', render: (value, record) => <StatusTag {...getMedStatusMap(value, record.thoiGianDuKien, displayNow)} /> },
           ...(hasConfirmerData ? [
             { label: 'Người xác nhận', key: 'nguoiXacNhanTen' },
             { label: 'Thời gian thực tế', key: 'thoiGianThucTe', render: (value) => value ? dayjs(value).format('HH:mm DD/MM/YYYY') : '—' },
