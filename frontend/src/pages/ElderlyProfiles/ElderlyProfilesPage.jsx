@@ -1,17 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Button, Col, DatePicker, Form, Input, message, Modal,
-  Row, Select, Space, Spin, Tag,
+  Button, Form, Input, message, Modal, Select, Space, Spin, Tag,
 } from 'antd';
 import {
   CheckCircleOutlined, EditOutlined, EyeOutlined, HeartOutlined, IdcardOutlined,
-  MedicineBoxOutlined, PhoneOutlined, PlusOutlined, SearchOutlined, StopOutlined,
+  KeyOutlined, MedicineBoxOutlined, PhoneOutlined, PlusOutlined, SearchOutlined, StopOutlined,
   UserAddOutlined, UsergroupAddOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
-  assignElderCaregiver, createElder, getElderById, getElders, updateElder,
+  assignElderCaregiver, getElderById, getElders, resetElderMobilePassword, updateElder,
 } from '../../services/elderlyService';
 import { getCaregiverById, getCaregivers } from '../../services/caregiverService';
 import { getPrescriptions } from '../../services/scheduleService';
@@ -23,6 +22,8 @@ import usePermission from '../../hooks/usePermission';
 import { useAuth } from '../../context/AuthContext';
 import ModalForm, { FormSection } from '../../components/ModalForm';
 import { formatEntityCode } from '../../utils/displayUtils';
+import { mobilePasswordRules } from '../../utils/accountFormRules';
+import { ElderlyPersonalFields, ElderlyHealthFields } from '../../components/ElderlyProfileFields';
 
 const ElderlyProfilesPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -30,9 +31,9 @@ const ElderlyProfilesPage = () => {
   const { hasPermission } = usePermission();
   const { user } = useAuth();
   const isCaregiver = user?.tenVaiTro === 'NguoiChamSoc';
-  const canCreate = hasPermission('QLHOSONCT', 'them');
   const canEdit = hasPermission('QLHOSONCT', 'sua');
   const canAssign = user?.tenVaiTro === 'QuanTriVien' && canEdit;
+  const canResetPassword = user?.tenVaiTro === 'QuanTriVien' && canEdit;
   const [elders, setElders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -47,6 +48,9 @@ const ElderlyProfilesPage = () => {
   const [assigningElder, setAssigningElder] = useState(null);
   const [caregivers, setCaregivers] = useState([]);
   const [assignSaving, setAssignSaving] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetSaving, setResetSaving] = useState(false);
+  const [resetForm] = Form.useForm();
   const [form] = Form.useForm();
   const [assignForm] = Form.useForm();
 
@@ -138,19 +142,14 @@ const ElderlyProfilesPage = () => {
     }
   };
 
-  const handleAdd = () => {
-    setEditing(null);
-    form.resetFields();
-    form.setFieldValue('trangThai', 'DangTheoDoi');
-    setModalOpen(true);
-  };
-
   const handleEdit = (record) => {
     setEditing(record);
+    form.resetFields();
     form.setFieldsValue({
       ...record,
       ngaySinh: record.ngaySinh ? dayjs(record.ngaySinh) : null,
       diaChi: record.diaChiThuongTru,
+      cccd: record.cmnd,
       benhNen: (record.benhNen || []).join(', '),
       diUng: (record.diUng || []).join(', '),
     });
@@ -158,6 +157,7 @@ const ElderlyProfilesPage = () => {
   };
 
   const handleSave = async (values) => {
+    if (!editing || !canEdit) return;
     setSaving(true);
     try {
       const payload = {
@@ -166,16 +166,13 @@ const ElderlyProfilesPage = () => {
         benhNen: values.benhNen?.split(',').map((item) => item.trim()).filter(Boolean) || [],
         diUng: values.diUng?.split(',').map((item) => item.trim()).filter(Boolean) || [],
       };
-      if (editing) {
-        await updateElder(editing.id, payload);
-        message.success('Cập nhật hồ sơ thành công');
-      } else {
-        await createElder(payload);
-        message.success('Thêm hồ sơ người cao tuổi thành công');
-      }
+      await updateElder(editing.id, payload);
+      message.success('Cập nhật hồ sơ thành công');
       setModalOpen(false);
       form.resetFields();
       await loadElders();
+    } catch (error) {
+      if (!error.config) message.error(error.message || 'Không thể lưu hồ sơ. Vui lòng thử lại.');
     } finally {
       setSaving(false);
     }
@@ -189,6 +186,30 @@ const ElderlyProfilesPage = () => {
       setCaregivers(await getCaregivers());
     } catch {
       setCaregivers([]);
+    }
+  };
+
+  const openResetPassword = (record) => {
+    if (!canResetPassword || !record?.userId) return;
+    resetForm.resetFields();
+    setResetTarget(record);
+  };
+
+  const handleResetPassword = async ({ matKhauMoi }) => {
+    if (!canResetPassword || !resetTarget?.userId) return;
+    setResetSaving(true);
+    try {
+      await resetElderMobilePassword(resetTarget.id, matKhauMoi);
+      message.success('Đã đặt lại mật khẩu Mobile. Hãy bàn giao mật khẩu mới riêng cho NCT.');
+      resetForm.resetFields();
+      setResetTarget(null);
+    } catch (error) {
+      if (error.response?.data?.errorCode === 'INVALID_PASSWORD') {
+        resetForm.setFields([{ name: 'matKhauMoi', errors: [error.response.data.message] }]);
+      }
+      if (!error.config) message.error(error.message || 'Không thể đặt lại mật khẩu. Vui lòng thử lại.');
+    } finally {
+      setResetSaving(false);
     }
   };
 
@@ -305,11 +326,8 @@ const ElderlyProfilesPage = () => {
           <h1>{isCaregiver ? 'Người cao tuổi tôi chăm sóc' : 'Hồ sơ người cao tuổi'}</h1>
           <p>{isCaregiver
             ? 'Chỉ hiển thị hồ sơ đang được phân công cho tài khoản của bạn.'
-            : 'Quản lý thông tin hành chính, liên hệ và hồ sơ y tế của người cao tuổi.'}</p>
+            : 'Quản lý hồ sơ và phân công chăm sóc. Thêm NCT mới tại Người dùng & Phân quyền để tạo đồng thời tài khoản Mobile.'}</p>
         </div>
-        {canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={handleAdd}>Thêm hồ sơ</Button>
-        )}
       </section>
 
       <section className="elderly-kpi-grid" aria-label="Thống kê hồ sơ người cao tuổi">
@@ -370,7 +388,6 @@ const ElderlyProfilesPage = () => {
         emptyDescription={isCaregiver
           ? 'Bạn chưa được phân công chăm sóc người cao tuổi nào'
           : 'Chưa có hồ sơ người cao tuổi'}
-        emptyAction={canCreate && <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>Thêm hồ sơ mới</Button>}
       />
 
       <Modal
@@ -381,6 +398,11 @@ const ElderlyProfilesPage = () => {
         footer={(
           <div className="elderly-detail-footer">
             <Button onClick={() => setDetailOpen(false)}>Đóng</Button>
+            {canResetPassword && selected?.userId && (
+              <Button icon={<KeyOutlined />} disabled={detailLoading} onClick={() => openResetPassword(selected)}>
+                Đặt lại mật khẩu Mobile
+              </Button>
+            )}
             {canEdit && selected && (
               <Button
                 type="primary"
@@ -426,6 +448,9 @@ const ElderlyProfilesPage = () => {
                     <div><dt>Giới tính</dt><dd>{selected.gioiTinh || 'Chưa cập nhật'}</dd></div>
                     <div><dt>CCCD</dt><dd>{selected.cmnd || 'Chưa cập nhật'}</dd></div>
                     <div><dt>Số điện thoại</dt><dd>{selected.soDienThoai || 'Chưa cập nhật'}</dd></div>
+                    <div><dt>Tài khoản Mobile</dt><dd>{selected.userId ? 'Đã có tài khoản' : 'Chưa có tài khoản'}</dd></div>
+                    {selected.userId && <div><dt>Tên đăng nhập</dt><dd>{selected.tenDangNhap || 'Chưa cập nhật'}</dd></div>}
+                    {selected.email && <div><dt>Email</dt><dd>{selected.email}</dd></div>}
                     <div><dt>Địa chỉ</dt><dd>{selected.diaChiThuongTru || 'Chưa cập nhật'}</dd></div>
                   </dl>
                 </div>
@@ -499,31 +524,56 @@ const ElderlyProfilesPage = () => {
       </Modal>
 
       <ModalForm
-        title={editing ? 'Chỉnh sửa hồ sơ người cao tuổi' : 'Thêm hồ sơ người cao tuổi'}
+        title="Chỉnh sửa hồ sơ người cao tuổi"
         subtitle="Thông tin cá nhân và tình trạng sức khỏe cơ bản"
         icon={<HeartOutlined />}
-        mode={editing ? 'edit' : 'create'}
+        mode="edit"
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onFinish={handleSave}
         loading={saving}
         form={form}
       >
-        <FormSection title="Thông tin cá nhân" description="Thông tin nhận diện cơ bản của người cao tuổi">
-          <Row gutter={18}>
-            <Col xs={24} md={12}><Form.Item name="hoTen" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }]}><Input placeholder="VD: Nguyễn Văn An" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="ngaySinh" label="Ngày sinh" rules={[{ required: true, message: 'Vui lòng chọn ngày sinh' }]}><DatePicker format="DD/MM/YYYY" placeholder="Chọn ngày sinh" style={{ width: '100%' }} /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="gioiTinh" label="Giới tính" rules={[{ required: true, message: 'Vui lòng chọn giới tính' }]}><Select placeholder="Chọn giới tính" options={[{ value: 'Nam' }, { value: 'Nữ' }, { value: 'Khác' }]} /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="cccd" label="CCCD" rules={[{ pattern: /^[0-9]{9,12}$/, message: 'CCCD phải gồm 9–12 chữ số' }]}><Input placeholder="VD: 079123456789" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại" rules={[{ pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' }]}><Input placeholder="VD: 0901234567" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="trangThai" label="Trạng thái"><Select options={[{ value: 'DangTheoDoi', label: 'Đang theo dõi' }, { value: 'NgungTheoDoi', label: 'Ngừng theo dõi' }]} /></Form.Item></Col>
-          </Row>
-          <Form.Item name="diaChi" label="Địa chỉ thường trú"><Input placeholder="Nhập số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" /></Form.Item>
-        </FormSection>
-        <FormSection title="Thông tin sức khỏe" description="Nhóm máu, bệnh nền và dị ứng cần lưu ý">
-          <Row gutter={18}><Col xs={24} md={12}><Form.Item name="nhomMau" label="Nhóm máu"><Select placeholder="Chọn nhóm máu" allowClear options={['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((value) => ({ value }))} /></Form.Item></Col></Row>
-          <Form.Item name="benhNen" label="Bệnh nền"><Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="VD: Tăng huyết áp, tiểu đường (phân cách bằng dấu phẩy)" /></Form.Item>
-          <Form.Item name="diUng" label="Dị ứng"><Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="VD: Penicillin, hải sản (phân cách bằng dấu phẩy)" /></Form.Item>
+        <ElderlyPersonalFields showStatus />
+        {editing && canResetPassword && (
+          <FormSection title="Tài khoản đăng nhập Mobile" description="Đặt lại mật khẩu là thao tác riêng, không cần lưu thay đổi hồ sơ.">
+            {editing.userId ? (
+              <>
+                <p>Tên đăng nhập: <strong>{editing.tenDangNhap || 'Chưa cập nhật'}</strong></p>
+                <Button icon={<KeyOutlined />} disabled={saving} onClick={() => openResetPassword(editing)}>
+                  Đặt lại mật khẩu Mobile
+                </Button>
+              </>
+            ) : <p>Hồ sơ chưa có tài khoản Mobile nên chưa thể đặt lại mật khẩu.</p>}
+          </FormSection>
+        )}
+        <ElderlyHealthFields />
+      </ModalForm>
+
+      <ModalForm
+        title="Đặt lại mật khẩu Mobile"
+        subtitle={resetTarget ? `Tài khoản của ${resetTarget.hoTen}` : ''}
+        icon={<KeyOutlined />}
+        open={Boolean(resetTarget)}
+        onCancel={() => { resetForm.resetFields(); setResetTarget(null); }}
+        onFinish={handleResetPassword}
+        loading={resetSaving}
+        form={resetForm}
+        width={560}
+        mode="edit"
+        saveLabel="Đặt lại mật khẩu"
+      >
+        <FormSection title="Mật khẩu mới" description="Mật khẩu cũ sẽ không còn đăng nhập được. Tài khoản và thông tin hồ sơ vẫn giữ nguyên.">
+          <Form.Item name="matKhauMoi" label="Mật khẩu Mobile mới" rules={mobilePasswordRules}>
+            <Input.Password autoComplete="new-password" maxLength={72} placeholder="Nhập ít nhất 6 ký tự" />
+          </Form.Item>
+          <Form.Item name="xacNhanMatKhauMoi" label="Nhập lại mật khẩu mới" dependencies={['matKhauMoi']}
+            rules={[{ required: true, message: 'Vui lòng nhập lại mật khẩu mới' },
+              ({ getFieldValue }) => ({ validator: (_, value) => !value || value === getFieldValue('matKhauMoi')
+                ? Promise.resolve() : Promise.reject(new Error('Mật khẩu nhập lại chưa khớp')) })]}>
+            <Input.Password autoComplete="new-password" maxLength={72} placeholder="Nhập lại mật khẩu mới" />
+          </Form.Item>
+          <p>Chỉ Admin được thực hiện. Mã OTP khôi phục mật khẩu cũ sẽ hết hiệu lực; hãy bàn giao mật khẩu mới riêng cho NCT.</p>
         </FormSection>
       </ModalForm>
 

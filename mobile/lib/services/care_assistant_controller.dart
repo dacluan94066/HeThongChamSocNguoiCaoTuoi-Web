@@ -1,18 +1,35 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/care_assistant.dart';
+import '../models/assistant_conversation.dart';
 import 'api_client.dart';
+import 'care_assistant_history_store.dart';
 import 'care_assistant_service.dart';
 
 class CareAssistantController extends ChangeNotifier {
   CareAssistantController({
     CareAssistantService? service,
     ValueListenable<int>? session,
+    CareAssistantHistoryStore? historyStore,
   }) : _service = service ?? CareAssistantService(),
+       _historyStore = historyStore ?? CareAssistantHistoryStore(),
        _session = session ?? ApiClient.sessionChanges {
     _session.addListener(_sessionChanged);
   }
   final CareAssistantService _service;
   final ValueListenable<int> _session;
+  final CareAssistantHistoryStore _historyStore;
+  final List<AssistantConversation> _conversations = [];
+  String? _accountId;
+  String? _storageScope;
+  String? _activeConversationId;
+  DateTime? _tokenSavedAt;
+  bool _storageReady = false;
+  String? storageNotice;
+  String? get activeConversationId => _activeConversationId;
+  List<AssistantConversation> get conversations => List.unmodifiable(
+    [..._conversations]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)),
+  );
   final List<AssistantMessage> _messages = [];
   final List<AssistantHistoryTurn> _history = [];
   String? _conversationToken;
@@ -40,6 +57,13 @@ class CareAssistantController extends ChangeNotifier {
     _messages.clear();
     _history.clear();
     _conversationToken = null;
+    _tokenSavedAt = null;
+    _conversations.clear();
+    _activeConversationId = null;
+    _storageScope = null;
+    _accountId = null;
+    _storageReady = false;
+    storageNotice = null;
     latestReply = null;
     aiConfigured = false;
     profiles = const [];
@@ -68,6 +92,8 @@ class CareAssistantController extends ChangeNotifier {
       aiConfigured = context.aiConfigured;
       profiles = context.profiles;
       selected = profiles.length == 1 ? profiles.first : null;
+      _accountId = context.accountId;
+      await _restoreConversations(generation, version);
     } catch (e) {
       if (_disposed || generation != _generation || version != _session.value) {
         return;
@@ -94,18 +120,213 @@ class CareAssistantController extends ChangeNotifier {
     _messages.clear();
     _history.clear();
     _conversationToken = null;
+    _tokenSavedAt = null;
+    _conversations.clear();
+    _activeConversationId = null;
+    _storageScope = null;
+    _storageReady = false;
+    storageNotice = null;
     latestReply = null;
     error = null;
+    if (_accountId != null) {
+      final generation = _generation;
+      initializing = true;
+      unawaited(
+        _restoreConversations(generation, _session.value).whenComplete(() {
+          if (!_disposed && !sessionExpired && generation == _generation) {
+            initializing = false;
+            notifyListeners();
+          }
+        }),
+      );
+    }
     notifyListeners();
   }
 
-  void clearConversation() {
-    if (busy || sessionExpired) return;
+  Future<void> _restoreConversations(int generation, int version) async {
+    final account = _accountId;
+    if (account == null) {
+      return; // Injected/legacy contexts have no persistent identity.
+    }
+    final scope = CareAssistantHistoryStore.scope(account, selected?.id);
+    _storageScope = scope;
+    try {
+      final archive = await _historyStore.load(scope);
+      if (_disposed || generation != _generation || version != _session.value) {
+        return;
+      }
+      _conversations
+        ..clear()
+        ..addAll(archive.conversations);
+      _activeConversationId = archive.activeId;
+      _storageReady = true;
+      for (final conversation in _conversations) {
+        if (conversation.id == archive.activeId) {
+          _showConversation(conversation);
+        }
+      }
+    } catch (_) {
+      if (_disposed || generation != _generation || version != _session.value) {
+        return;
+      }
+      _storageReady = false; // Do not overwrite an unreadable archive.
+      storageNotice =
+          'Không đọc được lịch sử trên điện thoại. Chat tạm thời chưa được lưu; lịch sử cũ không bị ghi đè.';
+    }
+  }
+
+  void _showConversation(AssistantConversation conversation) {
+    _messages
+      ..clear()
+      ..addAll(conversation.messages);
+    _history
+      ..clear()
+      ..addAll(conversation.history);
+    _conversationToken = null;
+    _tokenSavedAt = null;
+    final savedAt = conversation.tokenSavedAt;
+    // Server-signed context expires after 30 minutes. Never replay an old token.
+    if (savedAt != null &&
+        !savedAt.isAfter(DateTime.now()) &&
+        DateTime.now().difference(savedAt) < const Duration(minutes: 25)) {
+      _conversationToken = conversation.conversationToken;
+      _tokenSavedAt = savedAt;
+    }
+    latestReply = null;
+    for (final message in _messages.reversed) {
+      if (message.reply != null) {
+        latestReply = message.reply;
+        break;
+      }
+    }
+    if (_messages.isNotEmpty && _messages.last.fromUser) {
+      _messages.add(
+        AssistantMessage(
+          text: 'Lượt trả lời trước bị gián đoạn. Bạn có thể nhấn thử lại.',
+          fromUser: false,
+          isError: true,
+          retryQuestion: _messages.last.text,
+        ),
+      );
+      _trimMessages();
+    }
+  }
+
+  void _trimMessages() {
+    if (_messages.length > AssistantConversation.maxMessages) {
+      _messages.removeRange(
+        0,
+        _messages.length - AssistantConversation.maxMessages,
+      );
+    }
+  }
+
+  Future<void> _persist() async {
+    if (_disposed || sessionExpired) return;
+    if (_messages.isNotEmpty) {
+      _activeConversationId ??= AssistantConversation.newId();
+      final existing = _conversations.indexWhere(
+        (item) => item.id == _activeConversationId,
+      );
+      final title = existing >= 0
+          ? _conversations[existing].title
+          : String.fromCharCodes(
+              _messages
+                  .firstWhere(
+                    (message) => message.fromUser,
+                    orElse: () => _messages.first,
+                  )
+                  .text
+                  .replaceAll(RegExp(r'\s+'), ' ')
+                  .runes
+                  .take(60),
+            );
+      final conversation = AssistantConversation(
+        id: _activeConversationId!,
+        title: title,
+        updatedAt: _messages.last.time,
+        messages: List.of(_messages),
+        history: List.of(_history),
+        conversationToken: _conversationToken,
+        tokenSavedAt: _tokenSavedAt,
+      );
+      if (existing < 0) {
+        _conversations.add(conversation);
+      } else {
+        _conversations[existing] = conversation;
+      }
+    }
+    final scope = _storageScope;
+    if (!_storageReady || scope == null) return;
+    final generation = _generation, version = _session.value;
+    try {
+      await _historyStore.save(
+        scope,
+        AssistantArchive(
+          activeId: _activeConversationId,
+          conversations: List.of(_conversations),
+        ),
+      );
+      if (!_disposed &&
+          generation == _generation &&
+          version == _session.value) {
+        storageNotice = null;
+      }
+    } catch (_) {
+      if (!_disposed &&
+          generation == _generation &&
+          version == _session.value) {
+        storageNotice =
+            'Không lưu được lịch sử trên điện thoại. Đừng đóng chat; hãy thử lưu lại.';
+      }
+    }
+    if (!_disposed && generation == _generation && version == _session.value) {
+      notifyListeners();
+    }
+  }
+
+  Future<void> retrySave() => _persist();
+
+  void newConversation() {
+    if (busy || initializing || sessionExpired || _disposed || error != null) {
+      return;
+    }
+    if (_messages.isEmpty) return;
     _generation++;
+    _activeConversationId = null;
     _messages.clear();
     _history.clear();
     _conversationToken = null;
+    _tokenSavedAt = null;
     latestReply = null;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  void openConversation(String id) {
+    if (busy || initializing || sessionExpired || _disposed) return;
+    for (final conversation in _conversations) {
+      if (conversation.id != id) continue;
+      _generation++;
+      _activeConversationId = id;
+      _showConversation(conversation);
+      unawaited(_persist());
+      notifyListeners();
+      break;
+    }
+  }
+
+  void clearConversation() {
+    if (busy || initializing || sessionExpired || _disposed) return;
+    _generation++;
+    _conversations.removeWhere((item) => item.id == _activeConversationId);
+    _activeConversationId = null;
+    _messages.clear();
+    _history.clear();
+    _conversationToken = null;
+    _tokenSavedAt = null;
+    latestReply = null;
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -114,6 +335,13 @@ class CareAssistantController extends ChangeNotifier {
       return;
     }
     if (question.trim().isEmpty || question.length > 500) return;
+    if (_activeConversationId == null &&
+        _conversations.length >= AssistantArchive.maxConversations) {
+      storageNotice =
+          'Đã có ${AssistantArchive.maxConversations} cuộc trò chuyện. Hãy xóa một cuộc cũ trước khi tạo thêm.';
+      notifyListeners();
+      return;
+    }
     final generation = _generation;
     final version = _session.value;
     busy = true;
@@ -126,13 +354,20 @@ class CareAssistantController extends ChangeNotifier {
     } else {
       _messages.add(AssistantMessage(text: question.trim(), fromUser: true));
     }
+    _trimMessages();
+    unawaited(_persist());
     notifyListeners();
     try {
       final reply = await _service.chat(
         question,
         elderlyId: selected?.id,
         history: List.unmodifiable(_history),
-        conversationToken: _conversationToken,
+        conversationToken:
+            _tokenSavedAt != null &&
+                DateTime.now().difference(_tokenSavedAt!) <
+                    const Duration(minutes: 25)
+            ? _conversationToken
+            : null,
       );
       if (_disposed || generation != _generation || version != _session.value) {
         return;
@@ -141,11 +376,12 @@ class CareAssistantController extends ChangeNotifier {
         AssistantMessage(text: reply.text, fromUser: false, reply: reply),
       );
       latestReply = reply;
-      _conversationToken = reply.conversationToken ?? _conversationToken;
-      // Keep the visible conversation bounded as well as the model history.
-      if (_messages.length > 60) {
-        _messages.removeRange(0, _messages.length - 60);
+      if (reply.conversationToken != null) {
+        _conversationToken = reply.conversationToken;
+        _tokenSavedAt = DateTime.now();
       }
+      // Keep the visible conversation bounded as well as the model history.
+      _trimMessages();
       _history.addAll([
         AssistantHistoryTurn('user', question.trim()),
         AssistantHistoryTurn(
@@ -169,12 +405,18 @@ class CareAssistantController extends ChangeNotifier {
           retryQuestion: question,
         ),
       );
+      _trimMessages();
     } finally {
       if (!_disposed &&
           generation == _generation &&
           version == _session.value) {
-        busy = false;
-        notifyListeners();
+        await _persist();
+        if (!_disposed &&
+            generation == _generation &&
+            version == _session.value) {
+          busy = false;
+          notifyListeners();
+        }
       }
     }
   }
@@ -201,6 +443,11 @@ class CareAssistantController extends ChangeNotifier {
     _messages.clear();
     _history.clear();
     _conversationToken = null;
+    _tokenSavedAt = null;
+    _conversations.clear();
+    _accountId = null;
+    _activeConversationId = null;
+    _storageScope = null;
     latestReply = null;
     profiles = const [];
     selected = null;

@@ -46,3 +46,40 @@ test('all authenticated route modules invoke checkPermission', () => {
   assert.match(matrix, /NguoiChamSoc.*QLNHATKY/);
   assert.match(matrix, /NguoiCaoTuoi.*QLHOSONCT/);
 });
+
+test('Permission reseed matches all 33 permissions in FINAL.sql on repeated runs', async () => {
+  const finalSql = fs.readFileSync(path.resolve(__dirname, '../../QLSucKhoeNguoiCaoTuoi_FINAL.sql'), 'utf8');
+  const expected = new Map([...finalSql.matchAll(/\(N'(QuanTriVien|NguoiChamSoc|NguoiCaoTuoi)','([^']+)',([01]),([01]),([01]),([01])\)/g)]
+    .map(([, role, feature, ...flags]) => [`${role}:${feature}`, flags.map(Number)]));
+  assert.equal(expected.size, 33);
+  const roles = ['QuanTriVien', 'NguoiChamSoc', 'NguoiCaoTuoi'];
+  const features = [...new Set([...expected.keys()].map(key => key.split(':')[1]))];
+  const saved = new Map();
+  class Transaction { async begin() {} async commit() {} async rollback() {} }
+  class Request {
+    constructor() { this.values = {}; }
+    input(key, _type, value) { this.values[key] = value; return this; }
+    async query(statement) {
+      if (statement.includes('DELETE FROM PhanQuyen')) saved.clear();
+      if (statement.includes('INSERT INTO PhanQuyen')) {
+        const v = this.values;
+        saved.set(`${roles[v.vaiTroId - 1]}:${features[v.chucNangId - 1]}`, [v.xem, v.them, v.sua, v.xoa]);
+      }
+      return { recordset: [] };
+    }
+  }
+  const pool = { close: async () => {}, request: () => ({ query: async statement => ({ recordset:
+    statement.includes('FROM VaiTro') ? roles.map((TenVaiTro, i) => ({ VaiTroID: i + 1, TenVaiTro }))
+      : features.map((MaChucNang, i) => ({ ChucNangID: i + 1, MaChucNang })) }) }) };
+  const filename = path.resolve(__dirname, '../seed_phanquyen.js');
+  for (let run = 0; run < 2; run++) {
+    const processStub = {};
+    await vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
+      require: name => name === 'dotenv' ? { config() {} }
+        : { poolPromise: Promise.resolve(pool), sql: { Transaction, Request, Int: 'Int', Bit: 'Bit' } },
+      console: { log() {}, error() {} }, process: processStub,
+    }, { filename });
+    assert.equal(processStub.exitCode, undefined);
+    assert.deepEqual(saved, expected);
+  }
+});

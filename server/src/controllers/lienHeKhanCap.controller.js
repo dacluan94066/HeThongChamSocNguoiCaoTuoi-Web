@@ -4,6 +4,14 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere, targetElderlyId, ownsElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
+const { validatePhoneNumber } = require('../utils/phoneValidation');
+
+const phoneError = (primary, secondary) => {
+  const primaryError = validatePhoneNumber(primary, { label: 'Số điện thoại chính' });
+  if (primaryError) return { message: primaryError, code: 'INVALID_PHONE' };
+  const secondaryError = validatePhoneNumber(secondary, { required: false, label: 'Số điện thoại phụ' });
+  return secondaryError ? { message: secondaryError, code: 'INVALID_SECONDARY_PHONE' } : null;
+};
 
 const mapContact = (row) => ({
   id:              row.id,
@@ -51,11 +59,13 @@ const create = async (req, res, next) => {
     if (isMobileRole(req) && nguoiCaoTuoiId == null) return fail(res, 'Khong co quyen them lien he cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
     if (!nguoiCaoTuoiId || !hoTen || !soDienThoai)
       return fail(res, 'nguoiCaoTuoiId, hoTen, soDienThoai la bat buoc', 'MISSING_FIELDS', 400);
+    const invalidPhone = phoneError(soDienThoai, soDienThoaiPhu);
+    if (invalidPhone) return fail(res, invalidPhone.message, invalidPhone.code, 422);
     const pool = await poolPromise;
     const r = await pool.request()
       .input('nctId', sql.Int, nguoiCaoTuoiId).input('hoTen', sql.NVarChar, hoTen)
-      .input('moiQuanHe', sql.NVarChar, moiQuanHe || null).input('sdt', sql.NVarChar, soDienThoai)
-      .input('sdtPhu', sql.NVarChar, soDienThoaiPhu || null).input('email', sql.VarChar, email || null)
+      .input('moiQuanHe', sql.NVarChar, moiQuanHe || null).input('sdt', sql.NVarChar, soDienThoai.trim())
+      .input('sdtPhu', sql.NVarChar, soDienThoaiPhu?.trim() || null).input('email', sql.VarChar, email || null)
       .input('diaChi', sql.NVarChar, diaChi || null).input('ghiChu', sql.NVarChar, ghiChu || null)
       .input('uuTien', sql.Int, uuTien || 1)
       .query(`INSERT INTO LienHeKhanCap (NguoiCaoTuoiID,HoTen,MoiQuanHe,SoDienThoai,SoDienThoaiPhu,Email,DiaChi,GhiChu,ThuTuUuTien)
@@ -71,11 +81,15 @@ const update = async (req, res, next) => {
     const { nguoiCaoTuoiId, hoTen, moiQuanHe, soDienThoai, soDienThoaiPhu, email, diaChi, uuTien, ghiChu } = req.body;
     if (isMobileRole(req) && !ownsElderlyId(req, nguoiCaoTuoiId))
       return fail(res, 'Khong co quyen chuyen lien he sang ho so nay', 'FORBIDDEN_ELDERLY', 403);
+    if (!nguoiCaoTuoiId || !hoTen || !soDienThoai)
+      return fail(res, 'nguoiCaoTuoiId, hoTen, soDienThoai la bat buoc', 'MISSING_FIELDS', 400);
+    const invalidPhone = phoneError(soDienThoai, soDienThoaiPhu);
+    if (invalidPhone) return fail(res, invalidPhone.message, invalidPhone.code, 422);
     const pool = await poolPromise;
     await pool.request()
       .input('id', sql.Int, req.params.id).input('nctId', sql.Int, nguoiCaoTuoiId)
       .input('hoTen', sql.NVarChar, hoTen).input('moiQuanHe', sql.NVarChar, moiQuanHe || null)
-      .input('sdt', sql.NVarChar, soDienThoai).input('sdtPhu', sql.NVarChar, soDienThoaiPhu || null)
+      .input('sdt', sql.NVarChar, soDienThoai.trim()).input('sdtPhu', sql.NVarChar, soDienThoaiPhu?.trim() || null)
       .input('email', sql.VarChar, email || null).input('diaChi', sql.NVarChar, diaChi || null)
       .input('ghiChu', sql.NVarChar, ghiChu || null)
       .input('uuTien', sql.Int, uuTien || 1)

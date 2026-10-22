@@ -25,6 +25,7 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
   bool _scrollScheduled = false;
   int _messageCount = 0;
   int? _draftProfileId;
+  String? _draftConversationId;
   static const suggestions = [
     'Hôm nay tôi uống thuốc gì?',
     'Lịch khám tiếp theo khi nào?',
@@ -74,9 +75,12 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
 
   void _changed() {
     if (!mounted) return;
-    if (_chat.sessionExpired || _draftProfileId != _chat.selected?.id) {
+    if (_chat.sessionExpired ||
+        _draftProfileId != _chat.selected?.id ||
+        _draftConversationId != _chat.activeConversationId) {
       _input.clear();
       _draftProfileId = _chat.selected?.id;
+      _draftConversationId = _chat.activeConversationId;
     }
     if (_chat.messages.isEmpty) {
       _messageCount = 0;
@@ -111,7 +115,7 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
       builder: (dialog) => AlertDialog(
         title: const Text('Xóa cuộc trò chuyện?'),
         content: const Text(
-          'Tin nhắn chỉ lưu trong phiên này. Sau khi xóa, bạn không thể khôi phục.',
+          'Cuộc trò chuyện này sẽ bị xóa khỏi điện thoại và không thể khôi phục. Các cuộc trò chuyện khác vẫn được giữ.',
         ),
         actions: [
           TextButton(
@@ -126,6 +130,121 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
       ),
     );
     if (accepted == true && mounted) _chat.clearConversation();
+  }
+
+  void _newConversation() {
+    _input.clear();
+    _nearBottom = true;
+    _chat.newConversation();
+  }
+
+  Future<void> _showHistory() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheet).height * .72,
+          child: ListenableBuilder(
+            listenable: _chat,
+            builder: (context, _) => ListView(
+              key: const ValueKey('assistant-history-list'),
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+                  child: Text(
+                    'Cuộc trò chuyện',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: FilledButton.icon(
+                    onPressed:
+                        _chat.busy || _chat.initializing || _chat.sessionExpired
+                        ? null
+                        : () {
+                            _newConversation();
+                            Navigator.pop(sheet);
+                          },
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(56),
+                    ),
+                    icon: const Icon(Icons.add_comment_outlined),
+                    label: const Text(
+                      'Cuộc trò chuyện mới',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Chỉ lưu trên điện thoại này, riêng theo tài khoản và hồ sơ. Tối đa 30 cuộc, mỗi cuộc giữ 60 tin nhắn gần nhất.',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+                if (_chat.conversations.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(
+                      child: Text(
+                        'Chưa có cuộc trò chuyện đã lưu.',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  )
+                else
+                  ..._chat.conversations.map((conversation) {
+                    final date = conversation.updatedAt.toLocal();
+                    String two(int value) => value.toString().padLeft(2, '0');
+                    return ListTile(
+                      key: ValueKey('conversation-${conversation.id}'),
+                      minVerticalPadding: 14,
+                      selected: conversation.id == _chat.activeConversationId,
+                      leading: const Icon(Icons.chat_bubble_outline),
+                      title: Text(
+                        conversation.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${two(date.day)}/${two(date.month)}/${date.year} · '
+                        '${two(date.hour)}:${two(date.minute)} · ${conversation.messages.length} tin nhắn',
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      onTap:
+                          _chat.busy ||
+                              _chat.initializing ||
+                              _chat.sessionExpired
+                          ? null
+                          : () {
+                              _input.clear();
+                              _nearBottom = true;
+                              _chat.openConversation(conversation.id);
+                              Navigator.pop(sheet);
+                            },
+                    );
+                  }),
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Muốn xóa: mở cuộc trò chuyện rồi bấm biểu tượng thùng rác.',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _navigate(AssistantAction action) async {
@@ -172,11 +291,30 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
       resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xfff3f6f4),
       appBar: AppBar(
-        title: const Text('Trợ lý chăm sóc'),
+        title: const Text('Trợ lý chăm sóc', overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
+            tooltip: 'Lịch sử trò chuyện',
+            onPressed:
+                _chat.initializing ||
+                    _chat.busy ||
+                    _chat.sessionExpired ||
+                    _chat.error != null
+                ? null
+                : _showHistory,
+            constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+            icon: const Icon(Icons.history),
+          ),
+          IconButton(
             tooltip: 'Xóa cuộc trò chuyện',
-            onPressed: _chat.busy || _chat.messages.isEmpty ? null : _clear,
+            onPressed:
+                _chat.busy ||
+                    _chat.initializing ||
+                    _chat.sessionExpired ||
+                    _chat.messages.isEmpty
+                ? null
+                : _clear,
+            constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
             icon: const Icon(Icons.delete_outline),
           ),
         ],
@@ -198,6 +336,28 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.tonalIcon(
+                            key: const ValueKey('assistant-new-conversation'),
+                            onPressed:
+                                _chat.busy ||
+                                    _chat.initializing ||
+                                    _chat.sessionExpired ||
+                                    _chat.error != null
+                                ? null
+                                : _newConversation,
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(56),
+                            ),
+                            icon: const Icon(Icons.add_comment_outlined),
+                            label: const Text(
+                              'Cuộc trò chuyện mới',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Text(
                           _chat.modeLabel,
                           style: const TextStyle(
@@ -260,6 +420,24 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
                           'Thông báo là của tài khoản đang đăng nhập.',
                           style: TextStyle(fontSize: 12, color: Colors.black54),
                         ),
+                        if (_chat.storageNotice != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            _chat.storageNotice!,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Color(0xff942b1d),
+                            ),
+                          ),
+                          if (_chat.storageNotice!.contains('thử lưu lại'))
+                            TextButton(
+                              onPressed: _chat.retrySave,
+                              child: const Text(
+                                'Thử lưu lại',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                            ),
+                        ],
                       ],
                     ),
                   ),
@@ -316,7 +494,7 @@ class _CareAssistantScreenState extends State<CareAssistantScreen>
                               ),
                               const SizedBox(height: 18),
                               const Text(
-                                'Khi dùng AI, câu hỏi và ngữ cảnh gần đây được gửi tới Groq để hiểu yêu cầu. Dữ liệu tra cứu được xử lý tại máy chủ ứng dụng. Chat chỉ lưu trong phiên này.',
+                                'Khi dùng AI, câu hỏi và ngữ cảnh gần đây được gửi tới Groq để hiểu yêu cầu. Dữ liệu tra cứu được xử lý tại máy chủ ứng dụng. Hội thoại được lưu bảo mật trên điện thoại, không đồng bộ sang thiết bị khác. Thông tin trong tin nhắn cũ có thể đã thay đổi; hãy hỏi lại để lấy dữ liệu mới.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(fontSize: 14, height: 1.4),
                               ),

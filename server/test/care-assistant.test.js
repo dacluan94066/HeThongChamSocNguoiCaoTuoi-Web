@@ -139,9 +139,16 @@ test('Chat endpoint keeps authentication and cross-profile scope checks',async()
  assert.equal((await request({question:'thuoc',elderlyId:9},120,'NguoiChamSoc','/chat')).status,403);
 });
 test('Chat endpoint without a key returns scoped functional data and a clear mode',async()=>{
- const result=await request({question:'thuoc',history:[]},21,'NguoiCaoTuoi','/chat');
+ const result=await request({question:'thuốc hôm nay',history:[]},21,'NguoiCaoTuoi','/chat');
  assert.equal(result.status,200);assert.equal(result.data.data.mode,'functional');assert.equal(result.data.data.modeReason,'missing_config');
  assert.equal(reads.filter(r=>r.q.includes('nd.TrangThai')).length,3);
+});
+test('An ambiguous medicine question without AI never falls back to a medication schedule',async()=>{
+ const result=await request({question:'có tìm thông tin về một loại thuốc cụ thể',history:[]},22,'NguoiCaoTuoi','/chat');
+ assert.equal(result.status,200);assert.equal(result.data.data.intent,'conversation');
+ assert.match(result.data.data.text,/AI hiện không khả dụng/);
+ assert.deepEqual(result.data.data.rows,[]);assert.deepEqual(result.data.data.actions,[]);
+ assert.ok(!reads.some(r=>r.q.includes('FROM LichUongThuoc')));
 });
 test('Chat endpoint discloses unavailable health AI and refuses unrelated questions without patient reads',async()=>{
  const health=await request({question:'Tôi bị đau đầu thì nên làm gì?',history:[]},25,'NguoiCaoTuoi','/chat');

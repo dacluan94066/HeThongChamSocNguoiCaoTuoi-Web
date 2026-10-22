@@ -14,6 +14,7 @@ import 'screens/home/elderly_home_screen.dart';
 import 'screens/appointments/appointment_screen.dart';
 import 'screens/medication/medication_screen.dart';
 import 'widgets/appointment_reminder_scope.dart';
+import 'widgets/elderly_profile_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,7 +48,9 @@ class ElderlyCareApp extends StatelessWidget {
 }
 
 Widget homeForRole(String? role) => switch (role) {
-  'NguoiCaoTuoi' => const AppointmentReminderScope(child: HomeScreen()),
+  'NguoiCaoTuoi' => const ElderlyProfileGate(
+    child: AppointmentReminderScope(child: HomeScreen()),
+  ),
   _ => const LoginScreen(),
 };
 
@@ -388,7 +391,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập tên đăng nhập, email hoặc số điện thoại và mật khẩu.'),
+          content: Text(
+            'Vui lòng nhập tên đăng nhập, email hoặc số điện thoại và mật khẩu.',
+          ),
         ),
       );
 

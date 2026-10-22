@@ -29,3 +29,8 @@ export const toggleUserStatus = async (id) => {
   const res = await axiosClient.patch(`/users/${id}/toggle-status`);
   return res.data?.data ?? res.data;
 };
+
+export const resetUserPassword = async (id, matKhauMoi) => {
+  const res = await axiosClient.post(`/users/${id}/reset-password`, { matKhauMoi });
+  return res.data?.data ?? res.data;
+};

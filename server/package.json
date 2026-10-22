@@ -9,7 +9,8 @@
     "migrate:password-reset": "node migrate_password_reset.js",
     "migrate:google-auth": "node migrate_google_auth.js",
     "migrate:caregiver-email": "node migrate_caregiver_email.js",
-    "test:socket": "node verify_socket_realtime.js"
+    "test:socket": "node verify_socket_realtime.js",
+    "test:business-regressions": "node scripts/verify_business_regressions.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -65,12 +65,18 @@ const validatePrescription = (body) => {
     return "Moi don thuoc khong duoc vuot qua 50 dong thuoc";
   }
 
+  const selectedMedicines = new Map();
   for (let index = 0; index < danhSachThuoc.length; index += 1) {
     const item = danhSachThuoc[index] || {};
     const position = index + 1;
     if (!Number.isInteger(Number(item.thuocId)) || Number(item.thuocId) < 1) {
       return `Thuoc dong ${position}: thuocId khong hop le`;
     }
+    const medicineId = Number(item.thuocId);
+    if (selectedMedicines.has(medicineId)) {
+      return `Thuốc dòng ${position} đã được chọn ở dòng ${selectedMedicines.get(medicineId)}. Mỗi thuốc chỉ được chọn một lần trong đơn; nếu uống nhiều cữ, chỉnh số lần/ngày và giờ uống.`;
+    }
+    selectedMedicines.set(medicineId, position);
     if (typeof item.lieuDung !== "string" || !item.lieuDung.trim()) {
       return `Thuoc dong ${position}: lieuDung la bat buoc`;
     }
@@ -126,7 +132,8 @@ const create = async (req, res, next) => {
       elderlyId,
     ).query(`SELECT NguoiCaoTuoiID, UserID
               FROM HoSoNguoiCaoTuoi
-              WHERE NguoiCaoTuoiID=@elderlyId AND TrangThai=N'DangTheoDoi'`);
+              WHERE NguoiCaoTuoiID=@elderlyId
+                AND TrangThai IN (N'DangTheoDoi', N'CanChamSocDacBiet')`);
     if (!elderly.recordset.length) {
       await transaction.rollback();
       transaction = null;

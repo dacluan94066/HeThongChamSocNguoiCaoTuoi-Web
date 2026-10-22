@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:elderly_care_app/services/api_client.dart';
 import 'package:elderly_care_app/widgets/appointment_reminder_scope.dart';
+import 'package:elderly_care_app/widgets/elderly_profile_gate.dart';
 import 'support/notification_platform_fake.dart';
 import 'package:elderly_care_app/screens/home/elderly_home_screen.dart';
 import 'package:elderly_care_app/main.dart'
@@ -68,10 +69,14 @@ void main() {
     expect(homeForRole('NguoiChamSoc'), isA<LoginScreen>());
     expect(
       homeForRole('NguoiCaoTuoi'),
-      isA<AppointmentReminderScope>().having(
-        (scope) => scope.child,
-        'elderly home',
-        isA<HomeScreen>(),
+      isA<ElderlyProfileGate>().having(
+        (gate) => gate.child,
+        'profile-checked elderly home',
+        isA<AppointmentReminderScope>().having(
+          (scope) => scope.child,
+          'home',
+          isA<HomeScreen>(),
+        ),
       ),
     );
     expect(homeForRole(null), isA<LoginScreen>());

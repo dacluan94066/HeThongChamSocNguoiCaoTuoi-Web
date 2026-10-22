@@ -56,7 +56,7 @@ class AssistantReply {
   final String? conversationToken;
   String get modeLabel => mode == 'ai' ? 'AI' : 'Trợ lý theo chức năng';
   String? get modeNotice {
-    if (domain == 'HEALTH' &&
+    if ((domain == 'HEALTH' || intent == 'conversation') &&
         (modeReason == 'missing_config' || modeReason == 'ai_unavailable') &&
         intent != 'visit_preparation' && intent != 'visit_fasting') {
       return modeReason == 'missing_config'

@@ -97,14 +97,14 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5000/api
 - Dùng JWT hiện có và kiểm tra trạng thái/vai trò tài khoản trong database. Người cao tuổi không được gửi ID khác; người chăm sóc phải có phân công còn hiệu lực.
 - Truy vấn SQL cố định, tham số ID được bind; không nhận tên bảng, SQL hoặc URL điều hướng từ câu hỏi.
 - Câu hỏi 1–500 ký tự, request tra cứu tối đa 4 KB, request chat tối đa 26 KB, 30 lượt/phút/tài khoản theo từng tiến trình backend. SQL timeout 10 giây, danh sách tra cứu tối đa 50 mục và báo khi bị giới hạn. Nếu triển khai nhiều tiến trình, cần rate limit dùng chung.
-- Chat chỉ ở bộ nhớ. Đổi phiên xóa chat/hồ sơ/bản nháp, bỏ kết quả request cũ. Backend không ghi nội dung chat vào database hoặc log. Thời gian SQL giữ giờ đã lưu; “lấy dữ liệu” là thời gian phản hồi.
+- Hội thoại lưu trên điện thoại bằng `flutter_secure_storage` (Android mã hóa, iOS Keychain chỉ trên thiết bị). Khóa lưu tách theo máy chủ API, `userId` được xác thực từ `/auth/me` và hồ sơ NCT. Đổi phiên xóa chat/hồ sơ/bản nháp đang hiển thị, bỏ kết quả request cũ; bản lưu chỉ được tải khi đăng nhập lại đúng tài khoản và còn quyền với hồ sơ. Backend không ghi nội dung chat vào database hoặc log. Thời gian SQL giữ giờ đã lưu; “lấy dữ liệu” là thời gian phản hồi.
 - Lỗi mạng/SQL được báo riêng, không được chuyển thành “chưa có dữ liệu”.
 
 ### Ngữ cảnh, công cụ và giới hạn AI
 
-- Ngữ cảnh chỉ trong bộ nhớ của controller Flutter hiện tại; backend không lưu hội thoại, không dùng conversation ID của nhà cung cấp. Mỗi request gửi messages có giới hạn; không gửi tham số Responses như store hoặc previous_response_id.
+- Mobile khôi phục tin nhắn và ngữ cảnh gần đây từ bộ nhớ bảo mật khi mở lại màn chat; backend không lưu hội thoại, không dùng conversation ID của nhà cung cấp. Mỗi request gửi messages có giới hạn; không gửi tham số Responses như store hoặc previous_response_id. ID cuộc trò chuyện mới chỉ dùng trên điện thoại, không làm căn cứ phân quyền hay thay thế API dữ liệu.
 - Tối đa 8 tin lịch sử (4 lượt hỏi/đáp), tổng 6000 ký tự; câu hỏi 500 ký tự; câu trả lời AI tối đa 2200 ký tự. Không đưa tin lỗi vào ngữ cảnh. Retry thay tin lỗi, không thêm bản sao câu hỏi.
-- Đổi hồ sơ được phép khi request còn chờ: xóa chat, lịch sử, bản nháp và bỏ phản hồi cũ. Đăng xuất/đổi phiên thực hiện tương tự. Backend không có ngữ cảnh dùng chung để trộn giữa các phiên/hồ sơ.
+- Đổi hồ sơ được phép khi request còn chờ: xóa nội dung/ngữ cảnh/bản nháp đang hiển thị, bỏ phản hồi cũ rồi nạp lịch sử riêng của hồ sơ mới. Đăng xuất/đổi phiên xóa nội dung đang hiển thị ngay lập tức. Backend không có ngữ cảnh dùng chung để trộn giữa các phiên/hồ sơ.
 - Backend coi lịch sử do client gửi là ngữ cảnh chưa xác minh, không phải nguồn sự thật. Câu hỏi tiếp nối phải tra lại dữ liệu. Nếu “thuốc đó” không rõ thuốc nào, AI được yêu cầu hỏi lại.
 - Lịch khám có `soNgayConLai` tính theo ngày lịch Việt Nam UTC+7. “Mai”, ngày cụ thể và buổi uống thuốc được xử lý riêng; truy vấn phân biệt sắp tới/đã qua/đã hủy. Chỉ số gần nhất có thứ tự phụ theo ID và loại các số đo trong tương lai.
 - Các công cụ `care_medications`, `care_appointments`, `care_health`, `care_caregivers`, `care_notifications`, `care_today`, `care_notes` chỉ đọc. `care_general_help` không đọc hồ sơ. Giải thích chung như “Huyết áp là gì?” không gửi chỉ số cá nhân.
@@ -116,6 +116,26 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5000/api
 - Số liệu cá nhân không lấy từ phần văn bản model. Chẩn đoán/đổi liều/SOS vẫn dùng luồng an toàn; chỉ điều hướng tới màn hình để người dùng xác nhận. Xem `../MOBILE_COMPLETION.md` cho bằng chứng API thật, Groq thật, kiểm thử mobile và các giới hạn chưa xác minh.
 
 ## Các file thay đổi
+
+### Cập nhật lưu hội thoại trên điện thoại (20/10/2026)
+
+- Nút **Cuộc trò chuyện mới** bắt đầu ngữ cảnh trống, không xóa cuộc cũ. Tiêu đề tự lấy từ câu hỏi đầu tiên.
+- Biểu tượng **Lịch sử trò chuyện** mở danh sách để quay lại cuộc cũ. Thùng rác chỉ xóa cuộc đang mở, có xác nhận; các cuộc khác không bị ảnh hưởng.
+- Tối đa 30 cuộc/hồ sơ, 60 tin hiển thị gần nhất/cuộc; không âm thầm đẩy bỏ cuộc cũ khi đủ 30. Đến giới hạn, người dùng cần xóa một cuộc cũ rồi tạo tiếp.
+- Không đồng bộ lên server, không tạo bảng/API mới, không thêm package. Để kiểm tra danh tính/quyền trước khi khôi phục, màn chat vẫn cần tải thành công ngữ cảnh tài khoản từ API.
+- Ghi nhớ thời gian tin nhắn, nhãn phản hồi và nút điều hướng; không lưu thêm bản sao `rows` API thô. Tin cũ có thời điểm lấy dữ liệu, không được dùng làm số liệu hiện tại.
+- Lưu trước câu hỏi và sau câu trả lời. Nếu thoát lúc đang chờ, mở lại thấy câu hỏi và nút thử lại; không tự gửi lại request. Hàng đợi ghi/đọc dùng chung tránh màn mới đọc trước khi màn cũ lưu xong.
+- Ngữ cảnh có chữ ký chỉ tái sử dụng trong 25 phút kể từ lúc nhận để tránh token server hết hạn 30 phút. Sau đó vẫn đọc được lịch sử, nhưng không gửi lại token cũ. Dữ liệu cá nhân vẫn tra lại đúng quyền qua API.
+- Lỗi đọc/ghi bộ nhớ có thông báo; không ghi đè kho lịch sử không đọc được. Lỗi ghi có nút thử lưu lại. Đăng xuất không xóa bản lưu của người dùng, nhưng hủy nội dung và request đang hiển thị.
+- Android dùng namespace riêng `care_senior_assistant_history`, không tự reset khi lỗi giải mã. iOS không đồng bộ Keychain sang thiết bị khác. Đây không phải bản sao lưu: xóa dữ liệu app/đổi thiết bị có thể làm mất lịch sử.
+
+File mới: `lib/models/assistant_conversation.dart`, `lib/services/care_assistant_history_store.dart`, `test/care_assistant_history_test.dart`.
+
+File sửa: `lib/services/care_assistant_controller.dart`, `lib/services/care_assistant_service.dart`, `lib/services/api_client.dart` (chỉ chú thích), `lib/screens/assistant/care_assistant_screen.dart`, `test/care_assistant_test.dart`.
+
+Kiểm thử: `flutter analyze` không có vấn đề; **107/107** test Flutter (13 test mới về lưu lịch sử, tách tài khoản/hồ sơ, đổi phiên, request gián đoạn, lỗi lưu, giới hạn và giao diện chữ lớn); **217/217** test backend; build APK debug thành công. Kiểm thử bộ nhớ dùng mock plugin, chưa kiểm thử đóng/khởi động lại tiến trình trên điện thoại thật hay build iOS.
+
+Test thủ công: chat câu A → bấm Cuộc trò chuyện mới → chat câu B → mở Lịch sử chọn A → thoát/mở lại → kiểm tra vẫn ở A → xóa A có xác nhận → B vẫn còn. Đăng xuất/đăng nhập tài khoản khác không thấy A/B; đăng nhập lại tài khoản gốc chỉ thấy cuộc chưa xóa.
 
 Mobile thêm:
 

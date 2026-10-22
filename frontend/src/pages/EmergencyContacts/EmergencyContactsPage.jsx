@@ -341,12 +341,12 @@ const EmergencyContactsPage = () => {
         <FormSection title="Kênh liên lạc" description="Số điện thoại, email và địa chỉ liên hệ">
           <Row gutter={18}>
             <Col xs={24} md={12}>
-              <Form.Item name="soDienThoai" label="Số điện thoại chính" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại chính' }, { pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' }]}>
+              <Form.Item name="soDienThoai" label="Số điện thoại chính" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại chính' }, { pattern: /^0\d{9}$/, message: 'Số điện thoại phải có 10 số và bắt đầu bằng 0' }]}>
                 <Input placeholder="VD: 0901234567" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="soDienThoaiPhu" label="Số điện thoại phụ" rules={[{ pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' }]}>
+              <Form.Item name="soDienThoaiPhu" label="Số điện thoại phụ" rules={[{ pattern: /^0\d{9}$/, message: 'Số điện thoại phải có 10 số và bắt đầu bằng 0' }]}>
                 <Input placeholder="Số điện thoại dự phòng" />
               </Form.Item>
             </Col>

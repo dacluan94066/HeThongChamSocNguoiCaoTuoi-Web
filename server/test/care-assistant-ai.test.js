@@ -16,6 +16,7 @@ function repository() {
 }
 function call(name, args='{}') { return {choices:[{finish_reason:'tool_calls',message:{role:'assistant',content:null,tool_calls:[{type:'function',function:{name,arguments:args},id:'call_1'}]}}]}; }
 function text(value) { return {choices:[{finish_reason:'stop',message:{role:'assistant',content:value}}]}; }
+function health(value) { return text(JSON.stringify({domain:'HEALTH',intent:'health_general',text:value})); }
 function client(responses) {
   const requests = [];
   return {requests,chat:{completions:{create:async (params,options) => {
@@ -88,13 +89,13 @@ test('Medication follow-up can ask clarification instead of guessing which medic
   const reply=await run({question:'Thuốc đó uống lúc nào?',history,repository:repo,client:ai});assert.equal(reply.mode,'functional');assert.match(reply.text,/thuốc nào/);assert.doesNotMatch(reply.text,/Tự chọn/);
 });
 test('General Vietnamese health explanation needs no patient data',async()=>{
-  const repo=repository();const ai=client([text('Vận động nhẹ có thể giúp duy trì sức khỏe. Hãy hỏi bác sĩ về hoạt động phù hợp với bạn.')]);
+  const repo=repository();const ai=client([health('Vận động nhẹ có thể giúp duy trì sức khỏe. Hãy hỏi bác sĩ về hoạt động phù hợp với bạn.')]);
   const reply=await run({question:'Tại sao nên vận động nhẹ?',client:ai,repository:repo});assert.equal(reply.mode,'ai');assert.deepEqual(repo.reads,[]);
   assert.equal(ai.requests[0].params.tools,undefined);
 });
 test('General health definitions do not fetch measurements or require a profile',async()=>{
   const repo=repository();const ai=client([params=>{
-    assert.equal(params.tools,undefined);return text('Huyết áp là áp lực máu tác động lên thành mạch. Đây là giải thích chung, không phải chẩn đoán.');
+    assert.equal(params.tools,undefined);return health('Huyết áp là áp lực máu tác động lên thành mạch. Đây là giải thích chung, không phải chẩn đoán.');
   }]);
   const reply=await run({question:'Huyết áp là gì?',profile:null,repository:repo,client:ai});assert.equal(reply.mode,'ai');assert.deepEqual(repo.reads,[]);
 });
@@ -194,7 +195,7 @@ test('Empty tool data stays explicitly empty instead of fabricated appointment f
   const reply=await run({repository:repo,client:ai});assert.equal(reply.mode,'functional');assert.match(reply.text,/Chưa có/);
 });
 test('AI urgent guidance adds only fixed SOS/contact navigation, never a mutation',async()=>{
-  const repo=repository();const ai=client([text('Hãy tìm hỗ trợ y tế ngay, đừng chờ trong chat.')]);
+  const repo=repository();const ai=client([health('Hãy tìm hỗ trợ y tế ngay, đừng chờ trong chat.')]);
   const reply=await run({question:'Tôi cảm thấy rất tệ, giúp tôi với',client:ai,repository:repo});
   assert.equal(reply.mode,'ai');assert.deepEqual(reply.actions,['sos','caregivers']);assert.deepEqual(repo.reads,[]);
 });

@@ -5,6 +5,9 @@ const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
 const { validateElderlyProfile } = require('../utils/elderlyProfileValidation');
+const { validateElderlyPassword } = require('../utils/elderlyAccountValidation');
+const { createElderlyProfile, ElderlyCreationError } = require('../services/elderlyCreation.service');
+const bcrypt = require('bcryptjs');
 
 // GET /api/elderly/me - chi tai khoan NguoiCaoTuoi co ho so lien ket.
 const getMe = async (req, res, next) => {
@@ -129,6 +132,9 @@ const getAll = async (req, res, next) => {
     let query = `
       SELECT
         nct.NguoiCaoTuoiID  AS id,
+        nct.UserID          AS userId,
+        nd.TenDangNhap      AS tenDangNhap,
+        nd.Email           AS email,
         nct.HoTen           AS hoTen,
         nct.NgaySinh        AS ngaySinh,
         nct.GioiTinh        AS gioiTinh,
@@ -144,6 +150,7 @@ const getAll = async (req, res, next) => {
         ncsMain.NguoiChamSocID AS nguoiChamSocId,
         ncsMain.HoTen           AS nguoiChamSocTen
       FROM HoSoNguoiCaoTuoi nct
+      LEFT JOIN NguoiDung nd ON nd.UserID=nct.UserID
       OUTER APPLY (
         SELECT TOP 1 ncs.NguoiChamSocID, ncs.HoTen
         FROM NguoiCaoTuoi_NguoiChamSoc lienKet
@@ -186,6 +193,9 @@ const getById = async (req, res, next) => {
       .query(`
         SELECT
           nct.NguoiCaoTuoiID  AS id,
+          nct.UserID          AS userId,
+          nd.TenDangNhap      AS tenDangNhap,
+          nd.Email           AS email,
           nct.HoTen           AS hoTen,
           nct.NgaySinh        AS ngaySinh,
           nct.GioiTinh        AS gioiTinh,
@@ -201,6 +211,7 @@ const getById = async (req, res, next) => {
           ncsMain.NguoiChamSocID AS nguoiChamSocId,
           ncsMain.HoTen           AS nguoiChamSocTen
         FROM HoSoNguoiCaoTuoi nct
+        LEFT JOIN NguoiDung nd ON nd.UserID=nct.UserID
         OUTER APPLY (
           SELECT TOP 1 ncs.NguoiChamSocID, ncs.HoTen
           FROM NguoiCaoTuoi_NguoiChamSoc lienKet
@@ -225,49 +236,14 @@ const getById = async (req, res, next) => {
 
 // ─── TAO HO SO MOI ────────────────────────────────────────────────────────────
 // POST /api/elderly
-// Nhan: { hoTen, ngaySinh, gioiTinh, cccd, diaChi, soDienThoai, nhomMau, benhNen, diUng }
+// Optional taiKhoan: { tenDangNhap, email, matKhau } creates a linked Mobile user.
 const create = async (req, res, next) => {
   try {
-    const {
-      hoTen, ngaySinh, gioiTinh,
-      cccd, diaChi, soDienThoai,
-      nhomMau, benhNen, diUng,
-    } = req.body;
-
-    const validation = validateElderlyProfile(req.body);
-    if (validation.error) return fail(res, validation.error.message, `INVALID_${validation.error.field.toUpperCase()}`, 422);
-
-    const pool = await poolPromise;
-
-    // BenhNen va DiUng co the la mang, luu thanh chuoi JSON hoac CSV
-    const benhNenStr = validation.value.benhNen;
-    const diUngStr = validation.value.diUng;
-
-    // Them ban ghi moi, lay lai ID vua tao qua OUTPUT
-    const result = await pool.request()
-      .input('hoTen', sql.NVarChar, validation.value.hoTen)
-      .input('ngaySinh', sql.Date, ngaySinh)
-      .input('gioiTinh', sql.NVarChar, gioiTinh)
-      .input('cccd', sql.VarChar, validation.value.cccd)
-      .input('diaChi', sql.NVarChar, validation.value.diaChi)
-      .input('soDienThoai', sql.VarChar, validation.value.soDienThoai)
-      .input('nhomMau', sql.VarChar, validation.value.nhomMau)
-      .input('benhNen', sql.NVarChar, benhNenStr || null)
-      .input('diUng', sql.NVarChar, diUngStr || null)
-      .input('nguoiTaoId', sql.Int, req.user.userId)
-      .query(`
-        INSERT INTO HoSoNguoiCaoTuoi
-          (HoTen, NgaySinh, GioiTinh, CCCD, DiaChi, SoDienThoai,
-           NhomMau, BenhNen, DiUng, TrangThai, NguoiTaoID, NgayTao)
-        OUTPUT INSERTED.NguoiCaoTuoiID AS id
-        VALUES
-          (@hoTen, @ngaySinh, @gioiTinh, @cccd, @diaChi, @soDienThoai,
-           @nhomMau, @benhNen, @diUng, N'DangTheoDoi', @nguoiTaoId, SYSDATETIME())
-      `);
-
-    const newId = result.recordset[0].id;
-    return ok(res, { id: newId }, 'Tao ho so nguoi cao tuoi thanh cong', 201);
+    const created = await createElderlyProfile(req.body, req.user.userId, { poolPromise, sql });
+    return ok(res, created, created.coTaiKhoanMobile
+      ? 'Đã tạo hồ sơ và tài khoản Mobile cho người cao tuổi' : 'Tao ho so nguoi cao tuoi thanh cong', 201);
   } catch (err) {
+    if (err instanceof ElderlyCreationError) return fail(res, err.message, err.errorCode, err.statusCode);
     next(err);
   }
 };
@@ -441,4 +417,54 @@ const assignCaregiver = async (req, res, next) => {
   }
 };
 
-module.exports = { getMe, updateMe, getAll, getById, create, update, remove, assignCaregiver };
+// POST /api/elderly/:id/reset-password — Admin only; never creates/relinks a user.
+const resetMobilePassword = async (req, res, next) => {
+  if (req.user?.tenVaiTro !== 'QuanTriVien') {
+    return fail(res, 'Chỉ quản trị viên được đặt lại mật khẩu Mobile của người cao tuổi', 'FORBIDDEN', 403);
+  }
+  const id = Number(req.params.id);
+  if (!/^\d+$/.test(String(req.params.id)) || !Number.isSafeInteger(id) || id < 1 || id > 2147483647) {
+    return fail(res, 'Mã hồ sơ người cao tuổi không hợp lệ', 'INVALID_ID', 422);
+  }
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
+    || Object.keys(req.body).some(key => key !== 'matKhauMoi')) {
+    return fail(res, 'Chỉ được gửi mật khẩu mới, không được thay đổi tài khoản liên kết', 'INVALID_FIELDS', 422);
+  }
+  const passwordError = validateElderlyPassword(req.body.matKhauMoi);
+  if (passwordError) return fail(res, passwordError.message, passwordError.code, 422);
+
+  let transaction;
+  try {
+    const hash = await bcrypt.hash(req.body.matKhauMoi, 10);
+    transaction = new sql.Transaction(await poolPromise);
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const linked = (await new sql.Request(transaction)
+      .input('id', sql.Int, id)
+      .query(`SELECT nct.NguoiCaoTuoiID AS id,nct.UserID AS userId,vt.TenVaiTro AS role
+        FROM HoSoNguoiCaoTuoi nct WITH(UPDLOCK,HOLDLOCK)
+        LEFT JOIN NguoiDung nd WITH(UPDLOCK,HOLDLOCK) ON nd.UserID=nct.UserID
+        LEFT JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID
+        WHERE nct.NguoiCaoTuoiID=@id`)).recordset[0];
+    if (!linked || !linked.userId || linked.role !== 'NguoiCaoTuoi') {
+      await transaction.rollback(); transaction = null;
+      return !linked ? fail(res, 'Không tìm thấy hồ sơ người cao tuổi', 'NOT_FOUND', 404)
+        : !linked.userId ? fail(res, 'Hồ sơ chưa có tài khoản Mobile để đặt lại mật khẩu', 'ACCOUNT_NOT_FOUND', 409)
+          : fail(res, 'Tài khoản liên kết không phải Người cao tuổi; chưa thay đổi mật khẩu', 'ACCOUNT_ROLE_MISMATCH', 409);
+    }
+    const updated = await new sql.Request(transaction)
+      .input('userId', sql.Int, linked.userId)
+      .input('hash', sql.VarChar(255), hash)
+      .query(`UPDATE nd SET MatKhauHash=@hash,MaOTP=NULL,MaOTPHetHan=NULL,
+          MaOTPGuiLuc=NULL,MaOTPCuaSoBatDau=NULL,SoLanGuiOTP=0
+        FROM NguoiDung nd JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID
+        WHERE nd.UserID=@userId AND vt.TenVaiTro=N'NguoiCaoTuoi'`);
+    if (updated.rowsAffected[0] !== 1) throw new Error('Không thể cập nhật mật khẩu tài khoản NCT');
+    await transaction.commit(); transaction = null;
+    return ok(res, { id, userId: linked.userId }, 'Đã đặt lại mật khẩu Mobile cho người cao tuổi');
+  } catch (error) {
+    if (transaction) { try { await transaction.rollback(); } catch (_) { /* SQL already rolled back. */ } }
+    return next(error);
+  }
+};
+
+module.exports = { getMe, updateMe, getAll, getById, create, update, remove, assignCaregiver, resetMobilePassword };

@@ -3,10 +3,16 @@ import '../models/care_assistant.dart';
 import 'api_client.dart';
 
 class AssistantContext {
-  const AssistantContext(this.role, this.profiles, {this.aiConfigured = false});
+  const AssistantContext(
+    this.role,
+    this.profiles, {
+    this.aiConfigured = false,
+    this.accountId,
+  });
   final String role;
   final List<AssistantProfile> profiles;
   final bool aiConfigured;
+  final String? accountId;
 }
 
 class CareAssistantService {
@@ -45,6 +51,7 @@ class CareAssistantService {
             .map((r) => AssistantProfile.fromJson(Map<String, dynamic>.from(r)))
             .toList(),
         aiConfigured: (status.data?['data'] as Map?)?['aiConfigured'] == true,
+        accountId: (auth.data?['data'] as Map?)?['userId']?.toString(),
       );
     } on DioException catch (error) {
       throw ApiException.fromDio(error);

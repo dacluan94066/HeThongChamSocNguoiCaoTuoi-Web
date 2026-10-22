@@ -23,6 +23,7 @@ import ModalForm, { FormSection } from '../../components/ModalForm';
 import MedicationQuickTabs from '../../components/MedicationQuickTabs';
 import { todayVietnam } from '../../utils/vietnamDate';
 import { getSocket } from '../../services/socketClient';
+import { findDuplicateMedicine, matchesScheduleDateRange, selectedMedicineIds } from '../../utils/medicationScheduleRules';
 
 const { Option } = Select;
 
@@ -55,6 +56,8 @@ const getShiftLabel = (schedule) => (
 
 const PrescriptionMedicationRow = ({ field, form, medications, onRemove, canRemove }) => {
   const timesPerDay = Form.useWatch(['danhSachThuoc', field.name, 'soLanMoiNgay'], form) || 1;
+  const rows = Form.useWatch('danhSachThuoc', form) || [];
+  const selectedElsewhere = selectedMedicineIds(rows, field.name);
 
   const updateTimesPerDay = (value) => {
     const count = Math.max(1, Math.min(24, Number(value) || 1));
@@ -79,14 +82,20 @@ const PrescriptionMedicationRow = ({ field, form, medications, onRemove, canRemo
           <Form.Item
             name={[field.name, 'thuocId']}
             label="Thuốc"
-            rules={[{ required: true, message: 'Vui lòng chọn thuốc' }]}
+            rules={[
+              { required: true, message: 'Vui lòng chọn thuốc' },
+              { validator: (_, value) => !value || !selectedMedicineIds(form.getFieldValue('danhSachThuoc') || [], field.name).has(Number(value))
+                ? Promise.resolve() : Promise.reject(new Error('Thuốc này đã được chọn ở dòng khác trong đơn')) },
+            ]}
           >
             <Select
               showSearch
+              allowClear
               optionFilterProp="label"
               placeholder="Chọn thuốc trong danh mục"
               options={medications.map((medication) => ({
                 value: medication.id,
+                disabled: selectedElsewhere.has(Number(medication.id)),
                 label: medication.donViTinh
                   ? `${medication.tenThuoc} (${medication.donViTinh})`
                   : medication.tenThuoc,
@@ -154,6 +163,7 @@ const MedicationSchedulePage = () => {
   const [selectedElder, setSelectedElder] = useState(null);
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedShift, setSelectedShift] = useState('ALL');
+  const [dateRange, setDateRange] = useState(null);
   const [detailRecord, setDetailRecord] = useState(null);
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
   const [prescriptionForm] = Form.useForm();
@@ -228,9 +238,11 @@ const MedicationSchedulePage = () => {
         || Number(schedule.nguoiCaoTuoiId) === Number(selectedElder);
       const matchesStatus = !filterStatus || schedule.trangThaiHom_nay === filterStatus;
       const matchesShift = selectedShift === 'ALL' || getScheduleShift(schedule) === selectedShift;
-      return matchesSearch && matchesElder && matchesStatus && matchesShift;
+      const matchesDate = matchesScheduleDateRange(schedule,
+        dateRange?.[0]?.format('YYYY-MM-DD'), dateRange?.[1]?.format('YYYY-MM-DD'));
+      return matchesSearch && matchesElder && matchesStatus && matchesShift && matchesDate;
     });
-  }, [filterStatus, schedules, search, selectedElder, selectedShift]);
+  }, [dateRange, filterStatus, schedules, search, selectedElder, selectedShift]);
 
   const openPrescriptionModal = () => {
     prescriptionForm.resetFields();
@@ -243,6 +255,13 @@ const MedicationSchedulePage = () => {
   };
 
   const handleCreatePrescription = async (values) => {
+    const duplicate = findDuplicateMedicine(values.danhSachThuoc);
+    if (duplicate) {
+      const error = `Thuốc ở dòng ${duplicate.index + 1} đã được chọn ở dòng ${duplicate.firstIndex + 1}. Nếu uống nhiều cữ, chỉnh Số lần/ngày trong một dòng thuốc.`;
+      prescriptionForm.setFields([{ name: ['danhSachThuoc', duplicate.index, 'thuocId'], errors: [error] }]);
+      message.error(error);
+      return;
+    }
     const invalidTimes = values.danhSachThuoc.some((item) => (
       !Array.isArray(item.gioUong)
       || item.gioUong.length !== Number(item.soLanMoiNgay)
@@ -319,6 +338,11 @@ const MedicationSchedulePage = () => {
           <span>{record.lieuDung || 'Chưa cập nhật liều dùng'}</span>
         </div>
       ),
+    },
+    {
+      title: 'Ngày uống', key: 'ngayUong', width: 130,
+      sorter: (a, b) => (a.thoiGianDuKien || '').localeCompare(b.thoiGianDuKien || ''),
+      render: (_, record) => getScheduleTime(record)?.format('DD/MM/YYYY') || '—',
     },
     {
       title: 'Giờ uống', key: 'gio', width: 145,
@@ -425,7 +449,7 @@ const MedicationSchedulePage = () => {
 
       <section className="medication-list-panel">
         <div className="medication-list-heading">
-          <div><h3>Danh sách lịch uống thuốc</h3><p>Dữ liệu được đồng bộ theo thời gian thực từ hệ thống.</p></div>
+          <div><h3>Danh sách lịch uống thuốc</h3><p>Lọc theo ngày dự kiến uống thuốc. Các thẻ thống kê phía trên tính cho hôm nay.</p></div>
           <span>{filteredSchedules.length} lịch phù hợp</span>
         </div>
 
@@ -435,6 +459,23 @@ const MedicationSchedulePage = () => {
           searchPlaceholder="Tìm mã lịch, người cao tuổi, tên thuốc..."
           searchWidth={330}
           filters={[
+            <DatePicker.RangePicker
+              key="schedule-date"
+              aria-label="Lọc ngày dự kiến uống thuốc"
+              format="DD/MM/YYYY"
+              placeholder={['Từ ngày uống', 'Đến ngày uống']}
+              value={dateRange}
+              onChange={setDateRange}
+              allowClear
+              style={{ width: 290 }}
+              presets={[
+                { label: 'Hôm nay', value: [dayjs(todayVietnam()), dayjs(todayVietnam())] },
+                { label: '7 ngày gần đây', value: [dayjs(todayVietnam()).subtract(6, 'day'), dayjs(todayVietnam())] },
+                { label: '7 ngày tới', value: [dayjs(todayVietnam()), dayjs(todayVietnam()).add(6, 'day')] },
+              ]}
+            />,
+            <Button key="today" onClick={() => setDateRange([dayjs(todayVietnam()), dayjs(todayVietnam())])}>Hôm nay</Button>,
+            <Button key="all-dates" disabled={!dateRange} onClick={() => setDateRange(null)}>Tất cả ngày</Button>,
             <Select
               key="elder"
               placeholder="Chọn người cao tuổi"
@@ -603,7 +644,7 @@ const MedicationSchedulePage = () => {
           </Form.Item>
         </FormSection>
 
-        <FormSection title="Danh sách thuốc" description="Số ô giờ uống luôn khớp với số lần uống mỗi ngày">
+        <FormSection title="Danh sách thuốc" description="Mỗi thuốc chỉ chọn một lần trong đơn. Nếu uống nhiều cữ, tăng Số lần/ngày và chọn các giờ uống tương ứng.">
           <Form.List name="danhSachThuoc">
             {(fields, { add, remove }) => (
               <>

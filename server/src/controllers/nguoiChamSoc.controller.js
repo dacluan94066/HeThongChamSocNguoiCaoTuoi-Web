@@ -5,6 +5,7 @@
 const { poolPromise, sql } = require("../config/db");
 const { ok, fail } = require("../utils/response");
 const { isMobileRole } = require("../middlewares/mobile-scope.middleware");
+const { validatePhoneNumber } = require('../utils/phoneValidation');
 
 const caregiverScope = (req, alias) => {
   if (!isMobileRole(req)) return "";
@@ -259,6 +260,8 @@ const create = async (req, res, next) => {
       return fail(res, "hoTen, soDienThoai, email la bat buoc", "MISSING_FIELDS", 400);
     if (normalizedEmail.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
       return fail(res, "Email khong hop le", "INVALID_EMAIL", 400);
+    const phoneError = validatePhoneNumber(soDienThoai);
+    if (phoneError) return fail(res, phoneError, 'INVALID_PHONE', 422);
 
     const pool = await poolPromise;
     const duplicateEmail = await pool.request()
@@ -277,7 +280,7 @@ const create = async (req, res, next) => {
       pool
         .request()
         .input("hoTen", sql.NVarChar, hoTen)
-        .input("sdt", sql.NVarChar, soDienThoai)
+        .input("sdt", sql.NVarChar, soDienThoai.trim())
         .input("email", sql.NVarChar, normalizedEmail)
         .input("diaChi", sql.NVarChar, diaChi || null)
         .input("ngheNghiep", sql.NVarChar, ngheNghiep || null)
@@ -305,6 +308,8 @@ const update = async (req, res, next) => {
       return fail(res, "hoTen, soDienThoai, email la bat buoc", "MISSING_FIELDS", 400);
     if (normalizedEmail.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
       return fail(res, "Email khong hop le", "INVALID_EMAIL", 400);
+    const phoneError = validatePhoneNumber(soDienThoai);
+    if (phoneError) return fail(res, phoneError, 'INVALID_PHONE', 422);
     const pool = await poolPromise;
     const duplicateEmail = await pool.request()
       .input('id', sql.Int, req.params.id)
@@ -324,7 +329,7 @@ const update = async (req, res, next) => {
       .request()
       .input("id", sql.Int, req.params.id)
       .input("hoTen", sql.NVarChar, hoTen)
-      .input("sdt", sql.NVarChar, soDienThoai || null)
+      .input("sdt", sql.NVarChar, soDienThoai.trim())
       .input("email", sql.NVarChar, normalizedEmail)
       .input("diaChi", sql.NVarChar, diaChi || null)
       .input("ngheNghiep", sql.NVarChar, ngheNghiep || null)

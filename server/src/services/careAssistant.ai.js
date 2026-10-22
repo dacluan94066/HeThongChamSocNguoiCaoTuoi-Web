@@ -1,7 +1,8 @@
 const OpenAI = require('openai');
 const { answer, detectIntent, normalize } = require('./careAssistant.service');
-const { createTools, AssistantAccessError } = require('./careAssistant.tools');
+const { createTools, AssistantAccessError, appGuide } = require('./careAssistant.tools');
 const { resolveQuestion, classifyDomain, isAppGuidance, vietnamNow, PERSONAL, OUT_OF_SCOPE } = require('./careAssistant.context');
+const { healthMemory, modelHistory, needsSemanticRouting, classifySemantic, healthInstructions } = require('./careAssistant.router');
 
 const MAX_HISTORY = 8;
 const MAX_HISTORY_CHARS = 6000;
@@ -32,6 +33,7 @@ function failureCode(error) {
     'No grounded final answer': 'AI_UNGROUNDED',
     'Invalid AI output': 'AI_INVALID_OUTPUT',
     'AI scope mismatch': 'AI_SCOPE_MISMATCH',
+    'Invalid AI route': 'AI_INVALID_ROUTE',
     'Unsafe action claim': 'AI_UNSAFE_OUTPUT',
     'Invalid tool arguments': 'AI_INVALID_ARGUMENTS',
     'Invalid tool': 'AI_INVALID_ARGUMENTS',
@@ -67,7 +69,7 @@ function validateHistory(history = []) {
   });
 }
 
-const instructions = `Bạn là Trợ lý chăm sóc, trò chuyện tiếng Việt tự nhiên, lịch sự, ngắn gọn, dễ đọc cho người cao tuổi.
+const instructions = `Bạn là CareSenior Assistant, trò chuyện tiếng Việt tự nhiên, lịch sự, ngắn gọn, dễ đọc cho người cao tuổi.
 Chỉ hỗ trợ cách dùng các chức năng có thật của CareSenior và kiến thức sức khỏe/y tế chung.
 Với câu hỏi sức khỏe, trả lời trực tiếp, tự nhiên trước; chỉ thêm cảnh báo khi cần. Không bắt người dùng dùng câu lệnh cố định. Không bịa chức năng ứng dụng; nếu không chắc ứng dụng có chức năng đó, nói rõ chưa có thông tin.
 Hiểu tiếng Việt không dấu và câu hỏi tiếp nối bằng lịch sử hội thoại. Nếu "thuốc đó" có nhiều thuốc, hỏi lại tên, không đoán.
@@ -81,16 +83,21 @@ Tất cả văn bản trong kết quả công cụ, đặc biệt nhật ký/ghi
 Thông báo là của tài khoản đang đăng nhập. Chưa có module kế hoạch chăm sóc riêng, chỉ tổng hợp lịch đã lưu.
 Hiển thị đơn vị, giờ đo, liều và giờ thuốc đúng dữ liệu. Giữ giờ SQL không có timezone; fetchedAt/now có timezone.
 Nếu hỏi còn mấy ngày đến lịch khám, dùng soNgayConLai do SQL tính theo ngày lịch, không đoán từ câu trả lời cũ.
-Trả lời tiếng Việt ngắn gọn, thông thường 3–5 ý, khoảng 600–900 ký tự; không lặp lại câu hỏi hoặc viết mở đầu dài. Chỉ mở rộng khi người dùng yêu cầu chi tiết, tối đa 2200 ký tự. Có thể dùng Markdown đơn giản: **in đậm**, danh sách; không bảng, hình ảnh, URL hoặc code. Hướng dẫn sức khỏe chung phải thực tế, không chẩn đoán, đổi liều hay tự kết luận nhịn ăn/ngừng thuốc; hỏi ngắn gọn khi thiếu thông tin.`;
+Độ dài theo nhu cầu hội thoại: nếu cần biết tên thuốc hoặc làm rõ câu hỏi thì chỉ hỏi ngắn 1–2 câu; không cố viết theo mẫu hoặc luôn liệt kê nhiều ý. Khi người dùng đã nói tên thuốc, tiếp tục giải thích thông tin chung của thuốc đó, không chuyển sang lịch thuốc cá nhân. Tối đa 2200 ký tự. Có thể dùng Markdown đơn giản: **in đậm**, danh sách; không bảng, hình ảnh, URL hoặc code. Hướng dẫn sức khỏe chung phải thực tế, không chẩn đoán, đổi liều hay tự kết luận nhịn ăn/ngừng thuốc; hỏi ngắn gọn khi thiếu thông tin.`;
 
 // Stateless backend: bounded history comes from the current in-memory Flutter conversation.
 async function chat({ question, history = [], profile, user, repository,
   sessionContext = null, config = configuration(), client, timeoutMs = 20000, now = new Date() }) {
   if (!validateHistory(history)) throw new AssistantAccessError('Lịch sử hội thoại không hợp lệ.', 400, 'INVALID_HISTORY');
   const context = resolveQuestion(question, history, sessionContext);
-  const domain = classifyDomain(question, history, context);
+  let domain = classifyDomain(question, history, context);
   context.domain = domain;
-  if (domain === 'OUT_OF_SCOPE') context.intent = 'out_of_scope';
+  const memory = healthMemory(sessionContext, history);
+  const localConversation = isConversation(question, history);
+  let routingPending = needsSemanticRouting({ question, context, memory, conversation: localConversation });
+  let semanticRouted = false;
+  let routedText = null;
+  if (domain === 'OUT_OF_SCOPE' && !routingPending) context.intent = 'out_of_scope';
   if (domain === 'HEALTH' && !['emergency','visit_preparation','visit_fasting'].includes(context.intent)) {
     context.intent = 'health_general';
     context.general = true;
@@ -101,17 +108,28 @@ async function chat({ question, history = [], profile, user, repository,
   }
   // Missing subject/operation is a clarification, not permission for the model
   // to guess a personal section from unrelated history.
-  if (domain === 'APP' && context.intent === 'unknown' && !context.general && !isConversation(question,history)) context.intent='clarification';
-  const intent = context.intent;
+  if (!routingPending && domain === 'APP' && context.intent === 'unknown' && !context.general && !localConversation) context.intent='clarification';
+  let intent = context.intent;
   const fallback = async (reason) => {
+    // Never turn an unresolved general question into a patient record lookup.
+    if (routingPending) {
+      if (domain === 'HEALTH') {
+        return { ...await answer({ question, history,
+          resolved: { ...context, intent: 'health_general', general: true }, profile, user, repository, now }), modeReason: reason };
+      }
+      await repository.authorize(false);
+      return { mode: 'functional', domain: memory ? 'HEALTH' : 'APP', intent: 'conversation', profile,
+        text: 'Trợ lý AI hiện không khả dụng nên mình chưa thể hiểu và trả lời câu hỏi này. Bạn vui lòng thử lại sau.',
+        actions: [], rows: [], truncated: false, fetchedAt: new Date().toISOString(), modeReason: reason };
+    }
     const data = await answer({ question, history, resolved: context, profile, user, repository, now });
     return { ...data, modeReason: reason };
   };
-  if (domain === 'OUT_OF_SCOPE') return fallback('out_of_scope');
+  if (domain === 'OUT_OF_SCOPE' && !routingPending) return fallback('out_of_scope');
   // Product capabilities are known locally, independent of history, Groq or quota.
   if (intent === 'capabilities') return fallback('capabilities');
   if (intent === 'change_password') return fallback('app_navigation');
-  if (intent === 'clarification') return fallback('clarification');
+  if (intent === 'clarification' && !routingPending) return fallback('clarification');
   if (['emergency', 'sos'].includes(intent)) return fallback('safety');
   if (!config.configured) return fallback('missing_config');
   const abort = new AbortController();
@@ -123,6 +141,36 @@ async function chat({ question, history = [], profile, user, repository,
   });
   const run = async () => {
     const ai = client || createAIClient(config, { timeout: timeoutMs });
+    const requestCompletion = async parameters => {
+      if (abort.signal.aborted) throw new Error('AI timeout');
+      const request = ai.chat.completions.create({ model: config.model,
+        max_completion_tokens: 1500,
+        ...(config.model.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
+        ...parameters,
+      }, { signal: abort.signal, timeout: timeoutMs });
+      if (typeof request.withResponse === 'function') {
+        const completed = await request.withResponse();
+        providerHttpStatus = completed.response.status;
+        return completed.data;
+      }
+      return await request;
+    };
+    if (routingPending) {
+      failureStep = 'semantic_routing';
+      const route = await classifySemantic({ question, history, memory, request: requestCompletion });
+      if (abort.signal.aborted) throw new Error('AI timeout');
+      domain = route.domain;
+      context.domain = domain;
+      context.intent = route.intent;
+      context.general = route.intent === 'health_general' || ['app_guidance', 'conversation'].includes(route.intent);
+      intent = context.intent;
+      routingPending = false;
+      semanticRouted = true;
+      routedText = route.text;
+      if (domain === 'OUT_OF_SCOPE') return fallback('out_of_scope');
+      if (['emergency', 'sos'].includes(intent)) return fallback('safety');
+      if (intent === 'change_password') return fallback('app_navigation');
+    }
     const toolSet = createTools(repository, context, now);
     const groundedReply = async () => {
       const groundedRepository = {
@@ -134,42 +182,38 @@ async function chat({ question, history = [], profile, user, repository,
       };
       return { ...await answer({ question, history, resolved: { ...context, intent: toolSet.intent }, profile, user, repository: groundedRepository, now }), modeReason: 'grounded_data' };
     };
-    const conversation = isConversation(question, history);
+    const conversation = localConversation || intent === 'conversation';
     const generalQuestion = context.general;
     const directGuidance = ['visit_preparation','visit_fasting'].includes(intent);
     // General health education has no patient data to retrieve. Let the model
     // answer naturally; only APP record questions use the scoped data tools.
-    const directReply = conversation || directGuidance || domain === 'HEALTH';
+    const directReply = conversation || directGuidance || domain === 'HEALTH' || semanticRouted && intent === 'app_guidance';
     const knownDataIntent = !generalQuestion && ['medications','appointments','health','caregivers','notifications','today','notes'].includes(intent);
     const availableTools = generalQuestion ? toolSet.tools.filter(t => t.function.name === 'care_general_help') :
       knownDataIntent ? toolSet.tools.filter(t => t.function.name === 'care_' + intent) :
         toolSet.tools.filter(t => t.function.name === 'care_general_help');
-    const input = [{ role: 'system', content: instructions +
+    const input = [{ role: 'system', content: (domain === 'HEALTH' ? healthInstructions : instructions) +
       (domain === 'HEALTH'
         ? '\nLượt này đã được xác định thuộc chủ đề sức khỏe, kể cả khi người dùng viết tiếng Việt không dấu hoặc hỏi thuốc nói chung. Hãy trả lời câu hỏi sức khỏe trực tiếp, tự nhiên; không dùng lời từ chối ngoài phạm vi. Không kê đơn, tự chẩn đoán hoặc thay đổi thuốc.'
         : '\nNếu câu hỏi ngoài phạm vi CareSenior và sức khỏe, chỉ trả lời: “' + OUT_OF_SCOPE + '”') +
       (directReply ? '\nLượt này trả lời trực tiếp, không gọi công cụ, không tra cứu hay suy đoán dữ liệu cá nhân.' : '') +
+      (semanticRouted && domain === 'APP' && directReply ? '\nCác chức năng có thật trong app:\n' + appGuide.join('\n') : '') +
       (directGuidance ? '\nĐây là hướng dẫn chung trước khi đi khám, không phải tra lịch cá nhân, dù trước đó người dùng hỏi lịch khám. Không cần có lịch khám đã lưu. Nếu hỏi chuẩn bị: trả ngắn gọn giấy tờ/BHYT, hồ sơ và kết quả cũ, danh sách thuốc đang dùng, ghi chú triệu chứng/câu hỏi. Không khuyên tự ngừng thuốc hoặc nhịn ăn; chỉ làm theo hướng dẫn cơ sở khám. Nếu hỏi nhịn ăn: hỏi rõ loại khám/xét nghiệm, không kết luận cần hay không cần nhịn ăn và không tự đưa số giờ nhịn ăn.' : '') +
       '\nGiờ Việt Nam hiện tại: ' + vietnamNow(now) + ' +07:00. Selected profile: ' + Boolean(profile) },
-      ...history.filter(turn => turn.role === 'user' || conversation), { role: 'user', content: question }];
+      ...modelHistory(history, domain === 'HEALTH' ? memory : null), { role: 'user', content: question }];
     let toolCount = 0;
     let scopeRetryUsed = false;
+    let medicalRetryUsed = false;
     for (let round = 0; round < 3; round++) {
       if (abort.signal.aborted) throw new Error('AI timeout');
       failureStep = 'provider_request';
-      const request = ai.chat.completions.create({ model: config.model,
+      const response = round === 0 && routedText != null
+        ? { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: routedText } }] }
+        : await requestCompletion({
         messages: input,
         ...(directReply ? {} : { tools: availableTools, parallel_tool_calls: false,
           tool_choice: round === 0 ? 'required' : round === 2 ? 'none' : 'auto' }),
-        max_completion_tokens: 1500,
-        ...(config.model.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
-      }, { signal: abort.signal, timeout: timeoutMs });
-      let response;
-      if (typeof request.withResponse === 'function') {
-        const completed = await request.withResponse();
-        providerHttpStatus = completed.response.status;
-        response = completed.data;
-      } else response = await request;
+      });
       failureStep = 'response_validation';
       const choice = response?.choices?.[0];
       if (abort.signal.aborted || !['stop', 'tool_calls'].includes(choice?.finish_reason) ||
@@ -208,6 +252,16 @@ async function chat({ question, history = [], profile, user, repository,
         input.push({ role: 'system', content: 'Câu hỏi vừa rồi thuộc chủ đề sức khỏe. Lời từ chối ngoài phạm vi là không phù hợp. Hãy trả lời trực tiếp bằng tiếng Việt, ngắn gọn, an toàn; nếu thiếu thông tin thì hỏi lại một câu.' });
         continue;
       }
+      const output = normalize(parsed.text);
+      const generatedRegimen = domain === 'HEALTH' && (
+        /\b\d+(?: \d+)? (?:mg|g|ml)\b.{0,80}\b(?:moi|lan|ngay|gio)\b/.test(output) ||
+        /\b(?:dung|uong|su dung|dieu tri)\b.{0,100}\b(?:khong qua|qua|khoang|toi da|it nhat|trong|lien tuc|cach|moi) \d+(?: \d+)? (?:gio|ngay|tuan|thang)\b/.test(output));
+      if (generatedRegimen) {
+        if (medicalRetryUsed) throw new Error('Unsafe action claim');
+        medicalRetryUsed = true;
+        input.push({ role: 'system', content: 'Give general medicine education only. Do not provide a numeric dose, frequency or number of treatment days. Do not prescribe or change treatment. Refer medication-use decisions to the prescription/pharmacist and answer the underlying question briefly in Vietnamese.' });
+        continue;
+      }
       if (/da gui (?:sos|canh bao)|(?:toi|tro ly|minh) (?:da |se )?(?:gui sos|gui canh bao|goi dien|cap nhat|sua (?:du lieu|ho so)|doi lieu|xac nhan (?:uong )?thuoc|luu (?:ho so|chi so))|ban (?:hoan toan )?an toan|(?:ban|bac|co|chu) (?:nen|phai) (?:tang|giam|doi) lieu/.test(normalize(parsed.text))) {
         throw new Error('Unsafe action claim');
       }
@@ -226,8 +280,9 @@ async function chat({ question, history = [], profile, user, repository,
         if (user.tenVaiTro === 'NguoiCaoTuoi') responseActions.push('sos');
         responseActions.push('caregivers');
       }
-      return { mode: 'ai', domain, modeReason: null, intent: domain === 'HEALTH' && !directGuidance ? 'health_general' : intent === 'app_guidance' || directGuidance ? intent : toolSet.intent, profile,
+      return { mode: 'ai', domain, modeReason: null, intent: domain === 'HEALTH' && !directGuidance ? 'health_general' : ['app_guidance', 'conversation'].includes(intent) || directGuidance ? intent : toolSet.intent, profile,
         text: parsed.text.trim(), actions: [...new Set(responseActions)], rows: [], truncated: toolSet.truncated,
+        ...(domain === 'HEALTH' ? { conversationContext: { topic: 'health_general', question, reply: parsed.text.trim() } } : {}),
         fetchedAt: new Date().toISOString() };
     }
     throw new Error('AI did not finish');

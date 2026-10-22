@@ -5,6 +5,39 @@
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const bcrypt = require('bcryptjs');
+const { createElderlyProfile, ElderlyCreationError } = require('../services/elderlyCreation.service');
+const { validateElderlyPassword } = require('../utils/elderlyAccountValidation');
+
+// POST /api/users/:id/reset-password — Admin reset, not the user's own change-password flow.
+const resetPassword = async (req, res, next) => {
+  if (req.user?.tenVaiTro !== 'QuanTriVien') {
+    return fail(res, 'Chỉ quản trị viên được đặt lại mật khẩu người dùng', 'FORBIDDEN', 403);
+  }
+  const id = Number(req.params.id);
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id) || id > 2147483647) {
+    return fail(res, 'Mã người dùng không hợp lệ', 'INVALID_ID', 422);
+  }
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)
+    || Object.keys(body).some(key => key !== 'matKhauMoi')) {
+    return fail(res, 'Thông tin đặt lại mật khẩu không hợp lệ', 'INVALID_INPUT', 422);
+  }
+  const invalid = validateElderlyPassword(body.matKhauMoi);
+  if (invalid) return fail(res, invalid.message, invalid.code, 422);
+  try {
+    const hash = await bcrypt.hash(body.matKhauMoi, 10);
+    const pool = await poolPromise;
+    // One atomic statement: change only the selected account's credentials and
+    // invalidate pending recovery OTPs/tokens, leaving status and profile intact.
+    const result = await pool.request().input('id', sql.Int, id)
+      .input('hash', sql.VarChar(255), hash)
+      .query(`UPDATE NguoiDung SET MatKhauHash=@hash,
+        MaOTP=NULL,MaOTPHetHan=NULL,MaOTPGuiLuc=NULL,MaOTPCuaSoBatDau=NULL,SoLanGuiOTP=0
+        OUTPUT INSERTED.UserID AS id WHERE UserID=@id`);
+    if (!result.recordset.length) return fail(res, 'Không tìm thấy người dùng', 'NOT_FOUND', 404);
+    return ok(res, { id }, 'Đã đặt lại mật khẩu người dùng');
+  } catch (error) { next(error); }
+};
 
 // PUT /api/users/me/password - doi mat khau cua tai khoan trong JWT.
 const changeMyPassword = async (req, res, next) => {
@@ -131,6 +164,15 @@ const create = async (req, res, next) => {
   let transaction;
   try {
     const { username, password, hoTen, email, soDienThoai, vaiTro } = req.body;
+    if (vaiTro === 'NGUOI_CAO_TUOI') {
+      // No bare elderly accounts: user-management creation always creates the
+      // full profile and account atomically with the existing shared rules.
+      const created = await createElderlyProfile({ ...req.body,
+        taiKhoan: { tenDangNhap: username, email, matKhau: password },
+      }, req.user.userId, { poolPromise, sql });
+      return ok(res, { ...created, id: created.userId, nguoiCaoTuoiId: created.id },
+        'Đã tạo tài khoản Mobile và hồ sơ người cao tuổi', 201);
+    }
     if (!username || !password || !hoTen || !vaiTro)
       return fail(res, 'username, password, hoTen, vaiTro la bat buoc', 'MISSING_FIELDS', 400);
 
@@ -209,6 +251,7 @@ const create = async (req, res, next) => {
     if (transaction) {
       try { await transaction.rollback(); } catch (_) { /* Transaction already closed. */ }
     }
+    if (err instanceof ElderlyCreationError) return fail(res, err.message, err.errorCode, err.statusCode);
     next(err);
   }
 };
@@ -300,4 +343,4 @@ const toggleStatus = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { changeMyPassword, getAll, getById, create, update, toggleStatus };
+module.exports = { changeMyPassword, resetPassword, getAll, getById, create, update, toggleStatus };

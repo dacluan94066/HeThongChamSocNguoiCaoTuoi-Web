@@ -133,4 +133,4 @@ function createTools(repository, context, now = new Date()) {
     },
   };
 }
-module.exports = { AssistantAccessError, createScopedRepository, createTools };
+module.exports = { AssistantAccessError, createScopedRepository, createTools, appGuide };

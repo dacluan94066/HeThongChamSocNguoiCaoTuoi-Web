@@ -11,13 +11,13 @@ const caregiver = {
   QLLICHKHAM: actions(1, 1, 1),
   QLCHISOSK: actions(1, 1, 1),
   QLCANHBAO: actions(1, 1, 1),
-  QLLIENHEKC: actions(1, 1, 1),
-  QLNHATKY: actions(1, 1, 1),
+  QLLIENHEKC: actions(1, 1, 1, 1),
+  QLNHATKY: actions(1, 1, 1, 1),
   QLBAOCAO: actions(1),
 };
 const elderly = {
   QLNGUOIDUNG: actions(),
-  QLHOSONCT: actions(1),
+  QLHOSONCT: actions(1, 0, 1),
   QLNGUOICHAMSOC: actions(1),
   QLTHUOC: actions(1),
   QLLICHUONGTHUOC: actions(1, 0, 1),

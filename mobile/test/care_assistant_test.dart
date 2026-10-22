@@ -18,10 +18,12 @@ class FakeService extends CareAssistantService {
     this.role = 'NguoiCaoTuoi',
     this.profiles = const [AssistantProfile(7, 'Bà An')],
     this.aiConfigured = false,
+    this.accountId,
   });
   final String role;
   final List<AssistantProfile> profiles;
   final bool aiConfigured;
+  final String? accountId;
   int calls = 0;
   int? target;
   Object? failure;
@@ -34,8 +36,12 @@ class FakeService extends CareAssistantService {
     actions: [AssistantAction.health],
   );
   @override
-  Future<AssistantContext> loadContext() async =>
-      AssistantContext(role, profiles, aiConfigured: aiConfigured);
+  Future<AssistantContext> loadContext() async => AssistantContext(
+    role,
+    profiles,
+    aiConfigured: aiConfigured,
+    accountId: accountId,
+  );
   @override
   Future<AssistantReply> ask(String question, {int? elderlyId}) async {
     calls++;
@@ -82,7 +88,7 @@ class RecordingAdapter implements HttpClientAdapter {
       );
     }
     final Object data = options.path == '/auth/me'
-        ? {'tenVaiTro': 'NguoiChamSoc'}
+        ? {'tenVaiTro': 'NguoiChamSoc', 'userId': 1}
         : options.path.endsWith('/status')
         ? {'aiConfigured': false}
         : options.path.endsWith('/profiles')
@@ -115,17 +121,41 @@ class RecordingAdapter implements HttpClientAdapter {
 }
 
 void main() {
-  test('Health AI outage is shown as unavailable, not as a functional answer', () {
-    final reply = AssistantReply.fromJson({
-      'text': 'Trợ lý AI hiện không khả dụng nên mình chưa thể trả lời câu hỏi sức khỏe này.',
-      'intent': 'health_general',
-      'domain': 'HEALTH',
-      'modeReason': 'ai_unavailable',
-      'aiFailureCode': 'AI_TIMEOUT',
-    });
-    expect(reply.modeNotice, contains('quá thời gian chờ'));
-    expect(reply.modeNotice, isNot(contains('tra cứu dự phòng')));
-  });
+  test(
+    'Health AI outage is shown as unavailable, not as a functional answer',
+    () {
+      final reply = AssistantReply.fromJson({
+        'text':
+            'Trợ lý AI hiện không khả dụng nên mình chưa thể trả lời câu hỏi sức khỏe này.',
+        'intent': 'health_general',
+        'domain': 'HEALTH',
+        'modeReason': 'ai_unavailable',
+        'aiFailureCode': 'AI_TIMEOUT',
+      });
+      expect(reply.modeNotice, contains('quá thời gian chờ'));
+      expect(reply.modeNotice, isNot(contains('tra cứu dự phòng')));
+    },
+  );
+  test(
+    'Unresolved conversation failure never claims a record lookup fallback',
+    () {
+      for (final reason in ['missing_config', 'ai_unavailable']) {
+        final reply = AssistantReply.fromJson({
+          'text': 'Trợ lý AI hiện không khả dụng; vui lòng thử lại.',
+          'intent': 'conversation',
+          'domain': 'APP',
+          'modeReason': reason,
+          'aiFailureCode': 'AI_TOOL_GENERATION_FAILED',
+          'rows': <dynamic>[],
+          'actions': <dynamic>[],
+        });
+        expect(reply.modeNotice, isNot(contains('tra cứu')));
+        expect(reply.modeNotice, isNot(contains('dự phòng')));
+        expect(reply.rows, isEmpty);
+        expect(reply.actions, isEmpty);
+      }
+    },
+  );
   test('Capabilities are deliberate functional routing, not an AI outage', () {
     final reply = AssistantReply.fromJson({
       'mode': 'functional',

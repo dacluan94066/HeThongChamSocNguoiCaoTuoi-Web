@@ -21,6 +21,7 @@ function tool(name) {
 function reply(content) {
   return { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content } }] };
 }
+const healthReply = text => reply(JSON.stringify({ domain: 'HEALTH', intent: 'health_general', text }));
 function client(responses) {
   const requests = [];
   return { requests, chat: { completions: { create: async params => {
@@ -51,7 +52,7 @@ test('Reported code/web questions are OUT_OF_SCOPE in classifier and both fallba
 test('Requested HEALTH and APP examples retain their respective routes', async () => {
   const health = 'tôi bị đau đầu thì nên làm gì';
   assert.equal(classifyDomain(health), 'HEALTH');
-  const healthAI = client([reply('Bạn có thể nghỉ ngơi; nếu đau dữ dội hoặc kéo dài, hãy đi khám.')]);
+  const healthAI = client([healthReply('Bạn có thể nghỉ ngơi; nếu đau dữ dội hoặc kéo dài, hãy đi khám.')]);
   assert.equal((await run(health, { client: healthAI })).mode, 'ai');
   assert.equal(healthAI.requests.length, 1);
   const medication = 'thuốc của tôi hôm nay là gì';
@@ -75,7 +76,7 @@ test('Natural symptom and general medicine questions are HEALTH, including previ
     assert.equal(classifyDomain(question), 'HEALTH');
   }
   const repo = repository();
-  const ai = client([reply('Bạn nên nghỉ ngơi và uống đủ nước. Nếu đau đầu dữ dội hoặc kéo dài, hãy đi khám.')]);
+  const ai = client([healthReply('Bạn nên nghỉ ngơi và uống đủ nước. Nếu đau đầu dữ dội hoặc kéo dài, hãy đi khám.')]);
   const result = await run('Tôi bị đau đầu thì nên làm gì?', { repository: repo, client: ai });
   assert.equal(result.domain, 'HEALTH');
   assert.equal(result.mode, 'ai');
@@ -87,7 +88,7 @@ test('Natural symptom and general medicine questions are HEALTH, including previ
 
 test('General medicine question does not query the personal medication schedule', async () => {
   const repo = repository();
-  const ai = client([reply('Thuốc điều trị mất ngủ cần được đánh giá theo nguyên nhân. Bạn nên trao đổi với nhân viên y tế trước khi dùng thuốc.')]);
+  const ai = client([healthReply('Thuốc điều trị mất ngủ cần được đánh giá theo nguyên nhân. Bạn nên trao đổi với nhân viên y tế trước khi dùng thuốc.')]);
   const result = await run('co thuoc nao tri mat ngu ko', { repository: repo, client: ai });
   assert.equal(result.domain, 'HEALTH');
   assert.equal(result.mode, 'ai');
@@ -95,9 +96,36 @@ test('General medicine question does not query the personal medication schedule'
   assert.equal(ai.requests[0].tools, undefined);
 });
 
+test('Physical exercise questions, with or without accents, reach health AI without record reads', async () => {
+  for (const question of ['Bài tập nào tốt cho người cao tuổi?', 'bai tap nao tot cho nguoi cao tuoi',
+    'Tôi nên tập bài tập gì để giảm đau lưng?', 'bai tap vat ly tri lieu la gi',
+    'Bài tập thể dục nào phù hợp?', 'Bài tập toàn thân cho người cao tuổi',
+    'bai tap toan than', 'Bài tập an toàn cho người cao tuổi']) {
+    const repo = repository();
+    const ai = client([healthReply('Bạn có thể hỏi nhân viên y tế về bài tập phù hợp với thể trạng của mình.')]);
+    const result = await run(question, { repository: repo, client: ai });
+    assert.equal(result.domain, 'HEALTH', question);
+    assert.equal(result.intent, 'health_general');
+    assert.equal(result.mode, 'ai');
+    assert.deepEqual(repo.reads, []);
+    assert.equal(ai.requests[0].tools, undefined);
+  }
+});
+
+test('Homework and coding requests are still refused even when elderly/health is mentioned', async () => {
+  for (const question of ['Giải bài tập toán cho người cao tuổi', 'bai tap tieng anh',
+    'Làm bài tập môn toán cho tôi', 'code bài tập thể dục cho người cao tuổi']) {
+    const ai = client([]);
+    const result = await run(question, { client: ai });
+    assert.equal(result.domain, 'OUT_OF_SCOPE', question);
+    assert.equal(result.text, OUT_OF_SCOPE);
+    assert.equal(ai.requests.length, 0);
+  }
+});
+
 test('HEALTH refusal is retried once and never shown as an AI health answer', async () => {
   const repo = repository();
-  const ai = client([reply(OUT_OF_SCOPE), reply('Chóng mặt có nhiều nguyên nhân. Bạn bị bao lâu rồi, có kèm đau đầu hoặc buồn nôn không?')]);
+  const ai = client([healthReply(OUT_OF_SCOPE), reply('Chóng mặt có nhiều nguyên nhân. Bạn bị bao lâu rồi, có kèm đau đầu hoặc buồn nôn không?')]);
   const result = await run('toi bi chong mat thi lam sao', { repository: repo, client: ai });
   assert.equal(result.mode, 'ai');
   assert.equal(result.domain, 'HEALTH');
@@ -107,7 +135,7 @@ test('HEALTH refusal is retried once and never shown as an AI health answer', as
   assert.deepEqual(repo.reads, []);
   assert.doesNotMatch(ai.requests[0].messages[0].content, /chỉ trả lời: “Xin lỗi, tôi chỉ hỗ trợ/);
 
-  const repeated = await run('toi bi chong mat thi lam sao', { client: client([reply(OUT_OF_SCOPE), reply(OUT_OF_SCOPE)]) });
+  const repeated = await run('toi bi chong mat thi lam sao', { client: client([healthReply(OUT_OF_SCOPE), reply(OUT_OF_SCOPE)]) });
   assert.equal(repeated.modeReason, 'ai_unavailable');
   assert.equal(repeated.aiFailureCode, 'AI_SCOPE_MISMATCH');
   assert.match(repeated.text, /AI hiện không khả dụng/);
@@ -196,7 +224,7 @@ test('AI timeout and connection error are disclosed, never replaced by invented 
 });
 
 test('AI cannot claim it confirmed a medication dose', async () => {
-  const ai = client([reply('Tôi đã xác nhận uống thuốc cho bạn.')]);
+  const ai = client([healthReply('Tôi đã xác nhận uống thuốc cho bạn.')]);
   const result = await run('Tôi bị đau đầu thì nên làm gì?', { client: ai });
   assert.equal(result.aiFailureCode, 'AI_UNSAFE_OUTPUT');
   assert.doesNotMatch(result.text, /đã xác nhận uống thuốc/);

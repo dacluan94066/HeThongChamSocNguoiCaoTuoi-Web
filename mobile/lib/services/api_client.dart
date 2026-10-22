@@ -99,7 +99,7 @@ class ApiClient {
   static Future<void> _storageQueue = Future<void>.value();
 
   static int get sessionVersion => _sessionVersion;
-  // Chat lives only in memory and is erased immediately when a session changes.
+  // Clear visible chat immediately; encrypted history is scoped to its account.
   static final ValueNotifier<int> sessionChanges = ValueNotifier<int>(0);
 
   static bool _isPublicAuthPath(String path) {
@@ -214,11 +214,17 @@ class ApiClient {
 }
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode, this.dioType});
+  const ApiException(
+    this.message, {
+    this.statusCode,
+    this.dioType,
+    this.errorCode,
+  });
 
   final String message;
   final int? statusCode;
   final DioExceptionType? dioType;
+  final String? errorCode;
 
   bool get isConnectionFailure =>
       dioType == DioExceptionType.connectionError ||
@@ -266,6 +272,11 @@ class ApiException implements Exception {
       message,
       statusCode: error.response?.statusCode,
       dioType: error.type,
+      errorCode: error.type == DioExceptionType.cancel
+          ? null
+          : responseData is Map
+          ? responseData['errorCode']?.toString()
+          : null,
     );
   }
 

@@ -42,11 +42,22 @@ function isAppGuidance(question) {
   return /\b(?:lam sao|cach|huong dan|su dung|o dau|nhan nut nao|co ho tro|co chuc nang)\b/.test(q) &&
     /\b(?:xem|mo|nhap|cap nhat|them|theo doi|xac nhan|kiem tra|lich thuoc|lich kham|chi so|thong bao|canh bao|ho so|nguoi cham soc|caresenior|ung dung|app)\b/.test(q);
 }
+function isExplicitOutOfScope(question) {
+  const q = normalize(question);
+  return /\b(?:code|coding|lap trinh|ma nguon|html|css|javascript|python|game|tro choi dien tu|chinh tri|bau cu|chung khoan|co phieu|dau tu|tai chinh|gia vang|hoc bai|hoc tap|mon hoc|giai toan|viet (?:bai )?van|lam tho|ke chuyen|du lich|dat ve|may bay|phim anh|ca nhac|bong da|thoi tiet|may tinh|dien thoai moi|cong nghe)\b/.test(q) ||
+    /\b(?:trang web|website|webpage|web site)\b/.test(q) && !/\b(?:caresenior|ung dung)\b/.test(q) ||
+    /\bbai tap\b/.test(q) && /\b(?:bai tap (?:mon )?toan(?! (?:than|dien)\b)|giai toan|toan hoc|dai so|hinh hoc|ngu van|tieng anh|hoa hoc|ngoai ngu)\b/.test(q);
+}
 function classifyDomain(question, history = [], resolved = resolveQuestion(question, history)) {
   const q = normalize(question);
   // Explicit unrelated subjects win over incidental app/health words (e.g. "app game").
-  if (/\b(?:code|coding|lap trinh|ma nguon|html|css|javascript|python|game|tro choi dien tu|chinh tri|bau cu|chung khoan|co phieu|dau tu|tai chinh|gia vang|hoc bai|hoc tap|mon hoc|bai tap|giai toan|viet (?:bai )?van|lam tho|ke chuyen|du lich|dat ve|may bay|phim anh|ca nhac|bong da|thoi tiet|may tinh|dien thoai moi|cong nghe)\b/.test(q) ||
-      /\b(?:trang web|website|webpage|web site)\b/.test(q) && !/\b(?:caresenior|ung dung)\b/.test(q)) return 'OUT_OF_SCOPE';
+  if (isExplicitOutOfScope(question)) return 'OUT_OF_SCOPE';
+  // "Bài tập" can mean physical exercise or homework. Only the former is health.
+  if (/\bbai tap\b/.test(q)) {
+    const homework = /\b(?:bai tap (?:mon )?toan(?! (?:than|dien)\b)|giai toan|toan hoc|dai so|hinh hoc|ngu van|tieng anh|hoa hoc|ngoai ngu)\b/.test(q);
+    const exercise = /\b(?:nguoi cao tuoi|cao tuoi|suc khoe|the duc|van dong|tap luyen|toan than|dau|xuong khop|phuc hoi|vat ly tri lieu|yoga|gian co|tang co|thang bang|hit tho|duong sinh|giam can)\b/.test(q);
+    return !homework && exercise ? 'HEALTH' : 'OUT_OF_SCOPE';
+  }
   const intent = resolved.intent;
   if (/\b(?:toi|minh|ong|ba) (?:dang |bi |cam thay )?(?:dau|met|chong mat|buon non|sot|ho|kho ngu|te|phu|tieu chay|tao bon)\b/.test(q)) return 'HEALTH';
   if (/\bcam thay\b.*\b(?:rat te|khong khoe|kho chiu|met|dau)\b/.test(q)) return 'HEALTH';
@@ -129,4 +140,4 @@ function vietnamNow(now = new Date()) {
   // DATETIME2 values are local wall times in this application, not UTC instants.
   return new Date(now.getTime() + 7 * 3600000).toISOString().slice(0, 19);
 }
-module.exports = { normalize, detectIntent, resolveQuestion, classifyDomain, isAppGuidance, OUT_OF_SCOPE, isGeneral, isCapabilities, vietnamNow, PERSONAL };
+module.exports = { normalize, detectIntent, resolveQuestion, classifyDomain, isExplicitOutOfScope, isAppGuidance, OUT_OF_SCOPE, isGeneral, isCapabilities, vietnamNow, PERSONAL };

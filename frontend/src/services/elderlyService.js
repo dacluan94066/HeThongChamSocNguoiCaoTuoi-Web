@@ -24,6 +24,10 @@ const mapElderFromApi = (item) => {
   // Nếu backend đã trả camelCase thì dùng trực tiếp, chỉ map khi cần
   return {
     id,
+    userId: item.userId ?? item.UserID ?? null,
+    tenDangNhap: item.tenDangNhap ?? item.TenDangNhap ?? '',
+    email: item.email ?? item.Email ?? '',
+    coTaiKhoanMobile: Boolean(item.userId ?? item.UserID),
     maHoSo: item.maHoSo ?? item.MaHoSo ?? formatEntityCode('NCT', id),
     hoTen: item.hoTen ?? item.HoTen ?? '',
     ngaySinh,
@@ -105,6 +109,9 @@ export const getElderById = async (id) => {
 // Body gồm: hoTen, ngaySinh, gioiTinh, cccd, diaChi, soDienThoai, nhomMau, benhNen, diUng
 export const createElder = async (data) => {
   if (USE_MOCK) {
+    if (data.taiKhoan) {
+      throw new Error('Chế độ dữ liệu mẫu không tạo được tài khoản Mobile. Vui lòng dùng API thật.');
+    }
     await mockDelay();
     const newElder = {
       ...data,
@@ -133,6 +140,12 @@ export const updateElder = async (id, data) => {
   const res = await axiosClient.put(`/elderly/${id}`, data);
   const item = res.data?.data ?? res.data;
   return mapElderFromApi(item);
+};
+
+export const resetElderMobilePassword = async (id, matKhauMoi) => {
+  if (USE_MOCK) throw new Error('Chế độ dữ liệu mẫu không đặt lại được mật khẩu Mobile. Vui lòng dùng API thật.');
+  const response = await axiosClient.post(`/elderly/${id}/reset-password`, { matKhauMoi });
+  return response.data?.data ?? response.data;
 };
 
 // ─── deleteElder ─────────────────────────────────────────────────────────────

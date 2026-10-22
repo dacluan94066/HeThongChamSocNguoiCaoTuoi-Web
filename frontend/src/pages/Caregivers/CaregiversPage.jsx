@@ -395,7 +395,7 @@ const CaregiversPage = () => {
                 label="Số điện thoại"
                 rules={[
                   { required: true, message: 'Vui lòng nhập số điện thoại' },
-                  { pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' },
+                  { pattern: /^0\d{9}$/, message: 'Số điện thoại phải có 10 số và bắt đầu bằng 0' },
                 ]}
               >
                 <Input prefix={<PhoneOutlined />} placeholder="VD: 0901234567" />

@@ -122,6 +122,28 @@ class ElderlyService {
     }
   }
 
+  Future<Map<String, dynamic>> createMyProfile(
+    Map<String, dynamic> data,
+  ) async {
+    final generation = _generation;
+    final version = ApiClient.sessionVersion;
+    final owner = _ownerUserId;
+    try {
+      final response = await ApiClient.instance.dio.post<Map<String, dynamic>>(
+        '/elderly/me',
+        data: data,
+      );
+      return _remember(
+        response,
+        generation: generation,
+        sessionVersion: version,
+        ownerUserId: owner,
+      );
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   Map<String, dynamic> _remember(
     Response<Map<String, dynamic>> response, {
     required int generation,

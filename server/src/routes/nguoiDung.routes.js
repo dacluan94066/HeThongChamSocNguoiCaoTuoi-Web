@@ -16,6 +16,7 @@ router.get('/', checkPermission('QLNGUOIDUNG','xem'), ctrl.getAll);
 router.get('/:id', checkPermission('QLNGUOIDUNG','xem'), ctrl.getById);
 router.post('/', checkPermission('QLNGUOIDUNG','them'), ctrl.create);
 router.put('/:id', checkPermission('QLNGUOIDUNG','sua'), ctrl.update);
+router.post('/:id/reset-password', checkPermission('QLNGUOIDUNG','sua'), ctrl.resetPassword);
 router.patch('/:id/toggle-status', checkPermission('QLNGUOIDUNG','sua'), ctrl.toggleStatus);
 
 module.exports = router;

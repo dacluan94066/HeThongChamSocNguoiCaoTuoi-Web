@@ -3,19 +3,22 @@ import {
   Button, Checkbox, Col, Form, Input, message, Popconfirm, Row, Select, Tabs,
 } from 'antd';
 import {
-  EditOutlined, EyeOutlined, LockOutlined, SafetyCertificateOutlined, SaveOutlined,
+  EditOutlined, EyeOutlined, KeyOutlined, LockOutlined, SafetyCertificateOutlined, SaveOutlined,
   SearchOutlined, TeamOutlined, UnlockOutlined, UserAddOutlined, UserOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { createUser, getUsers, toggleUserStatus, updateUser } from '../../services/userService';
+import { createUser, getUsers, resetUserPassword, toggleUserStatus, updateUser } from '../../services/userService';
 import { getPermissionMatrix, updatePermissionMatrix } from '../../services/permissionService';
 import DataTable from '../../components/DataTable';
 import ModalForm, { FormSection } from '../../components/ModalForm';
 import StatusTag, { getUserStatusMap } from '../../components/StatusTag';
 import usePermission from '../../hooks/usePermission';
+import { useAuth } from '../../context/AuthContext';
 import TableAvatar from '../../components/TableAvatar';
 import TableActionButton from '../../components/TableActionButton';
 import RecordDetailModal from '../../components/RecordDetailModal';
+import { ElderlyPersonalFields, ElderlyHealthFields } from '../../components/ElderlyProfileFields';
+import { buildUserCreatePayload, mobilePasswordRules } from '../../utils/accountFormRules';
 
 const ROLE_OPTIONS = [
   { value: 'QUAN_TRI', name: 'QuanTriVien', label: 'Quản trị viên', tone: 'admin' },
@@ -73,9 +76,11 @@ const buildPermissionValues = (data) => {
 };
 
 const UsersPage = () => {
+  const { user } = useAuth();
   const { hasPermission } = usePermission();
   const canCreate = hasPermission('QLNGUOIDUNG', 'them');
   const canEdit = hasPermission('QLNGUOIDUNG', 'sua');
+  const canResetPassword = user?.tenVaiTro === 'QuanTriVien' && canEdit;
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,8 +95,12 @@ const UsersPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [detailRecord, setDetailRecord] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetting, setResetting] = useState(false);
+  const [passwordForm] = Form.useForm();
   const [form] = Form.useForm();
   const selectedRole = Form.useWatch('vaiTro', form);
+  const creatingElderly = !editingUser && selectedRole === 'NGUOI_CAO_TUOI';
 
   const loadUsers = async () => {
     setLoading(true);
@@ -170,6 +179,7 @@ const UsersPage = () => {
 
   const handleEdit = (record) => {
     setEditingUser(record);
+    form.resetFields();
     form.setFieldsValue(record);
     setModalOpen(true);
   };
@@ -182,19 +192,51 @@ const UsersPage = () => {
     await loadUsers();
   };
 
+  const handleOpenPasswordReset = (record) => {
+    passwordForm.resetFields();
+    setResetTarget(record);
+  };
+
+  const handleResetPassword = async ({ matKhauMoi }) => {
+    if (!canResetPassword || !resetTarget || resetting) return;
+    setResetting(true);
+    try {
+      await resetUserPassword(resetTarget.id, matKhauMoi);
+      message.success(`Đã đặt lại mật khẩu cho ${resetTarget.username}. Hãy bàn giao mật khẩu riêng cho người dùng.`);
+      setResetTarget(null);
+      passwordForm.resetFields();
+    } catch (error) {
+      if (error.response?.data?.errorCode === 'INVALID_PASSWORD') {
+        passwordForm.setFields([{ name: 'matKhauMoi', errors: [error.response.data.message] }]);
+      }
+      if (!error.config) message.error(error.message || 'Không thể đặt lại mật khẩu. Vui lòng thử lại.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleSaveUser = async (values) => {
     setSaving(true);
     try {
       if (editingUser) {
-        await updateUser(editingUser.id, values);
+        await updateUser(editingUser.id, { hoTen: values.hoTen, vaiTro: values.vaiTro,
+          email: values.email, soDienThoai: values.soDienThoai });
         message.success('Cập nhật người dùng thành công');
       } else {
-        await createUser(values);
-        message.success('Thêm người dùng thành công');
+        await createUser(buildUserCreatePayload(values));
+        message.success(creatingElderly ? 'Đã tạo hồ sơ NCT và tài khoản Mobile. NCT có thể đăng nhập ngay.' : 'Thêm người dùng thành công');
       }
       setModalOpen(false);
       form.resetFields();
       await loadUsers();
+    } catch (error) {
+      const field = { USERNAME_TAKEN: 'username', INVALID_USERNAME: 'username', EMAIL_TAKEN: 'email',
+        INVALID_EMAIL: 'email', INVALID_PASSWORD: 'password', PHONE_TAKEN: 'soDienThoai',
+        INVALID_SODIENTHOAI: 'soDienThoai', INVALID_NGAYSINH: 'ngaySinh', INVALID_GIOITINH: 'gioiTinh',
+        INVALID_CCCD: 'cccd', CCCD_TAKEN: 'cccd', INVALID_HOTEN: 'hoTen', INVALID_DIACHI: 'diaChi',
+        INVALID_BENHNEN: 'benhNen', INVALID_DIUNG: 'diUng' }[error.response?.data?.errorCode];
+      if (field) form.setFields([{ name: field, errors: [error.response.data.message] }]);
+      if (!error.config) message.error(error.message || 'Không thể lưu người dùng. Vui lòng thử lại.');
     } finally {
       setSaving(false);
     }
@@ -259,11 +301,12 @@ const UsersPage = () => {
       render: (value) => <span className="last-login-time">{formatRelativeTime(value)}</span>,
     },
     {
-      title: 'Thao tác', key: 'actions', fixed: 'right', width: 112,
+      title: 'Thao tác', key: 'actions', fixed: 'right', width: 155,
       render: (_, record) => (
         <div className="user-table-actions">
           <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setDetailRecord(record)} />
           {canEdit && <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(record)} />}
+          {canResetPassword && <TableActionButton type="edit" tooltip="Đặt lại mật khẩu" aria-label={`Đặt lại mật khẩu cho ${record.username}`} icon={<KeyOutlined />} onClick={() => handleOpenPasswordReset(record)} />}
           {canEdit && (
             <Popconfirm
               title={record.trangThai === 'HOAT_DONG' ? 'Khóa tài khoản này?' : record.trangThai === 'CHO_DUYET' ? 'Duyệt tài khoản này?' : 'Kích hoạt tài khoản này?'}
@@ -395,16 +438,41 @@ const UsersPage = () => {
       />
 
       <ModalForm
-        title={editingUser ? 'Chỉnh sửa người dùng' : 'Thêm người dùng mới'}
-        subtitle="Thiết lập thông tin tài khoản và vai trò trong hệ thống"
+        title={editingUser ? 'Chỉnh sửa người dùng' : creatingElderly ? 'Thêm tài khoản & hồ sơ người cao tuổi' : 'Thêm người dùng mới'}
+        subtitle={creatingElderly ? 'Tạo hồ sơ chăm sóc và tài khoản Mobile trong cùng một lần lưu' : 'Thiết lập thông tin tài khoản và vai trò trong hệ thống'}
         icon={<UserOutlined />}
         mode={editingUser ? 'edit' : 'create'}
+        saveLabel={creatingElderly ? 'Tạo hồ sơ & tài khoản' : undefined}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onFinish={handleSaveUser}
         loading={saving}
         form={form}
       >
+        {creatingElderly ? (
+          <>
+            <FormSection title="Vai trò tài khoản" description="Người cao tuổi dùng Mobile; hồ sơ được tạo đồng thời, không cần thêm lần nữa ở trang Hồ sơ NCT.">
+              <Form.Item name="vaiTro" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}>
+                <Select options={ROLE_OPTIONS.map(({ value, label }) => ({ value, label }))} />
+              </Form.Item>
+            </FormSection>
+            <ElderlyPersonalFields />
+            <FormSection title="Tài khoản đăng nhập Mobile" description="Email riêng để khôi phục mật khẩu. NCT có thể đăng nhập bằng tên đăng nhập/email hoặc SĐT nếu có khai báo.">
+              <Row gutter={18}>
+                <Col xs={24} md={12}><Form.Item name="username" label="Tên đăng nhập" rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }, { pattern: /^[A-Za-z0-9._-]{3,50}$/, message: 'Dùng 3–50 ký tự chữ, số, dấu chấm, gạch dưới hoặc gạch ngang' }]}><Input maxLength={50} autoComplete="off" placeholder="VD: nct_nguyenvana" /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="email" label="Email khôi phục mật khẩu" rules={[{ required: true, message: 'Vui lòng nhập email để khôi phục mật khẩu' }, { type: 'email', message: 'Email không hợp lệ' }, { max: 100, message: 'Email tối đa 100 ký tự' }]}><Input maxLength={100} autoComplete="off" placeholder="Email riêng của NCT, chưa được sử dụng" /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="password" label="Mật khẩu Mobile" preserve={false} rules={mobilePasswordRules}><Input.Password maxLength={72} autoComplete="new-password" placeholder="Nhập ít nhất 6 ký tự" /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="xacNhanMatKhau" label="Nhập lại mật khẩu" preserve={false} dependencies={['password']}
+                  rules={[{ required: true, message: 'Vui lòng nhập lại mật khẩu' },
+                    ({ getFieldValue }) => ({ validator: (_, value) => !value || value === getFieldValue('password') ? Promise.resolve() : Promise.reject(new Error('Mật khẩu nhập lại chưa khớp')) })]}>
+                  <Input.Password maxLength={72} autoComplete="new-password" placeholder="Nhập lại mật khẩu Mobile" />
+                </Form.Item></Col>
+              </Row>
+              <p>Hãy bàn giao mật khẩu riêng cho NCT. Tài khoản và hồ sơ chỉ được tạo nếu toàn bộ thông tin hợp lệ.</p>
+            </FormSection>
+            <ElderlyHealthFields />
+          </>
+        ) : <>
         <FormSection title="Thông tin tài khoản" description="Thông tin đăng nhập và vai trò người dùng">
           <Row gutter={18}>
             <Col xs={24} md={12}><Form.Item name="hoTen" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }]}><Input placeholder="VD: Nguyễn Văn An" /></Form.Item></Col>
@@ -419,6 +487,33 @@ const UsersPage = () => {
             <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại" rules={[{ required: selectedRole === 'NGUOI_CHAM_SOC', message: 'Vui lòng nhập số điện thoại người chăm sóc' }, { pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' }]}><Input placeholder="VD: 0901234567" /></Form.Item></Col>
           </Row>
         </FormSection>
+        </>}
+      </ModalForm>
+
+      <ModalForm
+        title="Đặt lại mật khẩu người dùng"
+        subtitle={`${resetTarget?.hoTen || ''} · ${resetTarget?.username || ''}`}
+        icon={<KeyOutlined />}
+        saveIcon={<KeyOutlined />}
+        saveLabel="Đặt lại mật khẩu"
+        mode="edit"
+        width={560}
+        open={Boolean(resetTarget)}
+        onCancel={() => setResetTarget(null)}
+        onFinish={handleResetPassword}
+        loading={resetting}
+        form={passwordForm}
+      >
+        <p>Không cần mật khẩu cũ. Hãy bàn giao mật khẩu mới riêng cho người dùng. Thao tác này không mở khóa tài khoản và không đăng xuất các phiên đang đăng nhập.</p>
+        <Form.Item name="matKhauMoi" label="Mật khẩu mới" rules={mobilePasswordRules}>
+          <Input.Password maxLength={72} autoComplete="new-password" placeholder="Nhập ít nhất 6 ký tự" />
+        </Form.Item>
+        <Form.Item name="xacNhanMatKhauMoi" label="Nhập lại mật khẩu mới" dependencies={['matKhauMoi']}
+          rules={[{ required: true, message: 'Vui lòng nhập lại mật khẩu mới' },
+            ({ getFieldValue }) => ({ validator: (_, value) => !value || value === getFieldValue('matKhauMoi')
+              ? Promise.resolve() : Promise.reject(new Error('Mật khẩu nhập lại chưa khớp')) })]}>
+          <Input.Password maxLength={72} autoComplete="new-password" placeholder="Nhập lại mật khẩu mới" />
+        </Form.Item>
       </ModalForm>
     </div>
   );

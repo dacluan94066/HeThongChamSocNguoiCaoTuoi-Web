@@ -13,6 +13,7 @@ const { fail } = require('../utils/response');
 const scope = require('../middlewares/mobile-scope.middleware');
 const careAssistant = require('../controllers/careAssistant.controller');
 const mobileProfile = require('../controllers/mobileProfile.controller');
+const mobileOnboarding = require('../controllers/mobileOnboarding.controller');
 
 // Mobile roles are already restricted to their own/assigned elderly records by
 // guardResource. Web roles continue to use the normal permission matrix.
@@ -21,6 +22,9 @@ router.use(authMiddleware);
 router.use(scope.loadMobileScope);
 
 router.get('/me', checkPermission('QLHOSONCT','xem'), controller.getMe);
+// Completing one's own profile is covered by the existing self-edit permission;
+// this never grants Mobile permission to create arbitrary elderly records.
+router.post('/me', checkPermission('QLHOSONCT','sua'), mobileOnboarding.createMine);
 router.get('/me/caregivers', checkPermission('QLNGUOICHAMSOC','xem'), careAssistant.protect, careAssistant.ownCaregivers);
 router.get('/me/alerts', checkPermission('QLCANHBAO','xem'), mobileProfile.read('alerts'));
 router.get('/me/appointments', checkPermission('QLLICHKHAM','xem'), mobileProfile.read('allAppointments'));
@@ -79,6 +83,14 @@ router.put(
   scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
   checkPermission('QLHOSONCT', 'sua'),
   controller.assignCaregiver
+);
+
+// POST /api/elderly/:id/reset-password — controller additionally enforces Admin.
+router.post(
+  '/:id/reset-password',
+  scope.webOnlyWrite,
+  checkPermission('QLHOSONCT', 'sua'),
+  controller.resetMobilePassword
 );
 
 // PUT /api/elderly/:id     - Cap nhat ho so (can quyen sua)
