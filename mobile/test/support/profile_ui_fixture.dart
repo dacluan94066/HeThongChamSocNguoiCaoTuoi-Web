@@ -157,7 +157,7 @@ Widget profileUiApp({
   home: Scaffold(
     body: screen ?? ProfileScreen(accountOnly: accountOnly),
     bottomNavigationBar: AppBottomNavigation(
-      selectedIndex: 5,
+      selectedIndex: 4,
       onSelected: (_) {},
     ),
   ),

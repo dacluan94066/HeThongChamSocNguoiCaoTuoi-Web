@@ -88,7 +88,7 @@ const getHealthSummary = async (req, res, next) => {
     const pool = await poolPromise;
     const caregiverUserId = req.user.tenVaiTro === 'NguoiChamSoc' ? req.user.userId : null;
     const params = { fromDate, toDate, elderlyId, caregiverUserId, ageGroup, gender, careStatus };
-    const [kpiResult, weeklyResult, monthlyResult, metricResult, elderlyResult, subjectResult, careNoteResult, caregiverResult] = await Promise.all([
+    const [kpiResult, weeklyResult, monthlyResult, metricResult, elderlyResult, subjectResult, careNoteResult, caregiverResult, recordingResult] = await Promise.all([
       reportRequest(pool, params).query(`
         SELECT
           (SELECT COUNT_BIG(1) FROM LichUongThuoc lut
@@ -270,6 +270,21 @@ const getHealthSummary = async (req, res, next) => {
             OR assigned.soNguoiPhuTrach>0 OR notes.soNhatKy>0)
         ORDER BY ncs.HoTen,ncs.NguoiChamSocID
       `),
+      reportRequest(pool, params).query(`
+        DECLARE @supplemented TABLE(id INT PRIMARY KEY);
+        IF OBJECT_ID(N'dbo.LichSuGhiNhanUongThuoc',N'U') IS NOT NULL
+          INSERT INTO @supplemented EXEC(N'SELECT LichUongThuocID FROM dbo.LichSuGhiNhanUongThuoc');
+        SELECT
+          SUM(CASE WHEN lut.TrangThai=N'DaUong' AND lut.ThoiGianThucTe<=lut.ThoiGianDuKien THEN 1 ELSE 0 END) AS khongSauGioDuKien,
+          SUM(CASE WHEN lut.TrangThai=N'DaUong' AND lut.ThoiGianThucTe>lut.ThoiGianDuKien THEN 1 ELSE 0 END) AS sauGioDuKien,
+          SUM(CASE WHEN lut.TrangThai=N'DaUong' AND lut.ThoiGianThucTe IS NULL THEN 1 ELSE 0 END) AS chuaRoGioUong,
+          SUM(CASE WHEN lut.TrangThai=N'DaUong' AND recorded.id IS NOT NULL THEN 1 ELSE 0 END) AS ghiNhanBoSung
+        FROM LichUongThuoc lut LEFT JOIN @supplemented recorded ON recorded.id=lut.LichUongThuocID
+        WHERE lut.ThoiGianDuKien>=CAST(@fromDate AS DATE)
+          AND lut.ThoiGianDuKien<DATEADD(DAY,1,CAST(@toDate AS DATE))
+          AND (@elderlyId IS NULL OR lut.NguoiCaoTuoiID=@elderlyId)
+          ${profileScope('lut.NguoiCaoTuoiID')}
+      `),
     ]);
 
     const rawKpis = kpiResult.recordset[0] || {};
@@ -339,6 +354,10 @@ const getHealthSummary = async (req, res, next) => {
     return ok(res, {
       boLoc: { tuNgay: fromDate, denNgay: toDate, nguoiCaoTuoiId: elderlyId, nhomTuoi: ageGroup, gioiTinh: gender, trangThai: careStatus },
       doiTuong: subjectResult.recordset,
+      ghiNhanUongThuoc: Object.fromEntries(
+        ['khongSauGioDuKien', 'sauGioDuKien', 'chuaRoGioUong', 'ghiNhanBoSung']
+          .map((key) => [key, numberOrZero(recordingResult.recordset[0]?.[key])]),
+      ),
       kpi: {
         tongLieu: medicationTotal,
         daUong: medicationTaken,

@@ -74,5 +74,5 @@ test('report adherence denominator contains only due states, and upcoming means 
   assert.match(report, /TrangThai=N'ChuaDenGio'\s+AND ThoiGianDuKien>DATEADD\(HOUR,7,SYSUTCDATETIME\(\)\)/);
   const page = fs.readFileSync(path.resolve(__dirname,
     '../../frontend/src/pages/MedicationSchedule/MedicationSchedulePage.jsx'), 'utf8');
-  assert.match(page, /trangThaiHom_nay === 'CHUA_DEN_GIO'\s+&& getScheduleTime\(item\)\?\.isAfter\(dayjs\(\)\)/);
+  assert.match(page, /trangThaiHom_nay === 'CHUA_DEN_GIO'\s+&& getScheduleTime\(item\)\?\.isAfter\(dayjs\(displayNow\)\)/);
 });

@@ -14,6 +14,11 @@ export const updateScheduleStatus = async (id, trangThai) => {
   return res.data?.data ?? res.data;
 };
 
+export const supplementSchedule = async (id, data) => {
+  const res = await axiosClient.patch(`/medication-schedule/${id}/supplement`, data);
+  return res.data?.data ?? res.data;
+};
+
 export const createPrescription = async (elderlyId, data) => {
   const res = await axiosClient.post(`/elderly/${elderlyId}/prescriptions`, data);
   return res.data?.data ?? res.data;

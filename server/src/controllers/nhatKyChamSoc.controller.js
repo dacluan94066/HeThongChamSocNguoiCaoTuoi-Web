@@ -1,116 +1,89 @@
-// controllers/nhatKyChamSoc.controller.js - Nhat ky cham soc - dung schema that
-// Bang NhatKyChamSoc: NhatKyID, NguoiCaoTuoiID, NguoiChamSocID,
-//   NgayGhi (DATETIME2), HoatDong, MoTaChiTiet, HinhAnh
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
-const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
-const {versionSql,endpoint}=require('../services/careNoteMutation.service');
+const { scopedWhere, targetElderlyId, isMobileRole, ownsElderlyId } = require('../middlewares/mobile-scope.middleware');
+const { versionSql, endpoint, createNote, history } = require('../services/careNoteMutation.service');
+const { NOTE_TYPE_LABELS, validateCareNoteFilters } = require('../utils/careNoteValidation');
+const { attachNoteHistory } = require('../utils/careNoteAudit');
 
-const NOTE_TYPE_LABELS = {
-  CHAM_SOC_HANG_NGAY: 'Chăm sóc hàng ngày',
-  SU_CO: 'Sự cố',
-  VAT_LY_TRI_LIEU: 'Vật lý trị liệu',
-  CANH_BAO: 'Cảnh báo',
-};
-
-const mapNote = (row,req) => ({
-  id:               row.id,
-  nguoiCaoTuoiId:   row.nguoiCaoTuoiId,
-  nguoiCaoTuoiTen:  row.nguoiCaoTuoiTen,
-  nguoiChamSocId:   row.nguoiChamSocId,
-  nguoiChamSocTen:  row.nguoiChamSocTen,
-  // Map HoatDong -> tieuDe, MoTaChiTiet -> noiDung cho frontend
-  loaiNhatKy:       row.loaiNhatKy,
-  loaiNhatKyLabel:  NOTE_TYPE_LABELS[row.loaiNhatKy] || 'Chăm sóc hàng ngày',
-  tieuDe:           row.hoatDong,
-  noiDung:          row.moTaChiTiet,
-  ngay:             row.ngayGhi ? row.ngayGhi.slice(0, 10) : '',
-  thoiGian:         row.ngayGhi ? row.ngayGhi.slice(11, 16) : '',
-  trangThai:        'HoanThanh',
-  trangThaiLabel:   'Hoàn thành',
+const mapNote = (row, req) => ({
+  id: row.id, nguoiCaoTuoiId: row.nguoiCaoTuoiId, nguoiCaoTuoiTen: row.nguoiCaoTuoiTen,
+  nguoiChamSocId: row.nguoiChamSocId, nguoiChamSocTen: row.nguoiChamSocTen,
+  authorUserId: row.authorUserId,
+  loaiNhatKy: row.loaiNhatKy,
+  loaiNhatKyLabel: NOTE_TYPE_LABELS[row.loaiNhatKy] || 'Chăm sóc hàng ngày',
+  tieuDe: row.hoatDong, noiDung: row.moTaChiTiet,
+  ngay: row.ngayGhi?.slice(0, 10) || '', thoiGian: row.ngayGhi?.slice(11, 16) || '',
+  thoiGianChamSoc: row.ngayGhi || null, ngayTao: row.ngayTao || null,
+  // Recording an incident is not equivalent to resolving it.
+  trangThai: row.trangThai === 'DANG_THUC_HIEN' ? 'DangThucHien' : 'HoanThanh',
+  trangThaiLabel: row.trangThai === 'DANG_THUC_HIEN' ? 'Đang thực hiện' : 'Đã ghi nhận',
   version: row.version,
-  canEdit: req.user.tenVaiTro==='QuanTriVien'||req.user.tenVaiTro==='NguoiChamSoc',
+  canEdit: ['QuanTriVien', 'NguoiChamSoc'].includes(req.user.tenVaiTro),
 });
 
-// GET /api/care-notes?nguoiCaoTuoiId=&ngay=
 const getAll = async (req, res, next) => {
   try {
-    const { nguoiCaoTuoiId, ngay } = req.query;
-    if (nguoiCaoTuoiId != null && (!/^\d+$/.test(String(nguoiCaoTuoiId)) ||
-        Number(nguoiCaoTuoiId) < 1 || Number(nguoiCaoTuoiId) > 2147483647))
-      return fail(res, 'Ho so khong hop le', 'INVALID_PROFILE', 400);
-    if (isMobileRole(req) && nguoiCaoTuoiId != null && targetElderlyId(req, Number(nguoiCaoTuoiId)) == null)
-      return fail(res, 'Khong co quyen doc nhat ky cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
+    const parsed = validateCareNoteFilters(req.query);
+    if (parsed.error) return fail(res, parsed.error.message, parsed.error.code, 422);
+    const { elderlyId, from, to, type, search } = parsed.value;
+    if (isMobileRole(req) && elderlyId != null && targetElderlyId(req, elderlyId) == null) {
+      return fail(res, 'Không có quyền đọc nhật ký của hồ sơ này.', 'FORBIDDEN_ELDERLY', 403);
+    }
     const pool = await poolPromise;
-
-    let query = `
-      SELECT n.NhatKyID AS id, n.NguoiCaoTuoiID AS nguoiCaoTuoiId,
-        nct.HoTen AS nguoiCaoTuoiTen, n.NguoiChamSocID AS nguoiChamSocId,
-        nd.HoTen AS nguoiChamSocTen, CONVERT(VARCHAR(19),n.NgayGhi,126) AS ngayGhi,
-        n.HoatDong AS hoatDong, n.MoTaChiTiet AS moTaChiTiet,
-        n.LoaiNhatKy AS loaiNhatKy, ncs.UserID AS authorUserId,
-        ${versionSql('n')} AS version
-      FROM NhatKyChamSoc n
-      JOIN HoSoNguoiCaoTuoi nct ON n.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
-      LEFT JOIN NguoiChamSoc ncs ON n.NguoiChamSocID = ncs.NguoiChamSocID
-      LEFT JOIN NguoiDung nd ON ncs.UserID = nd.UserID
-      WHERE n.TrangThai<>N'HUY'
-    `;
-    const req2 = pool.request();
-    if (nguoiCaoTuoiId) { query += ` AND n.NguoiCaoTuoiID=@nctId`; req2.input('nctId', sql.Int, parseInt(nguoiCaoTuoiId)); }
-    if (ngay) { query += ` AND CAST(n.NgayGhi AS DATE)=@ngay`; req2.input('ngay', sql.Date, ngay); }
-    query += scopedWhere(req, 'n.NguoiCaoTuoiID');
-    query += ` ORDER BY n.NgayGhi DESC,n.NhatKyID DESC`;
-
-    const result = await req2.query(query);
-    return ok(res, result.recordset.map(row=>mapNote(row,req)));
-  } catch (err) { next(err); }
+    const request = pool.request();
+    let statement = [
+      'SELECT n.NhatKyID AS id,n.NguoiCaoTuoiID AS nguoiCaoTuoiId,nct.HoTen AS nguoiCaoTuoiTen,',
+      'n.NguoiChamSocID AS nguoiChamSocId,COALESCE(nd.HoTen,ncs.HoTen) AS nguoiChamSocTen,',
+      'ncs.UserID AS authorUserId,CONVERT(VARCHAR(19),n.NgayGhi,126) AS ngayGhi,',
+      'CONVERT(VARCHAR(19),n.NgayTao,126) AS ngayTao,n.TrangThai AS trangThai,',
+      'n.HoatDong AS hoatDong,n.MoTaChiTiet AS moTaChiTiet,n.LoaiNhatKy AS loaiNhatKy,',
+      versionSql('n') + ' AS version FROM NhatKyChamSoc n',
+      'JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID=n.NguoiCaoTuoiID',
+      'LEFT JOIN NguoiChamSoc ncs ON ncs.NguoiChamSocID=n.NguoiChamSocID',
+      'LEFT JOIN NguoiDung nd ON nd.UserID=ncs.UserID WHERE n.TrangThai<>N\'HUY\'',
+    ].join(' ');
+    if (elderlyId != null) { request.input('elderlyId', sql.Int, elderlyId); statement += ' AND n.NguoiCaoTuoiID=@elderlyId'; }
+    if (from) { request.input('from', sql.VarChar(10), from); statement += ' AND n.NgayGhi>=CONVERT(DATE,@from,23)'; }
+    // All DATETIME2 values already fall within the maximum SQL calendar date.
+    if (to && to !== '9999-12-31') { request.input('to', sql.VarChar(10), to); statement += ' AND n.NgayGhi<DATEADD(DAY,1,CONVERT(DATE,@to,23))'; }
+    if (type) { request.input('type', sql.NVarChar(30), type); statement += ' AND n.LoaiNhatKy=@type'; }
+    if (search) {
+      request.input('search', sql.NVarChar(100), search);
+      statement += ' AND (CHARINDEX(@search,n.HoatDong)>0 OR CHARINDEX(@search,n.MoTaChiTiet)>0)';
+    }
+    statement += scopedWhere(req, 'n.NguoiCaoTuoiID');
+    statement += ' ORDER BY n.NgayGhi DESC,n.NhatKyID DESC';
+    const result = await request.query(statement);
+    return ok(res, await attachNoteHistory(pool, result.recordset.map((row) => mapNote(row, req))));
+  } catch (error) { return next(error); }
 };
 
-// POST /api/care-notes
-// Frontend gui: nguoiCaoTuoiId, tieuDe (->HoatDong), noiDung (->MoTaChiTiet)
 const create = async (req, res, next) => {
-  let transaction;
   try {
-    const { tieuDe, noiDung, loaiNhatKy = 'CHAM_SOC_HANG_NGAY' } = req.body;
-    const nguoiCaoTuoiId = targetElderlyId(req, req.body.nguoiCaoTuoiId);
-    if (isMobileRole(req) && nguoiCaoTuoiId == null) return fail(res, 'Khong co quyen ghi nhat ky cho ho so nay', 'FORBIDDEN_ELDERLY', 403);
-    if (!nguoiCaoTuoiId || !tieuDe || !noiDung)
-      return fail(res, 'nguoiCaoTuoiId, tieuDe, noiDung la bat buoc', 'MISSING_FIELDS', 400);
-    if (typeof tieuDe !== 'string' || !tieuDe.trim() || tieuDe.trim().length > 200 ||
-        typeof noiDung !== 'string' || !noiDung.trim() || noiDung.trim().length > 1000)
-      return fail(res, 'Tieu de toi da 200 va noi dung toi da 1000 ky tu', 'INVALID_NOTE', 400);
-    if (!Object.hasOwn(NOTE_TYPE_LABELS, loaiNhatKy))
-      return fail(res, 'Loai nhat ky khong hop le', 'INVALID_NOTE_TYPE', 400);
-
-    const pool = await poolPromise;
-    transaction=new sql.Transaction(pool);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    await require('../services/alertWorkflow.service').authorizeWrite(transaction,req.user,nguoiCaoTuoiId,'QLNHATKY');
-
-    // Tim NguoiChamSocID tu UserID dang nhap
-    const ncsRes = await new sql.Request(transaction).input('uid', sql.Int, req.user.userId)
-      .query(`SELECT NguoiChamSocID FROM NguoiChamSoc WHERE UserID=@uid`);
-    const nguoiChamSocId = ncsRes.recordset[0]?.NguoiChamSocID || null;
-    if (isMobileRole(req) && !nguoiChamSocId)
-      throw require('../services/alertWorkflow.service').problem(403,'PROFILE_REQUIRED','Tài khoản chưa liên kết người chăm sóc.');
-
-    const r = await new sql.Request(transaction)
-      .input('nctId', sql.Int, nguoiCaoTuoiId)
-      .input('nguoiChamSocId', sql.Int, nguoiChamSocId)
-      .input('hoatDong', sql.NVarChar(200), tieuDe.trim())
-      .input('moTa', sql.NVarChar(1000), noiDung.trim())
-      .input('loaiNhatKy', sql.NVarChar(30), loaiNhatKy)
-      .query(`INSERT INTO NhatKyChamSoc (NguoiCaoTuoiID,NguoiChamSocID,NgayGhi,LoaiNhatKy,HoatDong,MoTaChiTiet)
-              OUTPUT INSERTED.NhatKyID AS id
-              VALUES (@nctId,@nguoiChamSocId,DATEADD(HOUR,7,SYSUTCDATETIME()),@loaiNhatKy,@hoatDong,@moTa)`);
-    await transaction.commit();transaction=null;
-    return ok(res, { id: r.recordset[0].id }, 'Them nhat ky thanh cong', 201);
-  } catch (err) {
-    if(transaction){try{await transaction.rollback();}catch(_){}}
-    if(err.status)return fail(res,err.message,err.code,err.status);
-    next(err);
+    const elderlyId = targetElderlyId(req, req.body?.nguoiCaoTuoiId);
+    if (isMobileRole(req) && elderlyId == null) return fail(res, 'Không có quyền ghi nhật ký cho hồ sơ này.', 'FORBIDDEN_ELDERLY', 403);
+    const result = await createNote({ user: req.user, elderlyId, body: req.body });
+    return ok(res, result, 'Đã thêm nhật ký chăm sóc.', 201);
+  } catch (error) {
+    if (error.status) return fail(res, error.message, error.code, error.status);
+    return next(error);
   }
 };
 
-module.exports = { getAll, create, update:endpoint(false), remove:endpoint(true) };
+const getHistory = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return fail(res, 'ID nhật ký không hợp lệ.', 'INVALID_ID', 400);
+    const pool = await poolPromise;
+    const result = await pool.request().input('id', sql.Int, id).query(
+      'SELECT NguoiCaoTuoiID AS elderlyId FROM NhatKyChamSoc WHERE NhatKyID=@id');
+    if (!result.recordset.length) return fail(res, 'Không tìm thấy nhật ký.', 'NOTE_NOT_FOUND', 404);
+    if (!ownsElderlyId(req, result.recordset[0].elderlyId)) return fail(res, 'Không có quyền xem lịch sử hồ sơ này.', 'FORBIDDEN_ELDERLY', 403);
+    return ok(res, await history(pool, id));
+  } catch (error) {
+    if (error.status) return fail(res, error.message, error.code, error.status);
+    return next(error);
+  }
+};
+
+module.exports = { getAll, create, getHistory, update: endpoint(false), remove: endpoint(true) };

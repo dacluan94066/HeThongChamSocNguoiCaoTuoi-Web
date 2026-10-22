@@ -1,21 +1,25 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const {createRequire}=require('node:module');
 function fixture({role='NguoiChamSoc',allowed=true,assigned=true,author=3,failUpdate=false}={}){
  const trace={begun:0,committed:0,rolledBack:0,updates:0};
- const sql={Int:'int',NVarChar:()=>'',ISOLATION_LEVEL:{SERIALIZABLE:'serializable'},
+ const sql={Int:'int',NVarChar:()=>'',VarChar:()=>'',MAX:'MAX',ISOLATION_LEVEL:{SERIALIZABLE:'serializable'},
   Transaction:class{async begin(){trace.begun++;}async commit(){trace.committed++;}async rollback(){trace.rolledBack++;}},
   Request:class{input(){return this;}async query(query){
-   if(query.includes('FROM NhatKyChamSoc'))return {recordset:[{elderlyId:1,status:'HOAN_THANH',author,version:'F'.repeat(64)}]};
+   if(query.includes('FROM NhatKyChamSoc'))return {recordset:[{elderlyId:1,status:'HOAN_THANH',author,version:'F'.repeat(64),title:'OLD',content:'OLD CONTENT',type:'SU_CO',careTime:'2024-02-29T08:00:00'}]};
    if(query.includes('SELECT v.TenVaiTro'))return {recordset:[{role}]};
-   if(query.includes('SELECT p.ChoPhepSua'))return {recordset:[{allowed}]};
+   if(query.includes('SELECT p.ChoPhep'))return {recordset:[{allowed}]};
+   if(query.includes('AS available'))return {recordset:[{available:1}]};
+   if(query.includes('AS latestId'))return {recordset:[]};
+   if(query.includes('INSERT INTO dbo.LichSuNhatKyChamSoc'))return {recordset:[],rowsAffected:[1]};
    if(query.includes('SELECT TOP 1 n.NguoiChamSocID'))return {recordset:assigned?[{NguoiChamSocID:1}]:[]};
-   if(query.startsWith('UPDATE')){trace.updates++;if(failUpdate)throw new Error('SYNTHETIC_SQL_FAILURE');return {rowsAffected:[1]};}
+   if(query.trimStart().startsWith('UPDATE')){trace.updates++;if(failUpdate)throw new Error('SYNTHETIC_SQL_FAILURE');return {rowsAffected:[1]};}
    throw new Error('UNEXPECTED_QUERY');
   }},
  };
  const db={sql,poolPromise:Promise.resolve({})};
  const socket={emitToAdmin:()=>true};
  const load=(name,workflow)=>{const module={exports:{}};vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/services/'+name),'utf8'),
-  {module,exports:module.exports,require:dep=>dep==='../config/db'?db:dep==='../socket'?socket:dep==='./alertWorkflow.service'?workflow:require(dep)});
+  {module,exports:module.exports,require:dep=>dep==='../config/db'?db:dep==='../socket'?socket:dep==='./alertWorkflow.service'?workflow:createRequire(path.resolve(__dirname,'../src/services/'+name))(dep)});
   return module.exports;};
  const workflow=load('alertWorkflow.service.js');
  return {trace,workflow,notes:load('careNoteMutation.service.js',workflow),user:{userId:3,tenVaiTro:role}};

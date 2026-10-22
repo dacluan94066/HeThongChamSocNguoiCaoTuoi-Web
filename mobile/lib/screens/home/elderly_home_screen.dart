@@ -19,7 +19,7 @@ import '../alerts/sos_screen.dart';
 import '../assistant/care_assistant_screen.dart';
 import '../appointments/appointment_screen.dart';
 import '../health/health_detail_screen.dart';
-import '../medication/medication_screen.dart';
+import '../schedule/schedule_screen.dart';
 import '../profile/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -33,6 +33,14 @@ class _HomeScreenState extends State<HomeScreen> {
   static const teal = CareSeniorColors.deepGreen;
   static const red = CareSeniorColors.danger;
   int _tab = 0;
+  int _scheduleTab = 0;
+  bool _scheduleVisited = false;
+
+  void _selectTab(int index, {int? scheduleTab}) => setState(() {
+    _tab = index;
+    if (index == 1) _scheduleVisited = true;
+    if (scheduleTab != null) _scheduleTab = scheduleTab;
+  });
   Map<String, dynamic> _profile = {};
   List<Map<String, dynamic>> _metrics = const [];
   List<Map<String, dynamic>> _medications = const [];
@@ -136,7 +144,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Map<String, dynamic>? _latest(String name) {
     for (final metric in _metrics) {
-      if (metric['tenChiSo'] == name) return metric;
+      // Home uses a short label; the API catalog uses the full temperature name.
+      if (metric['tenChiSo'] == name ||
+          (name == 'Nhiệt độ' && metric['tenChiSo'] == 'Nhiệt độ cơ thể')) {
+        return metric;
+      }
     }
     return null;
   }
@@ -325,12 +337,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   greeting: greeting,
                   age: ElderlyService.displayAge(_profile),
                   needsAttention: _needsAttention,
-                  onAlerts: () => setState(() => _tab = 4),
+                  onAlerts: () => _selectTab(3),
                   quickActions: HomeQuickActions(
-                    onProfile: () => setState(() => _tab = 5),
+                    onProfile: () => _selectTab(4),
                     onHealth: _openHealth,
-                    onMedication: () => setState(() => _tab = 1),
-                    onSos: () => setState(() => _tab = 3),
+                    onMedication: () => _selectTab(1, scheduleTab: 0),
+                    onSos: () => _selectTab(2),
                   ),
                 ),
                 Padding(
@@ -510,7 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                             const SizedBox(height: 12),
                             OutlinedButton.icon(
-                              onPressed: () => setState(() => _tab = 1),
+                              onPressed: () => _selectTab(1, scheduleTab: 0),
                               icon: const Icon(Icons.arrow_forward_rounded),
                               label: const Text(
                                 'Xem lịch thuốc',
@@ -521,7 +533,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      HomeSosEntry(onTap: () => setState(() => _tab = 3)),
+                      HomeSosEntry(onTap: () => _selectTab(2)),
                       const SizedBox(height: 24),
                       _panel(
                         Column(
@@ -643,23 +655,40 @@ class _HomeScreenState extends State<HomeScreen> {
     backgroundColor: CareSeniorColors.background,
     body: DraggableAssistantFabHost(
       compact: _tab == 0,
-      visible: _tab <= 2,
+      visible: _tab <= 1,
       onPressed: _openAssistant,
-      child: _tab == 0
-          ? _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _dashboard()
-          : switch (_tab) {
-              1 => const MedicationScreen(),
-              2 => const AppointmentScreen(),
-              3 => const SosScreen(),
-              4 => const AlertsHubScreen(),
-              _ => const ProfileScreen(),
-            },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Offstage(
+            offstage: _tab != 1,
+            child: TickerMode(
+              enabled: _tab == 1,
+              child: _scheduleVisited
+                  ? ScheduleScreen(
+                      selectedIndex: _scheduleTab,
+                      onSelected: (index) =>
+                          setState(() => _scheduleTab = index),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ),
+          if (_tab != 1)
+            _tab == 0
+                ? _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _dashboard()
+                : switch (_tab) {
+                    2 => const SosScreen(),
+                    3 => const AlertsHubScreen(),
+                    _ => const ProfileScreen(),
+                  },
+        ],
+      ),
     ),
     bottomNavigationBar: AppBottomNavigation(
       selectedIndex: _tab,
-      onSelected: (index) => setState(() => _tab = index),
+      onSelected: _selectTab,
     ),
   );
 }

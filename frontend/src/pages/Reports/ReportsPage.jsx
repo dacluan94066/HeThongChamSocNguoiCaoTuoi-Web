@@ -468,6 +468,18 @@ const ReportsPage = () => {
             />
           </section>
 
+          <article className="report-panel" style={{ marginBottom: 20 }}>
+            <h3>Thời điểm uống và ghi nhận</h3>
+            <p>So sánh thời gian uống đang lưu với giờ dự kiến. Ghi nhận bổ sung dùng giờ thực tế người dùng nhập; xác nhận thông thường dùng thời điểm bấm xác nhận như trước.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              <Tag color="green">Không sau giờ dự kiến: {report.ghiNhanUongThuoc?.khongSauGioDuKien ?? 0}</Tag>
+              <Tag color="orange">Sau giờ dự kiến: {report.ghiNhanUongThuoc?.sauGioDuKien ?? 0}</Tag>
+              <Tag>Chưa rõ giờ uống: {report.ghiNhanUongThuoc?.chuaRoGioUong ?? 0}</Tag>
+              <Tag color="blue">Ghi nhận bổ sung: {report.ghiNhanUongThuoc?.ghiNhanBoSung ?? 0}</Tag>
+            </div>
+            <p>Ghi nhận bổ sung có thể thuộc bất kỳ nhóm thời điểm uống nào ở trên; không cộng thêm vào tổng liều. Đây không phải đánh giá y khoa về uống đúng giờ.</p>
+          </article>
+
           <section className="report-chart-grid">
             <article className="report-panel">
               <div className="report-panel-heading">

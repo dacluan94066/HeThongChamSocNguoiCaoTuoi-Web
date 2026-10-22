@@ -158,7 +158,9 @@ void main() {
     expect(find.byType(AppointmentScreen), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Lịch khám'));
+    await tester.tap(find.text('Lịch trình'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('schedule-tab-1')));
     await tester.pumpAndSettle();
     expect(find.byType(AppointmentScreen), findsOneWidget);
   }, variant: TargetPlatformVariant.only(TargetPlatform.linux));

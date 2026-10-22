@@ -134,7 +134,7 @@ Widget appointmentUiApp({double scale = 1, bool withNavigation = false}) =>
                 child: const AppointmentScreen(),
               ),
               bottomNavigationBar: AppBottomNavigation(
-                selectedIndex: 2,
+                selectedIndex: 1,
                 onSelected: (_) {},
               ),
             )

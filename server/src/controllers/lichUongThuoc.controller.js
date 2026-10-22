@@ -7,6 +7,7 @@ const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
 const { emitToAdmin, emitToUser } = require('../socket');
 const { todayVietnam } = require('../utils/vietnamDate');
+const { attachSupplementHistory } = require('../utils/medicationSupplement');
 
 const STATUS_MAP = {
   ChuaDenGio: { ma: 'CHUA_DEN_GIO', label: 'Chưa đến giờ' },
@@ -30,6 +31,8 @@ const mapSchedule = (row) => {
     gioBuoiTrua:      hour != null && hour >= 11 && hour < 17 ? time : null,
     gioBuoiToi:       hour != null && hour >= 17 ? time : null,
     thoiGianDuKien:   row.thoiGianDuKien,
+    thoiGianThucTe:   row.thoiGianThucTe,
+    nguoiXacNhanTen:  row.nguoiXacNhanTen,
     trangThaiHom_nay: s.ma,
     trangThaiLabel:   s.label,
   };
@@ -108,7 +111,7 @@ const getMine = async (req, res, next) => {
           AND l.ThoiGianDuKien < DATEADD(DAY, 1, @den)
         ORDER BY l.ThoiGianDuKien ASC, l.LichUongThuocID ASC`);
 
-    return ok(res, result.recordset.map(mapMySchedule));
+    return ok(res, await attachSupplementHistory(pool, result.recordset.map(mapMySchedule)));
   } catch (err) { next(err); }
 };
 
@@ -155,7 +158,7 @@ const getByElderly = async (req, res, next) => {
           AND l.ThoiGianDuKien >= @tu
           AND l.ThoiGianDuKien < DATEADD(DAY, 1, @den)
         ORDER BY l.ThoiGianDuKien ASC, l.LichUongThuocID ASC`);
-    return ok(res, result.recordset.map(mapMySchedule));
+    return ok(res, await attachSupplementHistory(pool, result.recordset.map(mapMySchedule)));
   } catch (error) { next(error); }
 };
 
@@ -245,11 +248,14 @@ const getAll = async (req, res, next) => {
         nct.HoTen AS nguoiCaoTuoiTen, dt.ThuocID AS thuocId, dm.TenThuoc AS tenThuoc,
         dt.LieuDung AS lieuDung,
         CONVERT(VARCHAR(19), l.ThoiGianDuKien, 126) AS thoiGianDuKien,
+        CONVERT(VARCHAR(19), l.ThoiGianThucTe, 126) AS thoiGianThucTe,
+        confirmer.HoTen AS nguoiXacNhanTen,
         l.TrangThai AS trangThai
       FROM LichUongThuoc l
       JOIN HoSoNguoiCaoTuoi nct ON l.NguoiCaoTuoiID = nct.NguoiCaoTuoiID
       JOIN DonThuocChiTiet dt ON l.DonThuocChiTietID = dt.DonThuocChiTietID
       JOIN DanhMucThuoc dm ON dt.ThuocID = dm.ThuocID
+      LEFT JOIN NguoiDung confirmer ON confirmer.UserID=l.NguoiXacNhanID
       WHERE 1=1
     `;
     const req2 = pool.request();
@@ -266,7 +272,7 @@ const getAll = async (req, res, next) => {
     query += ` ORDER BY l.ThoiGianDuKien DESC`;
 
     const result = await req2.query(query);
-    return ok(res, result.recordset.map(mapSchedule));
+    return ok(res, await attachSupplementHistory(pool, result.recordset.map(mapSchedule)));
   } catch (err) { next(err); }
 };
 

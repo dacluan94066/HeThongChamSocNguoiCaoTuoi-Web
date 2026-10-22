@@ -7,6 +7,7 @@ const { checkPermission } = require('../middlewares/permission.middleware');
 router.use(auth);
 router.use(loadMobileScope);
 router.get('/', checkPermission('QLNHATKY', 'xem'), ctrl.getAll);
+router.get('/:id/history', checkPermission('QLNHATKY', 'xem'), ctrl.getHistory);
 router.post('/', caregiverOnlyWrite, checkPermission('QLNHATKY', 'them'), ctrl.create);
 router.patch('/:id', caregiverOnlyWrite, checkPermission('QLNHATKY', 'sua'), ctrl.update);
 router.delete('/:id', caregiverOnlyWrite, checkPermission('QLNHATKY', 'xoa'), ctrl.remove);

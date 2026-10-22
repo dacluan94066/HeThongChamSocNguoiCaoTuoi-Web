@@ -51,7 +51,7 @@ Các đường dẫn dưới đây đều có tiền tố `/api`. `—` nghĩa l
 | PATCH | /emergency-contacts/priorities | QLLIENHEKC | sua |
 | PUT | /emergency-contacts/:id | QLLIENHEKC | sua |
 | DELETE | /emergency-contacts/:id | QLLIENHEKC | xoa |
-| GET | /care-notes/ | QLNHATKY | xem |
+| GET | /care-notes/, /care-notes/:id/history | QLNHATKY | xem |
 | POST | /care-notes/ | QLNHATKY | them |
 | PATCH | /care-notes/:id | QLNHATKY | sua |
 | DELETE | /care-notes/:id | QLNHATKY | xoa |

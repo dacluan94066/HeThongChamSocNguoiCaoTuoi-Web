@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Button, Card, Col, DatePicker, Form, Input, InputNumber, Progress, Row,
+  Alert, Button, Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Progress, Row,
   Select, Space, Tag, TimePicker, Typography, message,
 } from 'antd';
 import {
@@ -8,7 +8,7 @@ import {
   DeleteOutlined, EyeOutlined, HourglassOutlined, MedicineBoxOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { createPrescription, getSchedules, updateScheduleStatus } from '../../services/scheduleService';
+import { createPrescription, getSchedules, supplementSchedule, updateScheduleStatus } from '../../services/scheduleService';
 import { getElders } from '../../services/elderlyService';
 import { getMedications } from '../../services/medicationService';
 import PageHeader from '../../components/PageHeader';
@@ -24,6 +24,7 @@ import MedicationQuickTabs from '../../components/MedicationQuickTabs';
 import { todayVietnam } from '../../utils/vietnamDate';
 import { getSocket } from '../../services/socketClient';
 import { findDuplicateMedicine, matchesScheduleDateRange, selectedMedicineIds } from '../../utils/medicationScheduleRules';
+import { canSupplementDose } from '../../utils/medicationSupplement';
 
 const { Option } = Select;
 
@@ -168,6 +169,9 @@ const MedicationSchedulePage = () => {
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
   const [prescriptionForm] = Form.useForm();
   const [displayNow, setDisplayNow] = useState(() => new Date());
+  const [supplementDose, setSupplementDose] = useState(null);
+  const [supplementSaving, setSupplementSaving] = useState(false);
+  const [supplementForm] = Form.useForm();
 
   useEffect(() => {
     const timer = setInterval(() => setDisplayNow(new Date()), 15000);
@@ -321,6 +325,23 @@ const MedicationSchedulePage = () => {
 
   const hasConfirmerData = schedules.some((item) => Boolean(item.nguoiXacNhanTen));
 
+  const handleSupplement = async (values) => {
+    setSupplementSaving(true);
+    try {
+      await supplementSchedule(supplementDose.id, {
+        thoiGianThucTe: `${values.thoiGianThucTe.format('YYYY-MM-DDTHH:mm')}:00+07:00`,
+        lyDo: values.lyDo.trim(),
+      });
+      message.success('Đã ghi nhận bổ sung liều thuốc đã uống');
+      setSupplementDose(null);
+      await loadSchedules();
+    } catch {
+      // The interceptor displays the authoritative server validation/conflict.
+    } finally {
+      setSupplementSaving(false);
+    }
+  };
+
   const columns = [
     {
       title: 'Mã lịch', key: 'maLich', width: 120,
@@ -365,7 +386,15 @@ const MedicationSchedulePage = () => {
     },
     {
       title: 'Trạng thái', dataIndex: 'trangThaiHom_nay', key: 'trangThai', width: 145,
-      render: (value, record) => <StatusTag {...getMedStatusMap(value || 'CHUA_DEN_GIO', record.thoiGianDuKien, displayNow)} />,
+      render: (value, record) => <Space direction="vertical">
+        <StatusTag {...getMedStatusMap(value || 'CHUA_DEN_GIO', record.thoiGianDuKien, displayNow)} />
+        {record.ghiNhanBoSung && <>
+          <Tag color="blue">Ghi nhận bổ sung</Tag>
+          <small>Đã uống: {dayjs(record.thoiGianThucTe).format('HH:mm DD/MM/YYYY')}</small>
+          <small>Ghi nhận: {dayjs(record.ghiNhanBoSung.ngayGhiNhan).format('HH:mm DD/MM/YYYY')}</small>
+          <small>{record.ghiNhanBoSung.nguoiGhiNhanTen}: {record.ghiNhanBoSung.lyDo}</small>
+        </>}
+      </Space>,
     },
     {
       title: 'Người xác nhận', dataIndex: 'nguoiXacNhanTen', key: 'nguoiXacNhanTen', width: 180,
@@ -387,7 +416,12 @@ const MedicationSchedulePage = () => {
           >
             Xem
           </Button>
-          {canEdit && record.trangThaiHom_nay !== 'DA_UONG' && (
+          {canEdit && canSupplementDose(record, displayNow) && (
+            <Button size="small" onClick={(event) => {
+              event.stopPropagation(); supplementForm.resetFields(); setSupplementDose(record);
+            }}>Đã uống nhưng quên xác nhận</Button>
+          )}
+          {canEdit && record.thoiGianDuKien?.slice(0, 10) === todayVietnam() && record.trangThaiHom_nay !== 'DA_UONG' && (
             <Button
               size="small"
               type="primary"
@@ -397,7 +431,7 @@ const MedicationSchedulePage = () => {
               Xác nhận đã uống
             </Button>
           )}
-          {canEdit && !['BO_LO', 'TU_CHOI'].includes(record.trangThaiHom_nay) && (
+          {canEdit && record.thoiGianDuKien?.slice(0, 10) === todayVietnam() && !['BO_LO', 'TU_CHOI'].includes(record.trangThaiHom_nay) && (
             <Button
               size="small"
               danger
@@ -430,6 +464,35 @@ const MedicationSchedulePage = () => {
       />
 
       <MedicationQuickTabs />
+      <ModalForm
+        open={Boolean(supplementDose)}
+        title="Ghi nhận bổ sung liều đã uống"
+        form={supplementForm}
+        onCancel={() => { if (!supplementSaving) setSupplementDose(null); }}
+        onFinish={handleSupplement}
+        loading={supplementSaving}
+        saveLabel="Lưu ghi nhận bổ sung"
+      >
+        <Alert type="warning" showIcon message="Không phải hướng dẫn uống bù"
+          description="Chỉ ghi nhận nếu người cao tuổi đã thực sự uống liều này trước đó. Không uống thêm thuốc chỉ để xác nhận." />
+        <p>{supplementDose?.tenThuoc} · Giờ dự kiến: {supplementDose && dayjs(supplementDose.thoiGianDuKien).format('HH:mm DD/MM/YYYY')}</p>
+        <Form.Item name="thoiGianThucTe" label="Thời điểm thực sự đã uống (giờ Việt Nam)" rules={[
+          { required: true, message: 'Chọn thời điểm đã uống' },
+          { validator: (_, value) => !value || (value.format('YYYY-MM-DDTHH:mm:ss') >= `${supplementDose?.thoiGianDuKien?.slice(0, 10)}T00:00:00`
+            && new Date(`${value.format('YYYY-MM-DDTHH:mm:ss')}+07:00`) <= new Date())
+            ? Promise.resolve() : Promise.reject(new Error('Giờ đã uống phải từ ngày của liều thuốc đến hiện tại')) },
+        ]}>
+          <DatePicker showTime={{ format: 'HH:mm' }} format="DD/MM/YYYY HH:mm" style={{ width: '100%' }} />
+        </Form.Item>
+        <Form.Item name="lyDo" label="Lý do ghi nhận bổ sung" rules={[
+          { required: true, whitespace: true, message: 'Nhập lý do ghi nhận bổ sung' },
+          { validator: (_, value) => !value || (value.trim().length >= 5 && value.trim().length <= 300)
+            ? Promise.resolve() : Promise.reject(new Error('Lý do phải từ 5 đến 300 ký tự')) },
+        ]}><Input.TextArea maxLength={300} rows={3} showCount /></Form.Item>
+        <Form.Item name="xacNhan" valuePropName="checked" rules={[
+          { validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error('Cần xác nhận đã thực sự uống liều này')) },
+        ]}><Checkbox>Tôi xác nhận người cao tuổi đã thực sự uống liều này.</Checkbox></Form.Item>
+      </ModalForm>
 
       <section className="medication-kpi-grid" aria-label="Thống kê lịch uống thuốc hôm nay">
         <article className="medication-kpi-card">

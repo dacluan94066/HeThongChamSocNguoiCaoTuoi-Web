@@ -1,0 +1,39 @@
+.care-notes-page .care-notes-intro { margin-bottom:20px; border-radius:14px; border-color:#cfe7e1; background:#f1faf7; }
+.care-notes-page .care-notes-intro p { margin:4px 0 0; line-height:1.6; }
+.care-notes-page .care-notes-filter-select { width:230px; max-width:100%; }
+.care-notes-page .care-notes-filter-range { width:285px; max-width:100%; }
+.care-notes-page .table-toolbar-left { min-width:0; flex-wrap:wrap; }
+.care-notes-page .toolbar-search-input { max-width:100%; }
+.care-notes-page .care-notes-filter-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.care-notes-page .care-notes-state { padding:24px; border-radius:14px; background:#fff; }
+.care-notes-page .care-note-day { margin-bottom:24px; }
+.care-notes-page .care-note-day-heading { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:22px 0 16px; }
+.care-notes-page .care-note-day-heading h3 { margin:0; color:#0f5c63; font-size:17px; }
+.care-notes-page .care-note-timeline { padding:12px 10px 1px 5px; }
+.care-notes-page .care-note-card { border-radius:14px; border-left:4px solid var(--note-color); box-shadow:0 4px 16px #143b3510; }
+.care-notes-page .care-note-card .ant-card-body { padding:18px; }
+.care-notes-page .care-note-card-header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:12px; }
+.care-notes-page .care-note-person { display:flex; align-items:center; flex-wrap:wrap; gap:8px; color:#36564f; margin-bottom:8px; }
+.care-notes-page .care-note-person strong { overflow-wrap:anywhere; }
+.care-notes-page .care-note-title { color:#1a3430; font-size:17px; line-height:1.5; margin:8px 0 0; overflow-wrap:anywhere; }
+.care-notes-page .care-note-time { display:flex; align-items:center; gap:6px; color:#0f5c63; font-weight:600; }
+.care-notes-page .care-note-content { white-space:pre-wrap; overflow-wrap:anywhere; color:#3d5263; margin:14px 0; line-height:1.75; font-size:15px; }
+.care-notes-page .care-note-footer { border-top:1px solid #edf2f1; padding-top:12px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:12px; }
+.care-notes-page .care-note-author { display:grid; gap:5px; font-size:13px; color:#617a74; overflow-wrap:anywhere; }
+.care-notes-page .care-note-author strong { color:#3e5c55; }
+.care-notes-page .care-note-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.care-note-editor-guidance { background:#f4faf7; border:1px solid #dbece6; border-radius:10px; padding:14px; margin-bottom:16px; color:#36564f; line-height:1.7; }
+.care-note-editor-guidance p { margin:2px 0; }
+.care-note-form-error { margin-bottom:16px; }
+.care-note-conflict-preview { white-space:pre-wrap; overflow-wrap:anywhere; max-height:220px; overflow-y:auto; background:#fff; padding:10px; border:1px solid #eddbaa; border-radius:8px; margin:8px 0; }
+.care-note-history-entry { border:1px solid #dfeae7; border-radius:12px; padding:14px; margin-bottom:16px; }
+.care-note-history-meta { color:#5e7871; line-height:1.65; margin-top:6px; }
+.care-note-snapshot { background:#f6f9f8; border-radius:8px; padding:12px; margin-top:10px; }
+.care-note-snapshot p { margin:5px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+@media (max-width:600px) {
+  .care-notes-page .care-notes-filter-select,.care-notes-page .care-notes-filter-range { width:100%; }
+  .care-notes-page .table-toolbar-left,.care-notes-page .table-toolbar-left>.ant-space { width:100%; }
+  .care-notes-page .table-toolbar-left>.ant-space>.ant-space-item { width:100%; }
+  .care-notes-page .care-note-card .ant-card-body { padding:14px; }
+  .care-notes-page .care-note-actions { width:100%; }
+}

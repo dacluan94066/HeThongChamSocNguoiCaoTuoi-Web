@@ -274,11 +274,15 @@ class MedicationDoseCard extends StatelessWidget {
     required this.statusColor,
     required this.updating,
     required this.onConfirm,
+    this.onSupplement,
+    this.supplementaryNote,
   });
   final String name, dose, time, instructions, status, statusLabel;
   final Color statusColor;
   final bool updating;
   final VoidCallback? onConfirm;
+  final VoidCallback? onSupplement;
+  final String? supplementaryNote;
 
   @override
   Widget build(BuildContext context) {
@@ -435,6 +439,29 @@ class MedicationDoseCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (supplementaryNote != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                supplementaryNote!,
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.4,
+                  color: HomeVisuals.brand,
+                ),
+              ),
+            ],
+            if (onSupplement != null) ...[
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                key: const ValueKey('supplement-dose'),
+                onPressed: onSupplement,
+                icon: const Icon(Icons.history_rounded),
+                label: const Text(
+                  'Đã uống nhưng quên xác nhận',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
             if (onConfirm != null) ...[
               const SizedBox(height: 14),
               FilledButton(

@@ -264,7 +264,7 @@ Widget alertsUiApp({
   home: Scaffold(
     body: sos ? const SosScreen() : const AlertsHubScreen(),
     bottomNavigationBar: navigation
-        ? AppBottomNavigation(selectedIndex: sos ? 3 : 4, onSelected: (_) {})
+        ? AppBottomNavigation(selectedIndex: sos ? 2 : 3, onSelected: (_) {})
         : null,
   ),
 );

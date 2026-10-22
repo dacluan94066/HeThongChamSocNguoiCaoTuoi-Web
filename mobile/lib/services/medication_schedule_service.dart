@@ -135,6 +135,36 @@ class MedicationScheduleService {
     }
   }
 
+  Future<Map<String, dynamic>> supplementMedication(
+    int id, {
+    required String takenAt,
+    required String reason,
+  }) async {
+    final version = ApiClient.sessionVersion;
+    try {
+      final response = await ApiClient.instance.dio.patch<Map<String, dynamic>>(
+        '/medication-schedule/$id/supplement',
+        data: {'thoiGianThucTe': takenAt, 'lyDo': reason},
+      );
+      final data = response.data?['data'];
+      if (data is! Map) {
+        throw const ApiException('Phản hồi ghi nhận bổ sung không hợp lệ.');
+      }
+      _invalidate();
+      try {
+        await LocalNotificationService.cancelMedicationDoseReminders(
+          id,
+          isCurrent: () => version == ApiClient.sessionVersion,
+        );
+      } catch (_) {
+        debugPrint('Sẽ đồng bộ lại nhắc thuốc khi tải lịch.');
+      }
+      return Map<String, dynamic>.from(data);
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   void clearCache() {
     _generation++;
     _cache.clear();

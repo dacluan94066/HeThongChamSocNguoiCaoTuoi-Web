@@ -27,6 +27,7 @@ class HomeUiAdapter implements HttpClientAdapter {
   bool empty = false;
   bool offline = false;
   String name = 'Người dùng kiểm thử giao diện';
+  List<Map<String, dynamic>>? metrics;
   @override
   void close({bool force = false}) {}
   @override
@@ -54,24 +55,26 @@ class HomeUiAdapter implements HttpClientAdapter {
         'gioiTinh': 'Nam',
       };
     } else if (!empty && options.path == '/elderly/me/health-metrics') {
-      data = [
-        // Deliberately above the Figma demo range but normal per API flag.
-        {
-          'tenChiSo': 'Huyết áp',
-          'giaTri': 175,
-          'giaTriPhu': 108,
-          'donVi': 'mmHg',
-          'laBatThuong': false,
-          'thoiGianDo': now,
-        },
-        {
-          'tenChiSo': 'Đường huyết',
-          'giaTri': 111,
-          'donVi': 'mg/dL',
-          'laBatThuong': true,
-          'thoiGianDo': now,
-        },
-      ];
+      data =
+          metrics ??
+          [
+            // Deliberately above the Figma demo range but normal per API flag.
+            {
+              'tenChiSo': 'Huyết áp',
+              'giaTri': 175,
+              'giaTriPhu': 108,
+              'donVi': 'mmHg',
+              'laBatThuong': false,
+              'thoiGianDo': now,
+            },
+            {
+              'tenChiSo': 'Đường huyết',
+              'giaTri': 111,
+              'donVi': 'mg/dL',
+              'laBatThuong': true,
+              'thoiGianDo': now,
+            },
+          ];
     } else if (!empty && options.path == '/elderly/me/medication-schedule') {
       data = [
         {
@@ -170,6 +173,105 @@ void main() {
     await fixture.install();
   });
   tearDown(() => fixture.dispose());
+
+  for (final apiName in ['Nhiệt độ cơ thể', 'Nhiệt độ']) {
+    testWidgets(
+      'Home temperature uses API name $apiName without losing unit or timestamp',
+      (tester) async {
+        final measuredAt = DateTime.now().subtract(const Duration(minutes: 5));
+        adapter.metrics = [
+          {
+            'tenChiSo': apiName,
+            'giaTri': 37.2,
+            'donVi': '°C',
+            'laBatThuong': false,
+            'thoiGianDo': measuredAt.toIso8601String(),
+          },
+        ];
+        await tester.pumpWidget(homeUiApp());
+        await settleHomeUi(tester);
+        final temperature = tester
+            .widgetList<HomeMetricTile>(find.byType(HomeMetricTile))
+            .singleWhere((card) => card.name == 'Nhiệt độ');
+        String two(int value) => value.toString().padLeft(2, '0');
+        expect(temperature.hasData, isTrue);
+        expect(temperature.value, '37.2');
+        expect(temperature.unit, '°C');
+        expect(temperature.status, 'Bình thường');
+        expect(
+          temperature.measuredAt,
+          '${two(measuredAt.hour)}:${two(measuredAt.minute)} · ${two(measuredAt.day)}/${two(measuredAt.month)}',
+        );
+        expect(adapter.requests.every((r) => r.method == 'GET'), isTrue);
+      },
+    );
+  }
+  testWidgets(
+    'Temperature display retains API abnormal flag, not local thresholds',
+    (tester) async {
+      adapter.metrics = [
+        {
+          'tenChiSo': 'Nhiệt độ cơ thể',
+          'giaTri': 37.2,
+          'donVi': '°C',
+          'laBatThuong': true,
+          'thoiGianDo': DateTime.now().toIso8601String(),
+        },
+      ];
+      await tester.pumpWidget(homeUiApp());
+      await settleHomeUi(tester);
+      final card = tester
+          .widgetList<HomeMetricTile>(find.byType(HomeMetricTile))
+          .singleWhere((c) => c.name == 'Nhiệt độ');
+      expect(card.value, '37.2');
+      expect(card.abnormal, isTrue);
+      expect(card.status, 'Bất thường');
+    },
+  );
+  testWidgets('Temperature alias keeps the first/latest API measurement', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    adapter.metrics = [
+      {
+        'tenChiSo': 'Nhiệt độ cơ thể',
+        'giaTri': 37.2,
+        'donVi': '°C',
+        'laBatThuong': false,
+        'thoiGianDo': now.toIso8601String(),
+      },
+      {
+        'tenChiSo': 'Nhiệt độ',
+        'giaTri': 38.1,
+        'donVi': '°C',
+        'laBatThuong': true,
+        'thoiGianDo': now.subtract(const Duration(days: 1)).toIso8601String(),
+      },
+    ];
+    await tester.pumpWidget(homeUiApp());
+    await settleHomeUi(tester);
+    final card = tester
+        .widgetList<HomeMetricTile>(find.byType(HomeMetricTile))
+        .singleWhere((c) => c.name == 'Nhiệt độ');
+    expect(card.value, '37.2');
+    expect(card.abnormal, isFalse);
+  });
+  testWidgets(
+    'Other temperature-like names cannot populate body temperature card',
+    (tester) async {
+      adapter.metrics = [
+        {'tenChiSo': 'Nhiệt độ phòng', 'giaTri': 28, 'donVi': '°C'},
+      ];
+      await tester.pumpWidget(homeUiApp());
+      await settleHomeUi(tester);
+      final card = tester
+          .widgetList<HomeMetricTile>(find.byType(HomeMetricTile))
+          .singleWhere((c) => c.name == 'Nhiệt độ');
+      expect(card.hasData, isFalse);
+      expect(card.value, 'Chưa có dữ liệu');
+      expect(adapter.requests.every((r) => r.method == 'GET'), isTrue);
+    },
+  );
 
   testWidgets(
     'Home renders API values and flags, never demo thresholds or data',
@@ -302,7 +404,7 @@ void main() {
   }
 
   testWidgets(
-    'All six bottom destinations preserve order and exact existing screens',
+    'Five bottom destinations preserve order; schedule opens both existing screens',
     (tester) async {
       await tester.pumpWidget(homeUiApp());
       await settleHomeUi(tester);
@@ -314,11 +416,10 @@ void main() {
             )
             .map((text) => text.data)
             .toList(),
-        ['Trang chủ', 'Lịch thuốc', 'Lịch khám', 'SOS', 'Cảnh báo', 'Hồ sơ'],
+        ['Trang chủ', 'Lịch trình', 'SOS', 'Cảnh báo', 'Hồ sơ'],
       );
       final destinations = <(String, Type)>[
-        ('Lịch thuốc', MedicationScreen),
-        ('Lịch khám', AppointmentScreen),
+        ('Lịch trình', MedicationScreen),
         ('SOS', SosScreen),
         ('Cảnh báo', AlertsHubScreen),
         ('Hồ sơ', ProfileScreen),
@@ -327,6 +428,11 @@ void main() {
         await tester.tap(find.descendant(of: nav, matching: find.text(label)));
         await settleHomeUi(tester);
         expect(find.byType(screen), findsOneWidget);
+        if (label == 'Lịch trình') {
+          await tester.tap(find.byKey(const ValueKey('schedule-tab-1')));
+          await settleHomeUi(tester);
+          expect(find.byType(AppointmentScreen), findsOneWidget);
+        }
       }
       expect(adapter.requests.every((r) => r.method == 'GET'), true);
       expect(tester.takeException(), isNull);

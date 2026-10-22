@@ -131,234 +131,206 @@ class AppBottomNavigation extends StatelessWidget {
     super.key,
     required this.selectedIndex,
     required this.onSelected,
-  });
+  }) : assert(selectedIndex >= 0 && selectedIndex < 5);
 
   final int selectedIndex;
   final ValueChanged<int> onSelected;
-
   static const _items = <(IconData, String)>[
     (Icons.home_outlined, 'Trang chủ'),
-    (Icons.medication_outlined, 'Lịch thuốc'),
-    (Icons.calendar_month_outlined, 'Lịch khám'),
-    (Icons.sos_outlined, 'SOS'),
+    (Icons.calendar_month_outlined, 'Lịch trình'),
+    (Icons.sos_rounded, 'SOS'),
     (Icons.notifications_outlined, 'Cảnh báo'),
     (Icons.person_outline, 'Hồ sơ'),
   ];
+  static const _green = Color(0xff21966f);
+  static const _sos = Color(0xfff32e59);
 
   @override
   Widget build(BuildContext context) {
-    // Keep the keyboard and input actions unobstructed. Scaffold reserves the
-    // bar's full height; do not use extendBody or an overlay for the floating look.
+    // Reserve the entire raised SOS area in Scaffold; neither the content nor
+    // the independent AI shortcut may extend beneath this navigation.
     if (MediaQuery.viewInsetsOf(context).bottom > 0) {
       return const SizedBox.shrink();
     }
-    final animation = MediaQuery.disableAnimationsOf(context)
+    final duration = MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
         : const Duration(milliseconds: 180);
     return SafeArea(
       top: false,
       minimum: const EdgeInsets.fromLTRB(10, 0, 10, 12),
       child: Padding(
-        padding: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.only(top: 10),
         child: Align(
           heightFactor: 1,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                const horizontalPadding = 4.0;
-                final contentWidth =
-                    constraints.maxWidth - horizontalPadding * 2 - 2;
-                final scaler = MediaQuery.textScalerOf(context);
+                final itemWidth = constraints.maxWidth / _items.length;
                 final styles = List.generate(
                   _items.length,
-                  (index) => DefaultTextStyle.of(context).style.copyWith(
-                    fontSize: 13,
-                    height: 1.15,
-                    fontWeight: selectedIndex == index
-                        ? FontWeight.w800
-                        : FontWeight.w600,
-                    color: index == 3
-                        ? CareSeniorColors.danger
-                        : selectedIndex == index
-                        ? const Color(0xff155e4b)
-                        : const Color(0xff5f6c65),
+                  (i) => DefaultTextStyle.of(context).style.copyWith(
+                    fontSize: 12,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: i == 2
+                        ? _sos
+                        : selectedIndex == i
+                        ? _green
+                        : const Color(0xff718096),
                   ),
                 );
-                var columns = _items.length;
-                if (scaler.scale(1) > 1.25) {
-                  // Accessibility layout: give whole words room instead of
-                  // shrinking system text or splitting Vietnamese words.
-                  for (var index = 0; index < _items.length; index++) {
-                    for (final word in _items[index].$2.split(' ')) {
-                      final painter = TextPainter(
-                        text: TextSpan(
-                          text: word,
-                          style: styles[index].copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        textDirection: Directionality.of(context),
-                        textScaler: scaler,
-                      )..layout();
-                      if (painter.width > contentWidth / _items.length - 4) {
-                        columns = 3;
-                      }
-                      painter.dispose();
-                    }
-                  }
-                }
-                // A small sub-pixel tolerance prevents Wrap rounding a last
-                // item onto an unintended extra row.
-                final itemWidth = (contentWidth - 0.06) / columns;
-                final iconExtent = (itemWidth - 4).clamp(36.0, 44.0);
-                final labelWidth = itemWidth - 4;
                 var labelHeight = 0.0;
-                for (var index = 0; index < _items.length; index++) {
-                  // Reserve space for every label in its selected (bold) style
-                  // so switching tabs cannot trim or jump the enlarged labels.
+                for (var i = 0; i < _items.length; i++) {
                   final painter = TextPainter(
-                    text: TextSpan(
-                      text: _items[index].$2,
-                      style: styles[index].copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                    text: TextSpan(text: _items[i].$2, style: styles[i]),
                     textDirection: Directionality.of(context),
-                    textScaler: scaler,
-                  )..layout(maxWidth: labelWidth);
+                    textScaler: MediaQuery.textScalerOf(context),
+                  )..layout(maxWidth: itemWidth - 2);
                   if (painter.height > labelHeight) {
                     labelHeight = painter.height;
                   }
                   painter.dispose();
                 }
-                final tileHeight =
-                    12 + iconExtent + 6 + labelHeight.ceilToDouble() + 12;
-                final rows = _items.length ~/ columns;
-                return Container(
+                const raise = 20.0;
+                const normalExtent = 44.0;
+                final sosExtent = itemWidth.clamp(52.0, 64.0);
+                const labelTop = raise + 12 + normalExtent + 6;
+                final height = labelTop + labelHeight.ceilToDouble() + 14;
+                return SizedBox(
                   key: const ValueKey('floating-pill-navigation'),
-                  height: tileHeight * rows + (rows - 1) * 8 + 2,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: horizontalPadding,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(40),
-                    border: Border.all(color: const Color(0xffe4ece7)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x18155e4b),
-                        blurRadius: 24,
-                        offset: Offset(0, 6),
+                  height: height,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        top: raise,
+                        child: DecoratedBox(
+                          key: const ValueKey('floating-pill-surface'),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(40),
+                            border: Border.all(color: const Color(0xffe7eeea)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x14155e4b),
+                                blurRadius: 28,
+                                offset: Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Wrap(
-                      runSpacing: 8,
-                      children: [
-                        for (var index = 0; index < _items.length; index++)
-                          SizedBox(
-                            width: itemWidth,
-                            height: tileHeight,
-                            child: Semantics(
-                              selected: selectedIndex == index,
-                              button: true,
-                              label: _items[index].$2,
-                              child: InkWell(
-                                key: ValueKey('home-nav-$index'),
-                                onTap: () => onSelected(index),
-                                borderRadius: BorderRadius.circular(28),
-                                child: SizedBox.expand(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 2,
-                                    ),
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        AnimatedContainer(
-                                          key: ValueKey(
-                                            'home-nav-circle-$index',
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (var i = 0; i < _items.length; i++)
+                            Expanded(
+                              child: Semantics(
+                                selected: selectedIndex == i,
+                                button: true,
+                                label: _items[i].$2,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    key: ValueKey('home-nav-$i'),
+                                    onTap: () => onSelected(i),
+                                    borderRadius: BorderRadius.circular(28),
+                                    child: SizedBox(
+                                      height: height,
+                                      child: Column(
+                                        children: [
+                                          SizedBox(
+                                            height: i == 2 ? 0 : raise + 12,
                                           ),
-                                          duration: animation,
-                                          curve: Curves.easeOutCubic,
-                                          width: iconExtent,
-                                          height: iconExtent,
-                                          alignment: Alignment.center,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: selectedIndex == index
-                                                ? const Color(0xff21966f)
-                                                : const Color(0xfff0f3f1),
-                                          ),
-                                          child: AnimatedContainer(
-                                            duration: animation,
+                                          AnimatedContainer(
+                                            key: ValueKey('home-nav-circle-$i'),
+                                            duration: duration,
                                             curve: Curves.easeOutCubic,
-                                            width:
-                                                index == 3 &&
-                                                    selectedIndex == index
-                                                ? iconExtent - 10
-                                                : iconExtent,
-                                            height:
-                                                index == 3 &&
-                                                    selectedIndex == index
-                                                ? iconExtent - 10
-                                                : iconExtent,
+                                            width: i == 2
+                                                ? sosExtent
+                                                : normalExtent,
+                                            height: i == 2
+                                                ? sosExtent
+                                                : normalExtent,
                                             alignment: Alignment.center,
                                             decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color:
-                                                  index == 3 &&
-                                                      selectedIndex == index
-                                                  ? Colors.white
+                                              shape: i == 2
+                                                  ? BoxShape.circle
+                                                  : BoxShape.rectangle,
+                                              borderRadius: i == 2
+                                                  ? null
+                                                  : BorderRadius.circular(20),
+                                              color: i == 2
+                                                  ? _sos
+                                                  : selectedIndex == i
+                                                  ? const Color(0xffe8f6ef)
                                                   : Colors.transparent,
+                                              border: i == 2
+                                                  ? Border.all(
+                                                      color: const Color(
+                                                        0xffffd8e2,
+                                                      ),
+                                                      width: 4,
+                                                    )
+                                                  : null,
+                                              boxShadow: i == 2
+                                                  ? const [
+                                                      BoxShadow(
+                                                        color: Color(
+                                                          0x40f32e59,
+                                                        ),
+                                                        blurRadius: 18,
+                                                        offset: Offset(0, 4),
+                                                      ),
+                                                    ]
+                                                  : null,
                                             ),
                                             child: Icon(
-                                              index == 3
-                                                  ? Icons.sos_rounded
-                                                  : _items[index].$1,
-                                              key: ValueKey(
-                                                'home-nav-icon-$index',
-                                              ),
-                                              size: 24,
-                                              color: index == 3
-                                                  ? CareSeniorColors.danger
-                                                  : selectedIndex == index
+                                              i == 0 && selectedIndex == 0
+                                                  ? Icons.home_rounded
+                                                  : _items[i].$1,
+                                              key: ValueKey('home-nav-icon-$i'),
+                                              size: i == 2 ? 32 : 26,
+                                              color: i == 2
                                                   ? Colors.white
-                                                  : const Color(0xff5f6c65),
+                                                  : selectedIndex == i
+                                                  ? _green
+                                                  : const Color(0xff94a3b8),
                                             ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        SizedBox(
-                                          height: labelHeight.ceilToDouble(),
-                                          child: AnimatedDefaultTextStyle(
-                                            duration: animation,
-                                            curve: Curves.easeOutCubic,
-                                            style: styles[index],
-                                            textAlign: TextAlign.center,
-                                            child: Text(
-                                              _items[index].$2,
-                                              key: ValueKey(
-                                                'home-nav-label-$index',
-                                              ),
-                                              softWrap: true,
+                                          SizedBox(
+                                            height: i == 2
+                                                ? labelTop - sosExtent
+                                                : 6,
+                                          ),
+                                          SizedBox(
+                                            height: labelHeight.ceilToDouble(),
+                                            width: itemWidth - 2,
+                                            child: AnimatedDefaultTextStyle(
+                                              duration: duration,
+                                              curve: Curves.easeOutCubic,
+                                              style: styles[i],
                                               textAlign: TextAlign.center,
+                                              child: Text(
+                                                _items[i].$2,
+                                                key: ValueKey(
+                                                  'home-nav-label-$i',
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                softWrap: true,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ),
                 );
               },

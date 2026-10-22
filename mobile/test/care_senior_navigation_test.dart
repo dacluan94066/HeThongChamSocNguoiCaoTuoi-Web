@@ -9,7 +9,7 @@ import 'home_dashboard_ui_test.dart'
 
 void main() {
   testWidgets(
-    'Large text can use two rows while retaining all six destinations',
+    'Five destinations stay in one row with raised centered SOS at 1.8x',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(320, 820));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -39,9 +39,9 @@ void main() {
       final fourth = tester.getCenter(
         find.byKey(const ValueKey('home-nav-circle-3')),
       );
-      expect(first.dy, closeTo(third.dy, 0.1));
-      expect(fourth.dy, greaterThan(first.dy));
-      expect(find.byType(Icon), findsNWidgets(6));
+      expect(third.dy, lessThan(first.dy));
+      expect(fourth.dy, closeTo(first.dy, 0.1));
+      expect(find.byType(Icon), findsNWidgets(5));
       expect(tester.takeException(), isNull);
     },
   );
@@ -69,7 +69,13 @@ void main() {
         ),
       );
       final pill = find.byKey(const ValueKey('floating-pill-navigation'));
-      final box = tester.widget<Container>(pill).decoration! as BoxDecoration;
+      final box =
+          tester
+                  .widget<DecoratedBox>(
+                    find.byKey(const ValueKey('floating-pill-surface')),
+                  )
+                  .decoration
+              as BoxDecoration;
       expect(box.color, Colors.white);
       expect(box.borderRadius, BorderRadius.circular(40));
       expect(box.boxShadow, isNotEmpty);
@@ -88,7 +94,7 @@ void main() {
   );
 
   testWidgets(
-    'All six selection callbacks remain exact; SOS icon always remains red',
+    'All five selection callbacks remain exact; center SOS stays pink with white icon',
     (tester) async {
       var selected = 0;
       final events = <int>[];
@@ -111,7 +117,7 @@ void main() {
       final originalHeight = tester
           .getSize(find.byKey(const ValueKey('floating-pill-navigation')))
           .height;
-      for (var selectedIndex = 0; selectedIndex < 6; selectedIndex++) {
+      for (var selectedIndex = 0; selectedIndex < 5; selectedIndex++) {
         await tester.tap(find.byKey(ValueKey('home-nav-$selectedIndex')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 90));
@@ -123,33 +129,38 @@ void main() {
               .height,
           originalHeight,
         );
-        for (var index = 0; index < 6; index++) {
+        for (var index = 0; index < 5; index++) {
           final circle = tester.widget<AnimatedContainer>(
             find.byKey(ValueKey('home-nav-circle-$index')),
           );
           final decoration = circle.decoration! as BoxDecoration;
-          expect(decoration.shape, BoxShape.circle);
+          expect(
+            decoration.shape,
+            index == 2 ? BoxShape.circle : BoxShape.rectangle,
+          );
           expect(
             decoration.color,
-            index == selectedIndex
-                ? const Color(0xff21966f)
-                : const Color(0xfff0f3f1),
+            index == 2
+                ? const Color(0xfff32e59)
+                : index == selectedIndex
+                ? const Color(0xffe8f6ef)
+                : Colors.transparent,
           );
           final icon = tester.widget<Icon>(
             find.byKey(ValueKey('home-nav-icon-$index')),
           );
           expect(
             icon.color,
-            index == 3
-                ? CareSeniorColors.danger
-                : index == selectedIndex
+            index == 2
                 ? Colors.white
-                : const Color(0xff5f6c65),
+                : index == selectedIndex
+                ? const Color(0xff21966f)
+                : const Color(0xff94a3b8),
           );
           expect(circle.duration, const Duration(milliseconds: 180));
         }
       }
-      expect(events, [0, 1, 2, 3, 4, 5]);
+      expect(events, [0, 1, 2, 3, 4]);
     },
   );
 
@@ -274,20 +285,21 @@ void main() {
         ),
       );
       expect(find.text('Trang chủ'), findsOneWidget);
-      expect(find.text('Lịch thuốc'), findsOneWidget);
-      expect(find.text('Lịch khám'), findsOneWidget);
+      expect(find.text('Lịch trình'), findsOneWidget);
+      expect(find.text('Lịch thuốc'), findsNothing);
+      expect(find.text('Lịch khám'), findsNothing);
       expect(find.text('SOS'), findsOneWidget);
       expect(find.text('Cảnh báo'), findsOneWidget);
       expect(find.text('Hồ sơ'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('SOS'));
-      expect(selected, 3);
+      expect(selected, 2);
     });
   }
 
   for (final width in [320.0, 360.0, 390.0, 412.0, 768.0]) {
     for (final scale in [1.0, 1.2, 1.4, 1.6, 1.8]) {
-      testWidgets('six full navigation labels fit width=$width scale=$scale', (
+      testWidgets('five full navigation labels fit width=$width scale=$scale', (
         tester,
       ) async {
         await tester.binding.setSurfaceSize(Size(width, 820));
@@ -311,7 +323,7 @@ void main() {
           ),
         );
         final bar = tester.getRect(find.byType(AppBottomNavigation));
-        for (var index = 0; index < 6; index++) {
+        for (var index = 0; index < 5; index++) {
           final label = find.byKey(ValueKey('home-nav-label-$index'));
           final text = tester.widget<Text>(label);
           final paragraph = tester.renderObject<RenderParagraph>(

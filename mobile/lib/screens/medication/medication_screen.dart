@@ -10,6 +10,7 @@ import '../../services/local_notification_service.dart';
 import '../../services/medication_schedule_service.dart';
 import '../appointments/appointment_screen.dart';
 import 'medication_dashboard_ui.dart';
+import 'medication_supplement_dialog.dart';
 
 class MedicationScreen extends StatefulWidget {
   const MedicationScreen({super.key});
@@ -265,6 +266,76 @@ class _MedicationScreenState extends State<MedicationScreen>
     }
   }
 
+  bool _canSupplement(Map<String, dynamic> item) {
+    final id = _asInt(item['id']);
+    final raw = item['thoiGianDuKien']?.toString();
+    if (id == null ||
+        id <= 0 ||
+        raw == null ||
+        !['BoLo', 'ChuaDenGio'].contains(item['trangThai'])) {
+      return false;
+    }
+    // API DATETIME2 is a Vietnam wall-clock value, without a timezone suffix.
+    final scheduled = DateTime.tryParse(
+      '${raw.substring(0, raw.length < 19 ? raw.length : 19)}Z',
+    );
+    if (scheduled == null) return false;
+    final now = DateTime.now().toUtc().add(const Duration(hours: 7));
+    final today = DateTime.utc(now.year, now.month, now.day);
+    return scheduled.isBefore(today) &&
+        now.difference(scheduled) <= const Duration(hours: 48) &&
+        item['ghiNhanBoSung'] == null &&
+        !_updatingIds.contains(id);
+  }
+
+  Future<void> _recordSupplement(Map<String, dynamic> item) async {
+    if (!_canSupplement(item)) return;
+    final id = _asInt(item['id'])!;
+    final version = ApiClient.sessionVersion;
+    final values = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => MedicationSupplementDialog(
+        name: item['tenThuoc']?.toString() ?? 'Thuốc',
+        scheduled: _parseDateTime(item['thoiGianDuKien'])!,
+      ),
+    );
+    if (!mounted || values == null || version != ApiClient.sessionVersion) {
+      return;
+    }
+    final index = _schedule.indexWhere((dose) => _asInt(dose['id']) == id);
+    if (index < 0 || !_canSupplement(_schedule[index])) {
+      _showMessage('Liều thuốc đã thay đổi. Vui lòng tải lại lịch.');
+      return;
+    }
+    setState(() => _updatingIds.add(id));
+    try {
+      final updated = await MedicationScheduleService.instance
+          .supplementMedication(
+            id,
+            takenAt: values['thoiGianThucTe']!,
+            reason: values['lyDo']!,
+          );
+      if (!mounted || version != ApiClient.sessionVersion) return;
+      setState(() {
+        final current = _schedule.indexWhere(
+          (dose) => _asInt(dose['id']) == id,
+        );
+        if (current >= 0) _schedule[current] = updated;
+      });
+      _showMessage('Đã ghi nhận bổ sung liều thuốc đã uống.');
+    } catch (error) {
+      if (mounted && version == ApiClient.sessionVersion) {
+        _showMessage(
+          error is ApiException
+              ? error.message
+              : 'Không thể ghi nhận bổ sung. Vui lòng thử lại.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updatingIds.remove(id));
+    }
+  }
+
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -394,6 +465,10 @@ class _MedicationScreenState extends State<MedicationScreen>
                 Text(
                   selectedToday
                       ? 'Chỉ các liều hôm nay mới có thể xác nhận.'
+                      : _selectedDay.isBefore(
+                          DateTime(today.year, today.month, today.day),
+                        )
+                      ? 'Liều ngày trước trong 48 giờ có thể ghi nhận bổ sung nếu đã thực sự uống.'
                       : 'Ngày khác chỉ dùng để xem lịch thuốc.',
                   style: const TextStyle(
                     fontSize: 16,
@@ -509,6 +584,10 @@ class _MedicationScreenState extends State<MedicationScreen>
       statusLabel: statusLabel,
       statusColor: statusColor,
       updating: updating,
+      onSupplement: _canSupplement(item) ? () => _recordSupplement(item) : null,
+      supplementaryNote: item['ghiNhanBoSung'] is Map
+          ? 'Ghi nhận bổ sung\nĐã uống: ${_formatMoment(item['thoiGianThucTe'])}\nGhi nhận: ${_formatMoment(item['ghiNhanBoSung']['ngayGhiNhan'])}\nNgười ghi: ${item['ghiNhanBoSung']['nguoiGhiNhanTen']}\nLý do: ${item['ghiNhanBoSung']['lyDo']}'
+          : null,
       onConfirm: _canRecordMissedDose(item)
           ? () => _confirmMissedDose(item)
           : canConfirm
@@ -520,6 +599,13 @@ class _MedicationScreenState extends State<MedicationScreen>
   static int? _asInt(Object? value) {
     if (value is int) return value;
     return int.tryParse(value?.toString() ?? '');
+  }
+
+  static String _formatMoment(Object? value) {
+    final date = _parseDateTime(value);
+    if (date == null) return 'Chưa có dữ liệu';
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(date.hour)}:${two(date.minute)} · ${two(date.day)}/${two(date.month)}/${date.year}';
   }
 
   static DateTime? _parseDateTime(Object? value) =>

@@ -276,6 +276,35 @@ CREATE TABLE LichUongThuoc (
 GO
 CREATE INDEX IX_LichUongThuoc_ThoiGian ON LichUongThuoc(NguoiCaoTuoiID, ThoiGianDuKien);
 GO
+-- Run manually against the intended CareSenior database, once or repeatedly.
+-- No medication/profile rows are changed. Never auto-run this at server startup.
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+IF OBJECT_ID(N'dbo.LichSuGhiNhanUongThuoc',N'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.LichSuGhiNhanUongThuoc (
+    GhiNhanID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    LichUongThuocID INT NOT NULL,
+    NguoiCaoTuoiID INT NOT NULL,
+    ThoiGianDuKien DATETIME2 NOT NULL,
+    TrangThaiCu NVARCHAR(20) NOT NULL,
+    ThoiGianThucTeCu DATETIME2 NULL,
+    NguoiXacNhanCuID INT NULL,
+    TrangThaiMoi NVARCHAR(20) NOT NULL CHECK (TrangThaiMoi=N'DaUong'),
+    ThoiGianThucTe DATETIME2 NOT NULL,
+    NguoiGhiNhanID INT NOT NULL,
+    NguoiGhiNhanTen NVARCHAR(100) NOT NULL,
+    VaiTro NVARCHAR(30) NOT NULL,
+    NgayGhiNhan DATETIME2 NOT NULL,
+    LyDo NVARCHAR(300) NOT NULL,
+    CONSTRAINT UQ_GhiNhanBoSung_Lieu UNIQUE(LichUongThuocID)
+  );
+  -- Intentionally retain immutable ID/name snapshots without cascading FKs:
+  -- deleting an old prescription/account must not silently erase its audit.
+  CREATE INDEX IX_GhiNhanBoSung_NCT ON dbo.LichSuGhiNhanUongThuoc(NguoiCaoTuoiID,NgayGhiNhan);
+END;
+COMMIT TRANSACTION;
+GO
 
 /* =====================================================================
    NHOM 4: LICH KHAM BENH
@@ -417,6 +446,33 @@ CREATE TABLE NhatKyChamSoc (
     CONSTRAINT FK_NhatKy_NCT FOREIGN KEY (NguoiCaoTuoiID) REFERENCES HoSoNguoiCaoTuoi(NguoiCaoTuoiID) ON DELETE CASCADE,
     CONSTRAINT FK_NhatKy_NCS FOREIGN KEY (NguoiChamSocID) REFERENCES NguoiChamSoc(NguoiChamSocID)
 );
+GO
+-- Additive audit schema only. Run explicitly in the intended CareSenior database.
+-- No existing diary, profile, medication or alert rows are modified/backfilled.
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+IF OBJECT_ID(N'dbo.LichSuNhatKyChamSoc',N'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.LichSuNhatKyChamSoc (
+    LichSuID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    NhatKyID INT NOT NULL,
+    NguoiCaoTuoiID INT NOT NULL,
+    HanhDong NVARCHAR(10) NOT NULL CHECK (HanhDong IN (N'TAO',N'SUA',N'XOA')),
+    NguoiThucHienID INT NOT NULL,
+    NguoiThucHienTen NVARCHAR(100) NOT NULL,
+    VaiTro NVARCHAR(30) NOT NULL,
+    ThoiGian DATETIME2 NOT NULL,
+    LyDo NVARCHAR(300) NULL,
+    DuLieuCu NVARCHAR(MAX) NULL CHECK (DuLieuCu IS NULL OR ISJSON(DuLieuCu)=1),
+    DuLieuMoi NVARCHAR(MAX) NOT NULL CHECK (ISJSON(DuLieuMoi)=1)
+  );
+  CREATE INDEX IX_NhatKyAudit_History ON dbo.LichSuNhatKyChamSoc(NhatKyID,LichSuID DESC);
+  CREATE INDEX IX_NhatKyAudit_NCT ON dbo.LichSuNhatKyChamSoc(NguoiCaoTuoiID,ThoiGian);
+  CREATE UNIQUE INDEX UX_NhatKyAudit_Create ON dbo.LichSuNhatKyChamSoc(NhatKyID) WHERE HanhDong=N'TAO';
+  -- No cascading foreign keys: retain historical ID/name snapshots even if an
+  -- account or elderly profile is later removed. Never expose an orphan's log.
+END;
+COMMIT TRANSACTION;
 GO
 
 /* =====================================================================
