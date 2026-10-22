@@ -4,14 +4,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function fixture({ duplicate = false, assignedCaregiver = true } = {}) {
+function fixture({ duplicate = false, assignedCaregiver = true, commitFails = false,
+  notificationFails = false } = {}) {
   const writes = [];
   const events = [];
-  const state = { notificationId: 0, committed: 0 };
+  const state = { notificationId: 0, committed: 0, rolledBack: 0 };
   class Transaction {
     async begin() {}
-    async commit() { state.committed++; }
-    async rollback() {}
+    async commit() { if (commitFails) throw new Error('COMMIT_FAILED'); state.committed++; }
+    async rollback() { state.rolledBack++; }
   }
   class Request {
     input(name, _, value) { this[name] = value; return this; }
@@ -39,6 +40,7 @@ function fixture({ duplicate = false, assignedCaregiver = true } = {}) {
         ] };
       }
       if (query.includes('INSERT INTO ThongBao(')) {
+        if (notificationFails) throw new Error('NOTIFICATION_FAILED');
         writes.push({ table: 'notification', userId: this.userId,
           content: this.content, source: this.source });
         return { recordset: [{ id: ++state.notificationId }] };
@@ -50,8 +52,11 @@ function fixture({ duplicate = false, assignedCaregiver = true } = {}) {
     Transaction, Request, ISOLATION_LEVEL: { SERIALIZABLE: 'serializable' } };
   const db = { sql, poolPromise: Promise.resolve({ request: () => new Request() }) };
   const socket = {
-    emitToAdminOnly: (event, data) => events.push({ recipient: 'admin', event, data }),
-    emitToUser: (userId, event, data) => events.push({ recipient: userId, event, data }),
+    emitToAdminOnly: () => { throw new Error('SOS must not broadcast to a cached admin room'); },
+    emitToUser: (userId, event, data) => {
+      assert.equal(state.committed, 1, 'No realtime event before successful commit');
+      events.push({ recipient: userId, event, data });
+    },
   };
   const load = (file, dependencies) => {
     const module = { exports: {} };
@@ -80,6 +85,7 @@ function fixture({ duplicate = false, assignedCaregiver = true } = {}) {
     let failed;
     await controller.create({ user: { userId: 3, tenVaiTro: 'NguoiCaoTuoi' }, body }, res,
       (error) => { failed = error; });
+    await new Promise((resolve) => setImmediate(resolve));
     if (failed) throw failed;
     return res;
   };
@@ -96,7 +102,7 @@ test('SOS with GPS notifies only assigned caregiver and admin with Maps link', a
   assert.deepEqual(writes.filter((item) => item.table === 'notification').map((item) => item.userId), [2, 1]);
   assert.ok(writes.every((item) => item.table !== 'notification' ||
     item.content.includes('https://www.google.com/maps?q=10.75,106.67')));
-  assert.deepEqual(events.filter((item) => item.event === 'canhbao:new').map((item) => item.recipient), ['admin', 2]);
+  assert.deepEqual(events.filter((item) => item.event === 'canhbao:new').map((item) => item.recipient), [1, 2]);
   assert.equal(events.find((item) => item.event === 'canhbao:new').data.canhBaoKhanCapId, 101);
 });
 
@@ -116,7 +122,7 @@ test('SOS without assigned caregiver still reaches admin and reports zero caregi
   assert.equal(result.code, 201);
   assert.equal(result.data.soNguoiChamSocNhan, 0);
   assert.deepEqual(writes.filter((item) => item.table === 'notification').map((item) => item.userId), [1]);
-  assert.deepEqual(events.filter((item) => item.event === 'canhbao:new').map((item) => item.recipient), ['admin']);
+  assert.deepEqual(events.filter((item) => item.event === 'canhbao:new').map((item) => item.recipient), [1]);
 });
 
 test('Invalid or incomplete coordinates are rejected without writes', async () => {
@@ -138,3 +144,13 @@ test('Second SOS inside 30 seconds returns existing alert and emits nothing', as
   assert.equal(writes.length, 0);
   assert.equal(events.length, 0);
 });
+
+for (const failure of ['commitFails', 'notificationFails']) {
+  test(`SOS ${failure} rolls back and never emits success/realtime`, async () => {
+    const { send, events, state } = fixture({ [failure]: true });
+    await assert.rejects(send({}), /FAILED/);
+    assert.equal(state.committed, 0);
+    assert.equal(state.rolledBack, 1);
+    assert.equal(events.length, 0);
+  });
+}

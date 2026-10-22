@@ -1,4 +1,4 @@
-const { sql } = require('../config/db');
+const { sql, poolPromise } = require('../config/db');
 const { emitToAdminOnly, emitToUser } = require('../socket');
 
 const requestFor = (connection) => connection instanceof sql.Transaction
@@ -18,10 +18,10 @@ async function createNotification(connection, { userId, title, content, type, so
   return result.recordset[0].id;
 }
 
-async function notifyAlertRecipients(connection, {
-  elderlyId, elderlyName, content, alertId, source, sourceId, emergency = false, latitude, longitude,
-}) {
-  const recipients = await requestFor(connection).input('elderlyId', sql.Int, elderlyId).query(`
+// Reuse the existing account/assignment rules. Permission gating here is SOS-only:
+// ordinary health notifications keep their existing delivery behaviour.
+async function getRecipients(connection, elderlyId, sos = false) {
+  return requestFor(connection).input('elderlyId', sql.Int, elderlyId).query(`
     SELECT DISTINCT nd.UserID AS userId, vt.TenVaiTro AS role
     FROM NguoiDung nd JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID
     LEFT JOIN NguoiChamSoc ncs ON ncs.UserID=nd.UserID AND ncs.TrangThai=N'DangLamViec'
@@ -30,8 +30,20 @@ async function notifyAlertRecipients(connection, {
       AND lk.NgayBatDau<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
       AND (lk.NgayKetThuc IS NULL OR lk.NgayKetThuc>CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
     WHERE nd.TrangThai=N'HoatDong'
-      AND (vt.TenVaiTro=N'QuanTriVien' OR (vt.TenVaiTro=N'NguoiChamSoc' AND lk.NguoiCaoTuoiID IS NOT NULL))
+      AND (vt.TenVaiTro=N'QuanTriVien' OR (vt.TenVaiTro=N'NguoiChamSoc' AND lk.NguoiCaoTuoiID IS NOT NULL
+        ${sos ? `AND EXISTS (
+          SELECT 1 FROM PhanQuyen pq
+          JOIN ChucNang cn ON cn.ChucNangID=pq.ChucNangID
+          WHERE pq.VaiTroID=nd.VaiTroID AND cn.MaChucNang=N'QLCANHBAO' AND pq.ChoPhepXem=1
+        )` : ''}))
   `);
+}
+
+async function notifyAlertRecipients(connection, {
+  elderlyId, elderlyName, content, alertId, source, sourceId, emergency = false, latitude, longitude,
+}) {
+  const sos = emergency === true && source === 'CanhBaoKhanCap';
+  const recipients = await getRecipients(connection, elderlyId, sos);
   const prefix = `${elderlyName}: `;
   const location = latitude != null && longitude != null
     ? ` https://www.google.com/maps?q=${latitude},${longitude}` : '';
@@ -52,10 +64,43 @@ async function notifyAlertRecipients(connection, {
     caregivers: deliveries.filter((item) => item.role === 'NguoiChamSoc'),
     admins: deliveries.filter((item) => item.role === 'QuanTriVien'),
     alertId,
+    ...(sos ? { sos: true, elderlyId } : {}),
   };
 }
 
+async function emitSosNotifications(delivery, payload) {
+  try {
+    const elderlyId = Number(delivery.elderlyId);
+    if (!Number.isInteger(elderlyId) || elderlyId < 1) return false;
+    // Called only after the SOS transaction commits. Re-read current eligibility:
+    // sockets can remain connected after an account, assignment or permission changes.
+    const pool = await poolPromise;
+    const current = await getRecipients(pool, elderlyId, true);
+    const eligible = new Set(current.recordset.map((item) => `${item.userId}:${item.role}`));
+    const sent = new Set();
+    for (const recipient of [...delivery.admins, ...delivery.caregivers]) {
+      const userId = Number(recipient.userId);
+      if (!Number.isInteger(userId) || userId < 1 || sent.has(userId)
+        || !eligible.has(`${userId}:${recipient.role}`)) continue;
+      sent.add(userId);
+      emitToUser(userId, 'canhbao:new', payload);
+      emitToUser(userId, 'thongbao:new', {
+        id: recipient.notificationId,
+        loaiThongBao: 'KhanCap',
+        canhBaoId: payload.canhBaoId,
+      });
+    }
+    return true;
+  } catch (error) {
+    // The SOS is already committed; a realtime failure must not fake a failed send
+    // or leak to an unverified recipient. Persisted notifications remain available.
+    console.error('[SOS] Khong the xac minh nguoi nhan realtime:', error.code || 'DELIVERY_FAILED');
+    return false;
+  }
+}
+
 function emitAlertNotifications(delivery, payload) {
+  if (delivery.sos === true) return emitSosNotifications(delivery, payload);
   emitToAdminOnly('canhbao:new', payload);
   for (const caregiver of delivery.caregivers) emitToUser(caregiver.userId, 'canhbao:new', payload);
   for (const recipient of [...delivery.caregivers, ...delivery.admins]) {
@@ -67,4 +112,24 @@ function emitAlertNotifications(delivery, payload) {
   }
 }
 
-module.exports = { createNotification, notifyAlertRecipients, emitAlertNotifications };
+async function emitSosAlertUpdate(elderlyId, payload) {
+  try {
+    const id = Number(elderlyId);
+    if (!Number.isInteger(id) || id < 1) return false;
+    const pool = await poolPromise;
+    const current = await getRecipients(pool, id, true);
+    const sent = new Set();
+    for (const recipient of current.recordset) {
+      const userId = Number(recipient.userId);
+      if (!Number.isInteger(userId) || userId < 1 || sent.has(userId)) continue;
+      sent.add(userId);
+      emitToUser(userId, 'canhbao:updated', payload);
+    }
+    return true;
+  } catch (error) {
+    console.error('[SOS] Khong the xac minh nguoi nhan cap nhat realtime:', error.code || 'DELIVERY_FAILED');
+    return false;
+  }
+}
+
+module.exports = { createNotification, notifyAlertRecipients, emitAlertNotifications, emitSosAlertUpdate };

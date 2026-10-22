@@ -65,7 +65,8 @@ async function transition({user,alertId,emergencyId,action,note}){
      WHERE ${linked?"NguonBang=N'CanhBaoKhanCap' AND NguonID=@sid":'CanhBaoID=@id'}`);
   await transaction.commit();
   const result={id:emergencyId!=null?Number(emergencyId):alert.id,canhBaoId:alert.id,nguoiCaoTuoiId:alert.elderlyId,trangThai:linked?(action==='seen'?'DaTiepNhan':'DaXuLy'):next};
-  emitToAdmin('canhbao:updated',result);
+  if(linked)await require('./alertNotification.service').emitSosAlertUpdate(alert.elderlyId,result);
+  else emitToAdmin('canhbao:updated',result);
   try {
    const owner=(await (await poolPromise).request().input('eid',sql.Int,alert.elderlyId).query(
      'SELECT UserID FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID=@eid')).recordset[0]?.UserID;

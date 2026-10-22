@@ -31,6 +31,7 @@ import usePermission from '../hooks/usePermission';
 import { getAlerts } from '../services/alertService';
 import AccountMenuModals from '../components/AccountMenuModals';
 import useRealtimeAlerts from '../hooks/useRealtimeAlerts';
+import SosAudioControls from '../components/SosAudioControls';
 import { getNameInitials } from '../utils/displayUtils';
 
 const { Sider, Header, Content } = Layout;
@@ -162,7 +163,7 @@ const MainLayout = () => {
     refreshAlertCounters();
   }, [refreshAlertCounters]);
 
-  useRealtimeAlerts(refreshAlertCounters);
+  const { soundState, canReceive, enableSound, disableSound, silenceAlarm } = useRealtimeAlerts(refreshAlertCounters);
 
   const handleMenuClick = ({ key }) => {
     navigate(key);
@@ -317,6 +318,9 @@ const MainLayout = () => {
             )}
           </div>
         </Header>
+
+        {canReceive && <SosAudioControls state={soundState} onEnable={enableSound}
+          onDisable={disableSound} onSilence={silenceAlarm} />}
 
         <Content className="page-content">
           <Outlet />

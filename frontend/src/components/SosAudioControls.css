@@ -1,0 +1,101 @@
+.sos-audio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px 12px;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--color-border-light, #e6edef);
+  background: #fbfdfc;
+  color: var(--color-text-secondary, #52646f);
+}
+
+.sos-audio-controls__label {
+  flex: 0 0 auto;
+  color: #31584c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sos-audio-controls__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sos-audio-controls__toolbar .ant-btn {
+  min-height: 40px;
+  height: auto;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+}
+
+.sos-audio-controls__toolbar .ant-btn > span:not(.anticon) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sos-audio-controls__toggle.is-enabled {
+  border-color: #a9d8c6;
+  color: #146c50;
+  background: #edf8f3;
+}
+
+.sos-audio-controls__retry {
+  border-color: #e9bd62;
+  color: #805107;
+  background: #fff8e8;
+}
+
+.sos-audio-controls__feedback {
+  display: flex;
+  flex-basis: 100%;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  max-width: 100%;
+  color: #805107;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sos-audio-controls__feedback > span:not(.anticon) {
+  max-width: 56rem;
+}
+
+.sos-audio-controls__feedback > .anticon {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+@media (max-width: 480px) {
+  .sos-audio-controls {
+    justify-content: flex-start;
+    padding: 10px 14px;
+  }
+
+  .sos-audio-controls__toolbar {
+    gap: 6px;
+  }
+
+  .sos-audio-controls__toolbar .ant-btn {
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
+  .sos-audio-controls__feedback {
+    justify-content: flex-start;
+  }
+}
