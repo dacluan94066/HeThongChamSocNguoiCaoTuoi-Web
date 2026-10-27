@@ -14,6 +14,15 @@ router.post('/login', authController.login);
 
 // Google ID token duoc backend xac minh; chi phat JWT CareSenior cho Mobile.
 router.post('/google', authController.googleLogin);
+// Web login never registers or links by email. Link endpoints require an
+// authenticated NCT and a fresh password + Google identity verification.
+router.use('/google/web', authController.googleWeb.guard);
+router.get('/google/web/config', authController.googleWeb.config);
+router.post('/google/web/login/challenge', authController.googleWeb.loginChallenge);
+router.post('/google/web/login', authController.googleWeb.login);
+router.get('/google/web/status', authMiddleware, authController.googleWeb.status);
+router.post('/google/web/link/challenge', authMiddleware, authController.googleWeb.linkChallenge);
+router.post('/google/web/link', authMiddleware, authController.googleWeb.link);
 
 // Dat lai mat khau qua ma OTP gui email (public)
 router.post('/forgot-password', authController.forgotPassword);

@@ -77,7 +77,7 @@ const publicUser = (user) => ({
   tenVaiTro: user.tenVaiTro,
 });
 
-const createMobileSession = async (pool, req, user) => {
+const createGoogleSession = async (pool, req, user, platform = 'mobile') => {
   const token = jwt.sign(
     {
       userId: user.userId,
@@ -91,7 +91,7 @@ const createMobileSession = async (pool, req, user) => {
   await pool.request()
     .input('userId', sql.Int, user.userId)
     .query('UPDATE NguoiDung SET LanDangNhapCuoi=SYSDATETIME() WHERE UserID=@userId');
-  await writeLoginLog(pool, req, user.userId, 'ThanhCong', 'mobile');
+  await writeLoginLog(pool, req, user.userId, 'ThanhCong', platform);
   return { token, user: publicUser(user) };
 };
 
@@ -508,8 +508,8 @@ const login = async (req, res, next) => {
       return fail(res, 'Tài khoản đang chờ quản trị viên duyệt', 'ACCOUNT_PENDING_APPROVAL', 403);
     }
 
-    // Quan tri vien va nguoi cham soc dung Web; nguoi cao tuoi dung Mobile.
-    if (platform === 'web' && !['QuanTriVien', 'NguoiChamSoc', 'NguoiThan'].includes(user.TenVaiTro)) {
+    // Web workspaces share the same identity; resource permissions remain role-scoped.
+    if (platform === 'web' && !['QuanTriVien', 'NguoiChamSoc', 'NguoiThan', 'NguoiCaoTuoi'].includes(user.TenVaiTro)) {
       await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
       return fail(
         res,
@@ -577,7 +577,7 @@ const googleLogin = async (req, res, next) => {
     }
 
     const pool = await poolPromise;
-    const existing = await pool.request()
+    const lookup = (bySubject) => pool.request()
       .input('googleSubject', sql.VarChar(255), identity.subject)
       .input('email', sql.VarChar(100), identity.email)
       .query(`
@@ -587,9 +587,13 @@ const googleLogin = async (req, res, next) => {
           nd.GoogleSubject AS googleSubject, vt.TenVaiTro AS tenVaiTro
         FROM NguoiDung nd
         INNER JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID
-        WHERE nd.GoogleSubject=@googleSubject OR nd.Email=@email
-        ORDER BY CASE WHEN nd.GoogleSubject=@googleSubject THEN 0 ELSE 1 END
+        WHERE ${bySubject ? 'nd.GoogleSubject=@googleSubject' : 'nd.Email=@email'}
       `);
+
+    // A returning Google identity is always resolved by subject first. Email
+    // is checked only to prevent duplicate registration / require safe linking.
+    let existing = await lookup(true);
+    if (!existing.recordset.length) existing = await lookup(false);
 
     const distinctUsers = new Set(existing.recordset.map((row) => row.userId));
     if (distinctUsers.size > 1) {
@@ -626,21 +630,14 @@ const googleLogin = async (req, res, next) => {
       }
 
       if (!user.googleSubject) {
-        await pool.request()
-          .input('userId', sql.Int, user.userId)
-          .input('googleSubject', sql.VarChar(255), identity.subject)
-          .input('photoUrl', sql.NVarChar(255), identity.photoUrl?.slice(0, 255) || null)
-          .query(`
-            UPDATE NguoiDung
-            SET GoogleSubject=@googleSubject,
-                AnhDaiDien=COALESCE(AnhDaiDien,@photoUrl)
-            WHERE UserID=@userId AND GoogleSubject IS NULL
-          `);
+        return fail(res,
+          'Google chưa liên kết với CareSenior. Hãy đăng nhập bằng mật khẩu trên Web, mở Hồ sơ → Liên kết Google và xác minh mật khẩu. Sau đó có thể đăng nhập Google trên cả Web và Mobile.',
+          'GOOGLE_LINK_REQUIRED', 409);
       }
 
       return ok(
         res,
-        await createMobileSession(pool, req, user),
+        await createGoogleSession(pool, req, user),
         'Dang nhap Google thanh cong',
       );
     }
@@ -831,7 +828,7 @@ const googleLogin = async (req, res, next) => {
     };
     return ok(
       res,
-      await createMobileSession(pool, req, user),
+      await createGoogleSession(pool, req, user),
       'Tao tai khoan va dang nhap Google thanh cong',
       201,
     );
@@ -1200,7 +1197,12 @@ const resetPasswordWithToken = async (req, res, next) => {
   }
 };
 
+const { createGoogleWebController } = require('./googleWeb.controller');
+const googleWeb = createGoogleWebController({ poolPromise, sql, verifyGoogleIdToken,
+  createSession: (pool, req, user) => createGoogleSession(pool, req, user, 'web') });
+
 module.exports = {
+  googleWeb,
   register,
   registerCaregiver,
   login,

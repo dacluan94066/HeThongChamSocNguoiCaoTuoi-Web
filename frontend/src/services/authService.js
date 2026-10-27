@@ -2,19 +2,23 @@
 // Kết nối với backend API thật qua axiosClient
 import axiosClient from './axiosClient';
 import { disconnectSocket } from './socketClient';
+import { webSession, sessionChangedError } from '../utils/webSession';
 
 // ─── Đăng nhập ───────────────────────────────────────────────────────────────
 // Gọi POST /auth/login với body { tenDangNhap, matKhau, platform }
 // Backend trả về: { success, data: { token, user: { userId, hoTen, vaiTroId, tenVaiTro, ... } } }
 export const login = async (tenDangNhap, matKhau, platform = 'web') => {
+  disconnectSocket();
+  webSession.clear();
+  const stamp = webSession.capture();
   const res = await axiosClient.post('/auth/login', { tenDangNhap, matKhau, platform });
+  if (!webSession.isCurrent(stamp)) throw sessionChangedError();
   const { token, user } = res.data?.data || {};
 
   if (!token) throw new Error('Đăng nhập thất bại: không nhận được token từ máy chủ');
 
   // Lưu token và thông tin user vào localStorage
-  localStorage.setItem('token', token);
-  localStorage.setItem('user', JSON.stringify(user));
+  webSession.replace(token, user, stamp);
 
   return { token, user };
 };
@@ -22,8 +26,7 @@ export const login = async (tenDangNhap, matKhau, platform = 'web') => {
 // ─── Đăng xuất ───────────────────────────────────────────────────────────────
 export const logout = () => {
   disconnectSocket();
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
+  webSession.clear();
 };
 
 // ─── Lấy thông tin user hiện tại từ localStorage ────────────────────────────

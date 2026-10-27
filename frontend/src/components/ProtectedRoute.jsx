@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { canAccessWeb } from '../utils/accessControl';
 
 const ProtectedRoute = ({ children }) => {
-  const { user, isAuthenticated, authLoading, permissionsLoading, logout } = useAuth();
+  const { user, isAuthenticated, authLoading, permissionsLoading, authError, retrySession, logout } = useAuth();
 
   // Đang khôi phục phiên đăng nhập từ token → hiện spinner, chưa chuyển trang
   if (authLoading || permissionsLoading) {
@@ -20,24 +20,27 @@ const ProtectedRoute = ({ children }) => {
           minHeight: '100vh',
         }}
       >
-        <Spin size="large" tip="Đang tải..." />
+        <Spin size="large" description="Đang tải..." />
       </div>
     );
   }
+
+  if (authError) return <Result status="warning" title="Chưa thể kiểm tra phiên đăng nhập" subTitle={authError}
+    extra={[<Button key="retry" type="primary" onClick={() => { void retrySession().catch(() => {}); }}>Thử lại</Button>,
+      <Button key="logout" onClick={logout}>Đăng xuất</Button>]} />;
 
   // Chưa đăng nhập → chuyển về trang login
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  // Web chi danh cho quan tri vien va bac si.
-  // Kiem tra tai route goc de ngan truy cap truc tiep bang URL.
+  // Workspace guards below this boundary keep the four roles separate.
   if (!canAccessWeb(user)) {
     return (
       <Result
         status="403"
-        title="Không thể truy cập Web quản trị"
-        subTitle="Tài khoản người cao tuổi chỉ được sử dụng trên ứng dụng Mobile."
+        title="Không thể truy cập CareSenior Web"
+        subTitle="Vai trò tài khoản này chưa được hỗ trợ trên Web."
         extra={
           <Button type="primary" onClick={logout}>
             Quay lại đăng nhập

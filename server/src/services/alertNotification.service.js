@@ -98,6 +98,40 @@ async function emitSosNotifications(delivery, payload) {
     return false;
   } finally {
     await emitRelativeSos(delivery.elderlyId, payload, 'canhbao:new');
+    await emitOwnSos(delivery.elderlyId, payload);
+  }
+}
+
+// A committed SOS created on Mobile also refreshes the same owner's Web.
+// This is an invalidation signal, never the staff/internal payload or a new notification.
+async function emitOwnSos(elderlyId, payload, event = 'canhbao:new') {
+  if (!Number.isInteger(Number(elderlyId)) || Number(elderlyId) < 1) return false;
+  if (!['canhbao:new', 'canhbao:updated'].includes(event) || !payload || payload.nguonBang !== 'CanhBaoKhanCap'
+    || Number(payload.nguoiCaoTuoiId) !== Number(elderlyId)
+    || !Number.isInteger(Number(payload.canhBaoKhanCapId)) || Number(payload.canhBaoKhanCapId) < 1) return false;
+  try {
+    const pool = await poolPromise;
+    const rows = await pool.request().input('elderlyId', sql.Int, Number(elderlyId)).query(`
+      SELECT nd.UserID AS sosOwnerUserId
+      FROM HoSoNguoiCaoTuoi nct JOIN NguoiDung nd ON nd.UserID=nct.UserID
+      JOIN VaiTro vt ON vt.VaiTroID=nd.VaiTroID
+      WHERE nct.NguoiCaoTuoiID=@elderlyId AND nd.TrangThai=N'HoatDong'
+        AND vt.TenVaiTro=N'NguoiCaoTuoi'
+        AND EXISTS (SELECT 1 FROM PhanQuyen pq JOIN ChucNang cn ON cn.ChucNangID=pq.ChucNangID
+          WHERE pq.VaiTroID=nd.VaiTroID AND cn.MaChucNang=N'QLCANHBAO' AND pq.ChoPhepXem=1)
+    `);
+    const userId = Number(rows.recordset[0]?.sosOwnerUserId);
+    if (!Number.isInteger(userId) || userId < 1) return false;
+    emitToUser(userId, event, {
+      canhBaoId: payload.canhBaoId, canhBaoKhanCapId: payload.canhBaoKhanCapId,
+      nguoiCaoTuoiId: Number(elderlyId), nguonBang: 'CanhBaoKhanCap',
+      nguonId: payload.canhBaoKhanCapId, trangThai: payload.trangThai,
+      thoiGianPhatHien: payload.thoiGianPhatHien,
+    });
+    return true;
+  } catch (error) {
+    console.error('[SOS] Không thể xác minh chủ hồ sơ nhận realtime:', error.code || 'OWNER_DELIVERY_FAILED');
+    return false;
   }
 }
 
@@ -147,4 +181,4 @@ async function emitSosAlertUpdate(elderlyId, payload) {
   }
 }
 
-module.exports = { createNotification, notifyAlertRecipients, emitAlertNotifications, emitSosAlertUpdate };
+module.exports = { createNotification, notifyAlertRecipients, emitAlertNotifications, emitSosAlertUpdate, emitOwnSos };

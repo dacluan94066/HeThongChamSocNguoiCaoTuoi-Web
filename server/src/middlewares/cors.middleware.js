@@ -13,16 +13,28 @@ function isAllowedOrigin(origin, env = process.env) {
 }
 
 function createCorsMiddleware(env = process.env) {
-  const middleware = cors({
+  const options = {
     origin: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  });
+  };
+  const middleware = cors(options);
+  // Only this browser-bound flow needs cookies; existing API CORS is unchanged.
+  const google = cors({ ...options, credentials: true });
   return (req, res, next) => {
-    if (!isAllowedOrigin(req.get('Origin'), env)) {
+    const googlePath = req.path === '/api/auth/google/web' || req.path?.startsWith('/api/auth/google/web/');
+    const origin = req.get('Origin');
+    if (googlePath ? origin && !isAllowedGoogleOrigin(origin, env) : !isAllowedOrigin(origin, env)) {
       return fail(res, 'Origin không được phép truy cập API.', 'CORS_ORIGIN_DENIED', 403);
     }
-    return middleware(req, res, next);
+    return googlePath ? google(req, res, next) : middleware(req, res, next);
   };
 }
-module.exports = { createCorsMiddleware, isAllowedOrigin };
+function isAllowedGoogleOrigin(origin, env = process.env) {
+  if (!origin) return false;
+  if (env.NODE_ENV === 'production' && !origin.startsWith('https://')) return false;
+  return env.GOOGLE_WEB_ORIGINS?.trim()
+    ? isAllowedOrigin(origin, { ...env, NODE_ENV: 'production', CORS_ORIGINS: env.GOOGLE_WEB_ORIGINS })
+    : isAllowedOrigin(origin, env);
+}
+module.exports = { createCorsMiddleware, isAllowedOrigin, isAllowedGoogleOrigin };

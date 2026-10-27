@@ -190,9 +190,12 @@ const MedicationSchedulePage = () => {
 
   const loadSchedules = useCallback(async () => {
     try {
-      setSchedules(await getSchedules());
+      const latest = await getSchedules();
+      setSchedules(latest);
+      setDetailRecord((current) => current ? latest.find((row) => row.id === current.id) || null : null);
     } catch {
       setSchedules([]);
+      setDetailRecord(null);
     } finally {
       setLoading(false);
     }
@@ -317,10 +320,18 @@ const MedicationSchedulePage = () => {
   };
 
   const handleStatusChange = async (id, newStatus) => {
-    const { label } = getMedStatusMap(newStatus);
-    await updateScheduleStatus(id, newStatus);
-    message.success(`Đã cập nhật: ${label}`);
-    await loadSchedules();
+    try {
+      const { label } = getMedStatusMap(newStatus);
+      await updateScheduleStatus(id, newStatus);
+      message.success(`Đã cập nhật: ${label}`);
+      await loadSchedules();
+    } catch (error) {
+      // The interceptor displays the error once. A conflict only refreshes
+      // server state; never replay a write or report it as successful.
+      if (error.response?.status === 409 && error.response?.data?.errorCode === 'DOSE_CHANGED') {
+        await loadSchedules();
+      }
+    }
   };
 
   const hasConfirmerData = schedules.some((item) => Boolean(item.nguoiXacNhanTen));
@@ -388,6 +399,11 @@ const MedicationSchedulePage = () => {
       title: 'Trạng thái', dataIndex: 'trangThaiHom_nay', key: 'trangThai', width: 145,
       render: (value, record) => <Space direction="vertical">
         <StatusTag {...getMedStatusMap(value || 'CHUA_DEN_GIO', record.thoiGianDuKien, displayNow)} />
+        {value === 'DA_UONG' && !record.ghiNhanBoSung && (
+          <small>{record.thoiGianThucTe
+            ? `Đã uống lúc ${dayjs(record.thoiGianThucTe).format('HH:mm DD/MM/YYYY')}`
+            : 'Chưa có thời gian xác nhận'}</small>
+        )}
         {record.ghiNhanBoSung && <>
           <Tag color="blue">Ghi nhận bổ sung</Tag>
           <small>Đã uống: {dayjs(record.thoiGianThucTe).format('HH:mm DD/MM/YYYY')}</small>
@@ -400,7 +416,7 @@ const MedicationSchedulePage = () => {
       title: 'Người xác nhận', dataIndex: 'nguoiXacNhanTen', key: 'nguoiXacNhanTen', width: 180,
       render: (value, record) => (
         <div className="schedule-confirmer">
-          <strong>{value || 'Chưa xác nhận'}</strong>
+          <strong>{value || (record.trangThaiHom_nay === 'DA_UONG' ? 'Chưa có tên người xác nhận' : 'Chưa xác nhận')}</strong>
           {record.thoiGianThucTe && <span>{dayjs(record.thoiGianThucTe).format('HH:mm DD/MM/YYYY')}</span>}
         </div>
       ),
@@ -431,7 +447,7 @@ const MedicationSchedulePage = () => {
               Xác nhận đã uống
             </Button>
           )}
-          {canEdit && record.thoiGianDuKien?.slice(0, 10) === todayVietnam() && !['BO_LO', 'TU_CHOI'].includes(record.trangThaiHom_nay) && (
+          {canEdit && record.thoiGianDuKien?.slice(0, 10) === todayVietnam() && !['DA_UONG', 'BO_LO', 'TU_CHOI'].includes(record.trangThaiHom_nay) && (
             <Button
               size="small"
               danger
@@ -616,8 +632,8 @@ const MedicationSchedulePage = () => {
           { label: 'Trạng thái', key: 'trangThaiHom_nay', render: (value, record) => <StatusTag {...getMedStatusMap(value, record.thoiGianDuKien, displayNow)} /> },
           ...(hasConfirmerData ? [
             { label: 'Người xác nhận', key: 'nguoiXacNhanTen' },
-            { label: 'Thời gian thực tế', key: 'thoiGianThucTe', render: (value) => value ? dayjs(value).format('HH:mm DD/MM/YYYY') : '—' },
           ] : []),
+          { label: 'Thời gian đã uống', key: 'thoiGianThucTe', render: (value) => value ? dayjs(value).format('HH:mm DD/MM/YYYY') : '—' },
           { label: 'Ghi chú', key: 'ghiChu', span: 2 },
         ]}
       />

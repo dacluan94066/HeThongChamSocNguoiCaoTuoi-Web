@@ -20,7 +20,7 @@ app.use(express.json());
 // Log request HTTP ra console (dev format: method, url, status, time)
 app.use(morgan('dev', {
   // Never log assistant URLs/query strings, which could contain personal text.
-  skip: (req) => /^\/api\/(?:care-assistant|relatives)(?:\/|$)/i.test((req.originalUrl || req.path).split('?')[0]),
+  skip: (req) => /^\/api\/(?:care-assistant|relatives|auth\/google)(?:\/|$)/i.test((req.originalUrl || req.path).split('?')[0]),
 }));
 
 // ─── ROUTES ──────────────────────────────────────────────────────────────────

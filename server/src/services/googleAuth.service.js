@@ -1,4 +1,5 @@
 const { OAuth2Client } = require('google-auth-library');
+const crypto = require('node:crypto');
 
 class GoogleIdentityError extends Error {
   constructor(message, code, statusCode) {
@@ -12,7 +13,7 @@ class GoogleIdentityError extends Error {
 const createGoogleTokenVerifier = ({
   client = new OAuth2Client(),
   getAudience = () => process.env.GOOGLE_WEB_CLIENT_ID,
-} = {}) => async (idToken) => {
+} = {}) => async (idToken, { nonce } = {}) => {
   const audience = String(getAudience() || '').trim();
   if (!audience) {
     throw new GoogleIdentityError(
@@ -52,6 +53,11 @@ const createGoogleTokenVerifier = ({
       'GOOGLE_EMAIL_NOT_VERIFIED',
       401,
     );
+  }
+  if (nonce !== undefined && (typeof nonce !== 'string' || typeof payload.nonce !== 'string'
+    || Buffer.byteLength(nonce) !== Buffer.byteLength(payload.nonce)
+    || !crypto.timingSafeEqual(Buffer.from(nonce), Buffer.from(payload.nonce)))) {
+    throw new GoogleIdentityError('Phiên Google không khớp. Vui lòng bắt đầu lại.', 'INVALID_GOOGLE_NONCE', 401);
   }
 
   return {

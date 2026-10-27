@@ -179,6 +179,7 @@ const confirmMine = async (req, res, next) => {
     const ownership = await pool.request()
       .input('id', sql.Int, id)
       .query(`SELECT l.LichUongThuocID AS id, nct.UserID AS ownerUserId,
+                l.TrangThai AS previousStatus,
                 CONVERT(VARCHAR(10),l.ThoiGianDuKien,23) AS scheduleDate
               FROM LichUongThuoc l
               JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID=l.NguoiCaoTuoiID
@@ -196,6 +197,7 @@ const confirmMine = async (req, res, next) => {
     const updated = await pool.request()
       .input('id', sql.Int, id)
       .input('trangThai', sql.NVarChar(20), trangThai)
+      .input('previousStatus', sql.NVarChar(20), ownership.recordset[0].previousStatus)
       .input('nguoiXacNhanId', sql.Int, req.user.userId)
       .query(`
         UPDATE LichUongThuoc
@@ -203,7 +205,8 @@ const confirmMine = async (req, res, next) => {
             ThoiGianThucTe=CASE WHEN @trangThai=N'DaUong' THEN DATEADD(HOUR,7,SYSUTCDATETIME()) ELSE NULL END,
             NguoiXacNhanID=@nguoiXacNhanId
         WHERE LichUongThuocID=@id
-          AND CAST(ThoiGianDuKien AS DATE)=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE);
+          AND CAST(ThoiGianDuKien AS DATE)=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+          AND TrangThai=@previousStatus AND TrangThai<>N'DaUong' AND TrangThai<>@trangThai;
         DECLARE @affectedRows INT=@@ROWCOUNT;
 
         DELETE FROM ThongBao
@@ -227,7 +230,7 @@ const confirmMine = async (req, res, next) => {
         WHERE l.LichUongThuocID=@id AND @affectedRows>0`);
 
     if (!updated.recordset.length) {
-      return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
+      return fail(res, 'Liều thuốc đã được ghi nhận hoặc đã thay đổi. Vui lòng tải lại lịch trước khi thao tác.', 'DOSE_CHANGED', 409);
     }
 
     const schedule = mapMySchedule(updated.recordset[0]);
@@ -288,7 +291,7 @@ const updateStatus = async (req, res, next) => {
 
     const pool = await poolPromise;
     const dose = await pool.request().input('id', sql.Int, req.params.id)
-      .query('SELECT CONVERT(VARCHAR(10),ThoiGianDuKien,23) AS scheduleDate FROM LichUongThuoc WHERE LichUongThuocID=@id');
+      .query('SELECT CONVERT(VARCHAR(10),ThoiGianDuKien,23) AS scheduleDate, TrangThai AS previousStatus FROM LichUongThuoc WHERE LichUongThuocID=@id');
     if (!dose.recordset.length) return fail(res, 'Không tìm thấy lịch uống thuốc', 'MEDICATION_SCHEDULE_NOT_FOUND', 404);
     if (dose.recordset[0].scheduleDate !== todayVietnam()) {
       return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
@@ -296,6 +299,7 @@ const updateStatus = async (req, res, next) => {
     const updated = await pool.request()
       .input('id', sql.Int, req.params.id)
       .input('trangThai', sql.NVarChar, dbVal)
+      .input('previousStatus', sql.NVarChar(20), dose.recordset[0].previousStatus)
       .input('thoiGianThucTe', sql.DateTime2, dbVal === 'DaUong' ? new Date(Date.now()+7*3600000) : null)
       .input('nguoiXacNhan', sql.Int, req.user.userId)
       .query(`UPDATE LichUongThuoc SET TrangThai=@trangThai,
@@ -304,13 +308,16 @@ const updateStatus = async (req, res, next) => {
                 INSERTED.NguoiCaoTuoiID AS nguoiCaoTuoiId,
                 INSERTED.TrangThai AS trangThai
               WHERE LichUongThuocID=@id
-                AND CAST(ThoiGianDuKien AS DATE)=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE);
+                AND CAST(ThoiGianDuKien AS DATE)=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+                AND TrangThai=@previousStatus AND TrangThai<>N'DaUong' AND TrangThai<>@trangThai;
               DECLARE @affectedRows INT=@@ROWCOUNT;
               DELETE FROM ThongBao
               WHERE LienKetID=@id AND LienKetBang LIKE N'LichUongThuoc:%'
                 AND LoaiThongBao=N'NhacThuoc' AND DaDoc=0 AND @affectedRows>0;`);
-    if (!updated.recordset.length) {
-      return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
+    // OUTPUT contains only rows won by the guarded UPDATE; a rejected write
+    // must not retire reminders or emit a successful status change.
+    if (!updated.rowsAffected[0] || !updated.recordset.length) {
+      return fail(res, 'Liều thuốc đã được ghi nhận hoặc đã thay đổi. Vui lòng tải lại lịch trước khi thao tác.', 'DOSE_CHANGED', 409);
     }
     const eventData = {
       id: updated.recordset[0].id,

@@ -68,9 +68,14 @@ async function transition({user,alertId,emergencyId,action,note}){
   if(linked)await require('./alertNotification.service').emitSosAlertUpdate(alert.elderlyId,result);
   else emitToAdmin('canhbao:updated',result);
   try {
+   if(linked) {
+    await require('./alertNotification.service').emitOwnSos(alert.elderlyId,
+      {...result,canhBaoKhanCapId:alert.sourceId,nguonBang:'CanhBaoKhanCap'},'canhbao:updated');
+   } else {
    const owner=(await (await poolPromise).request().input('eid',sql.Int,alert.elderlyId).query(
      'SELECT UserID FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID=@eid')).recordset[0]?.UserID;
    if(owner)emitToUser(owner,'canhbao:updated',result);
+   }
   } catch(error) {
    console.error('[ALERT] Không thể gửi cập nhật SOS tới Mobile:',error);
   }

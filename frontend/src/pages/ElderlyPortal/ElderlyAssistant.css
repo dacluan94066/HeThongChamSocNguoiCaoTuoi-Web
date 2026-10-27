@@ -1,0 +1,65 @@
+.elderly-assistant { --color-primary: #21966f; --color-primary-light: #155e4b; }
+.elderly-assistant-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.elderly-assistant .ant-btn-color-primary.ant-btn-variant-solid { background: #21966f; color: white; }
+.elderly-assistant .ant-btn-color-primary.ant-btn-variant-solid:not(:disabled):hover { background: #155e4b; }
+.elderly-assistant-heading h1 { margin-bottom: 8px; }
+.elderly-assistant-heading p { margin-bottom: 0; color: #526e60; }
+.elderly-assistant-layout { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.elderly-assistant-conversations { display: grid; gap: 16px; background: #e9f4ee; padding: 20px; border-radius: 22px; min-width: 0; }
+.elderly-assistant-conversations p { font-size: 14px; color: #496859; margin: 0; }
+.elderly-assistant-conversations label { font-weight: 600; font-size: 14px; }
+.elderly-assistant-conversations select { width: 100%; min-width: 0; max-width: 100%; min-height: 48px; padding: 8px; border: 1px solid #bad6c7; border-radius: 10px; background: white; color: #155e4b; font: inherit; }
+.elderly-assistant-conversation-list { display: grid; gap: 8px; max-height: 400px; overflow-y: auto; }
+.elderly-assistant-conversation-list button { display: flex; align-items: flex-start; gap: 8px; text-align: left; min-height: 48px; padding: 12px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: #395d4c; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.elderly-assistant-conversation-list button[aria-current="true"] { background: white; border-color: #21966f; color: #155e4b; }
+.elderly-assistant-conversation-list button span:last-child { min-width: 0; }
+.elderly-assistant-chat { background: white; border: 1px solid #deebe3; border-radius: 24px; overflow: hidden; min-width: 0; }
+.elderly-assistant-profile { display: flex; align-items: center; gap: 12px; padding: 20px; border-bottom: 1px solid #e1ebe5; background: #f9fcfa; }
+.elderly-assistant-profile small { display: block; color: #526e60; margin-top: 5px; line-height: 1.5; }
+.elderly-assistant-online { width: 10px; height: 10px; border-radius: 50%; background: #21966f; flex-shrink: 0; }
+.elderly-assistant-chat > .ant-alert, .elderly-assistant-chat > p[role="status"] { margin: 16px; }
+.elderly-assistant-log { height: clamp(280px, 46dvh, 530px); min-height: 280px; overflow: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; scrollbar-gutter: stable; }
+.elderly-assistant-empty { margin: auto; text-align: center; max-width: 440px; padding: 20px 0; }
+.elderly-assistant-empty > span { display: inline-grid; place-items: center; width: 64px; height: 64px; background: #e5f5eb; color: #21966f; border-radius: 22px; font-size: 30px; margin-bottom: 18px; }
+.elderly-assistant-empty p { color: #526e60; margin: 12px 0 0; }
+.elderly-assistant-message { max-width: 95%; border-radius: 18px; padding: 18px; background: #f1f7f4; color: #203e34; min-width: 0; flex-shrink: 0; }
+.elderly-assistant-message.is-user { align-self: flex-end; background: #155e4b; color: white; }
+.elderly-assistant-message.is-user > p { white-space: pre-wrap; margin: 8px 0 0; }
+.elderly-assistant-speaker { font-size: 14px; display: block; margin-bottom: 8px; }
+.elderly-assistant-message small { display: block; margin-top: 10px; line-height: 1.5; }
+.elderly-assistant-mode-note { color: #79520c; font-size: 14px; margin: 0 0 10px; }
+.assistant-markdown p { margin: 0 0 10px; white-space: pre-wrap; }
+.assistant-markdown p:last-child { margin-bottom: 0; }
+.assistant-markdown .assistant-markdown-heading { font-weight: 700; }
+.assistant-markdown ul, .assistant-markdown ol { padding-left: 24px; margin: 8px 0; line-height: 1.7; }
+.assistant-markdown pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #e5eee9; border-radius: 8px; padding: 12px; margin-block: 8px; font-size: .9em; }
+.assistant-markdown code { font-size: .9em; overflow-wrap: anywhere; }
+.elderly-assistant-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.elderly-assistant-actions a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; border: 1px solid #a9cabb; border-radius: 10px; color: #155e4b; background: white; font-weight: 600; }
+.elderly-assistant-thinking { color: #526e60; flex-shrink: 0; }
+.elderly-assistant-composer { padding: 20px; border-top: 1px solid #e1ebe5; display: grid; gap: 10px; }
+.elderly-assistant-composer label { font-weight: 600; }
+.elderly-assistant-composer textarea { font-size: 16px; line-height: 1.6; border-radius: 12px; padding: 12px; }
+.elderly-assistant-send { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
+.elderly-assistant-send small { color: #526e60; font-size: 12px; line-height: 1.6; flex: 1 1 150px; }
+.elderly-assistant-disclaimer { font-size: 13px; color: #526e60; line-height: 1.7; padding: 0 20px 20px; margin: 0; }
+.elderly-assistant-delete { display: flex; gap: 8px; flex-wrap: wrap; }
+.elderly-assistant-delete p { flex-basis: 100%; }
+.elderly-assistant select:focus-visible, .elderly-assistant textarea:focus-visible { outline: 3px solid #21966f; outline-offset: 2px; }
+@media (max-width: 1100px) {
+  .elderly-assistant-layout { grid-template-columns: minmax(0, 1fr); }
+  .elderly-assistant-conversations { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .elderly-assistant-conversations > label { flex-basis: 100%; order: 0; }
+  .elderly-assistant-conversations > select { flex: 1 1 220px; width: auto; order: 1; }
+  .elderly-assistant-conversations > .ant-btn { order: 2; }
+  .elderly-assistant-conversation-list { display: none; }
+  .elderly-assistant-conversations > p, .elderly-assistant-delete { flex-basis: 100%; order: 3; }
+}
+@media (max-width: 600px) {
+  .elderly-assistant-heading { flex-wrap: wrap; }
+  .elderly-assistant-conversations { padding: 16px; }
+  .elderly-assistant-conversations > select { flex-basis: 100%; width: 100%; }
+  .elderly-assistant-log { padding: 16px; height: 380px; max-height: 65dvh; }
+  .elderly-assistant-message { max-width: 100%; padding: 14px; }
+  .elderly-assistant-composer, .elderly-assistant-profile { padding: 16px; }
+}

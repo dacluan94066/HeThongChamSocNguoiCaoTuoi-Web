@@ -43,6 +43,7 @@ function fixture(socketOverride) {
   class Request {
     input(name, _type, value) { this[name] = value; return this; }
     async query(statement) {
+      if (statement.includes('AS sosOwnerUserId')) return { recordset: [] }; // Separate owner-realtime regression.
       if (statement.includes(' AS ready')) return { recordset: [{ ready: 0 }] }; // Legacy staff path.
       if (statement.includes('SELECT DISTINCT nd.UserID AS userId')) {
         if (state.failReads) throw Object.assign(new Error('fixture-only failure'), { code: 'FIXTURE_READ_FAILED' });
@@ -218,7 +219,10 @@ function workflowFixture(linked, deliveryAvailable = true) {
       emitToAdmin: (event, data) => trace.events.push({ userId: 'admin-room', event, data }),
       emitToUser: (userId, event, data) => trace.events.push({ userId, event, data }),
     },
-    './alertNotification.service': { emitSosAlertUpdate: async (elderlyId, data) => {
+    './alertNotification.service': { emitOwnSos: async (elderlyId, data, event) => {
+      assert.equal(trace.committed, 1); assert.equal(elderlyId, 7); assert.equal(data.canhBaoKhanCapId, 101);
+      trace.events.push({ userId: 900, event, data });
+    }, emitSosAlertUpdate: async (elderlyId, data) => {
       assert.equal(trace.committed, 1, 'Update may only emit after commit');
       trace.helper.push({ elderlyId, data });
       return deliveryAvailable;

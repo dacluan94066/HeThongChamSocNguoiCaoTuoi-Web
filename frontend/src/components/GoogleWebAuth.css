@@ -1,0 +1,10 @@
+.google-web-auth { display: grid; gap: 14px; min-width: 0; margin-block: 24px; padding: 22px; border: 1px solid #dbe9e1; border-radius: 18px; background: #f7fbf8; overflow-wrap: anywhere; }
+.google-web-auth h3 { margin: 0; font-size: 18px; line-height: 1.5; color: #155e4b; }
+.google-web-auth p { margin: 0; line-height: 1.7; color: #496859; }
+.google-web-auth label { font-weight: 600; }
+.google-web-auth .ant-btn { min-height: 44px; height: auto; max-width: 100%; white-space: normal; }
+.google-web-auth .ant-input-affix-wrapper { min-height: 44px; font-size: 16px; }
+.google-web-provider-button { width: 100%; min-width: 0; overflow-x: auto; }
+.google-web-provider-button[hidden] { display: none; }
+.google-web-note { font-size: 13px; }
+@media (max-width: 600px) { .google-web-auth { padding: 16px; } }

@@ -15,6 +15,7 @@ import { canAccessWeb, getWebHome } from '../../utils/accessControl';
 import loginIllustration from '../../assets/login_illustration.png';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import CaregiverRegistrationModal from './CaregiverRegistrationModal';
+import GoogleWebAuth from '../../components/GoogleWebAuth';
 import './Login.css';
 
 const { Title, Text } = Typography;
@@ -76,7 +77,7 @@ const LoginIllustration = () => (
 );
 
 // --- Component form đăng nhập ---
-const LoginForm = ({ onSubmit, onForgotPassword, onRegisterCaregiver, loading, errorMsg, alertType }) => {
+const LoginForm = ({ onSubmit, onForgotPassword, onRegisterCaregiver, onGoogleAuthenticated, onGoogleBusyChange, loading, errorMsg, alertType }) => {
   const [form] = Form.useForm();
 
   return (
@@ -180,6 +181,8 @@ const LoginForm = ({ onSubmit, onForgotPassword, onRegisterCaregiver, loading, e
 
         </Form>
 
+        <GoogleWebAuth onAuthenticated={onGoogleAuthenticated} onBusyChange={onGoogleBusyChange} disabled={loading} />
+
         <div className="login-register-row">
           Bạn là người chăm sóc?{' '}
           <button type="button" className="login-forgot-link" onClick={onRegisterCaregiver}>
@@ -201,6 +204,7 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { setUserData, user: currentUser, authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [alertType, setAlertType] = useState('error');
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
@@ -213,6 +217,7 @@ const LoginPage = () => {
 
   // Xử lý submit: gọi POST /auth/login với { tenDangNhap, matKhau }
   const handleSubmit = async (values) => {
+    if (loading || googleBusy) return;
     setLoading(true);
     setErrorMsg('');
     setAlertType('error');
@@ -222,20 +227,20 @@ const LoginPage = () => {
       if (!canAccessWeb(user)) {
         clearStoredAuth();
         setAlertType('warning');
-        setErrorMsg('Tài khoản này chỉ sử dụng được trên ứng dụng Mobile, vui lòng tải app để đăng nhập.');
+        setErrorMsg('Vai trò tài khoản này chưa được hỗ trợ trên Web CareSenior.');
         return;
       }
 
       // Cập nhật user vào AuthContext để toàn app biết ngay
-      if (user) await setUserData(user);
-      navigate(getWebHome(user), { replace: true });
+      const verified = user ? await setUserData(user) : null;
+      if (verified) navigate(getWebHome(verified), { replace: true });
     } catch (err) {
       const errorCode = err.response?.data?.errorCode;
 
       if (errorCode === 'WEB_ACCESS_DENIED') {
         clearStoredAuth();
         setAlertType('warning');
-        setErrorMsg('Tài khoản này chỉ sử dụng được trên ứng dụng Mobile, vui lòng tải app để đăng nhập.');
+        setErrorMsg('Vai trò tài khoản này chưa được hỗ trợ trên Web CareSenior.');
         return;
       }
 
@@ -254,6 +259,11 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
+  const handleGoogleAuthenticated = async () => {
+    setErrorMsg('');
+    try { const verified = await setUserData(); if (verified) navigate(getWebHome(verified), { replace: true }); }
+    catch { setErrorMsg('Google đã xác thực nhưng chưa tải được phiên CareSenior. Vui lòng kiểm tra kết nối và tải lại.'); }
+  };
 
   return (
     <div className="login-page">
@@ -262,7 +272,9 @@ const LoginPage = () => {
         onSubmit={handleSubmit}
         onForgotPassword={() => setForgotPasswordOpen(true)}
         onRegisterCaregiver={() => setCaregiverRegistrationOpen(true)}
-        loading={loading}
+        loading={loading || googleBusy}
+        onGoogleAuthenticated={handleGoogleAuthenticated}
+        onGoogleBusyChange={setGoogleBusy}
         errorMsg={errorMsg}
         alertType={alertType}
       />

@@ -16,7 +16,8 @@ const response = data => ({ data: { data } });
 
 test('relative Web login has its own home, while all three old roles keep their access contract', () => {
   for (const role of ['QuanTriVien', 'NguoiChamSoc']) { assert.equal(canAccessWeb({ tenVaiTro: role }), true); assert.equal(getWebHome({ tenVaiTro: role }), '/dashboard'); }
-  assert.equal(canAccessWeb({ tenVaiTro: 'NguoiCaoTuoi' }), false);
+  assert.equal(canAccessWeb({ tenVaiTro: 'NguoiCaoTuoi' }), true);
+  assert.equal(getWebHome({ tenVaiTro: 'NguoiCaoTuoi' }), '/ca-nhan');
   assert.equal(canAccessWeb({ tenVaiTro: 'NguoiThan' }), true); assert.equal(getWebHome({ tenVaiTro: 'NguoiThan' }), '/nguoi-than-cua-toi');
   assert.deepEqual(STAFF_WEB_ROLES, ['QuanTriVien', 'NguoiChamSoc']);
   for (const role of ['BacSi', 'future', undefined]) assert.equal(canAccessWeb({ tenVaiTro: role }), false);
@@ -181,7 +182,7 @@ test('auth errors and schema errors have distinct user-facing states without rev
 test('portal integrates separate role guards, no operational actions, no medical localStorage or SOS audio', () => {
   const source = file => fs.readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
   assert.match(source('App.jsx'), /StaffWorkspaceRoute><MainLayout/); assert.match(source('App.jsx'), /RelativeWorkspaceRoute><RelativePortalPage/);
-  assert.match(source('pages/Login/LoginPage.jsx'), /navigate\(getWebHome\(user\)/);
+  assert.match(source('pages/Login/LoginPage.jsx'), /navigate\(getWebHome\(verified\)/);
   const page = source('pages/Relatives/RelativePortalPage.jsx'), hook = source('hooks/useRelativePortal.js');
   assert.doesNotMatch(page, /confirmMedication|updateElder|createAppointment|resolveSos|SosAudioControls|SmartAlertCenter|JSON.stringify|localStorage/);
   assert.match(hook, /relatives:access-changed/); assert.match(hook, /visibilitychange/); assert.match(hook, /store.clear/);
@@ -189,19 +190,20 @@ test('portal integrates separate role guards, no operational actions, no medical
   assert.doesNotMatch(source('utils/relativePortalStore.js'), /localStorage|sessionStorage|indexedDB/);
 });
 
-test('only marked portal cancellations skip the network toast; real failures and old requests retain error handling', async () => {
+test('intentional cancellations skip the network toast; real failures retain error handling', async () => {
   let rejected;
   const toasts = [], removed = [], redirects = [];
   const client = { interceptors: { request: { use() {} }, response: { use(_success, failure) { rejected = failure; } } } };
   const source = fs.readFileSync(new URL('../src/services/axiosClient.js', import.meta.url), 'utf8')
     .replace(/^import .*\r?\n/gm, '').replaceAll('import.meta.env.VITE_API_URL', 'undefined').replace('export default axiosClient;', '');
   vm.runInNewContext(source, { axios: { create: () => client }, message: { error: value => toasts.push(value) }, Promise,
+    webSession: { isCurrent: () => true, clear: () => removed.push('token', 'user') },
     localStorage: { removeItem: key => removed.push(key) }, window: { location: { pathname: '/nguoi-than-cua-toi', assign: path => redirects.push(path) } } });
   const cancellation = { code: 'ERR_CANCELED', config: { relativePortalRead: true } };
   await assert.rejects(rejected(cancellation), error => error === cancellation); assert.equal(toasts.length, 0);
-  await assert.rejects(rejected({ code: 'ERR_CANCELED', config: {} })); assert.equal(toasts.length, 1);
-  await assert.rejects(rejected({ code: 'ERR_NETWORK', config: { relativePortalRead: true } })); assert.equal(toasts.length, 2);
-  await assert.rejects(rejected({ response: { status: 403, data: {} }, config: { relativePortalRead: true } })); assert.equal(toasts.length, 3);
+  await assert.rejects(rejected({ code: 'ERR_CANCELED', config: {} })); assert.equal(toasts.length, 0);
+  await assert.rejects(rejected({ code: 'ERR_NETWORK', config: { relativePortalRead: true } })); assert.equal(toasts.length, 1);
+  await assert.rejects(rejected({ response: { status: 403, data: {} }, config: { relativePortalRead: true } })); assert.equal(toasts.length, 2);
   await assert.rejects(rejected({ response: { status: 401, data: {} }, config: { relativePortalRead: true, url: '/relatives/me/elderly' } }));
   assert.deepEqual(removed, ['token', 'user']); assert.deepEqual(redirects, ['/login']);
 });

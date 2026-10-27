@@ -38,6 +38,7 @@ function createFixture({ fallback } = {}) {
     input(key, _type, value) { this.values[key] = value; return this; }
     async query(text) {
       const p = this.values; state.queries.push({ text, values: { ...p } });
+      if (text.includes('AS sosOwnerUserId')) return { recordset: [] }; // Kept isolated from family delivery assertions.
       if (text.includes(' AS ready')) return { recordset: [{ ready: state.schema ? 1 : 0 }] };
       if (text.includes('WHERE nd.UserID=@userId')) {
         const a = accounts.find(item => item.id === p.userId);

@@ -16,8 +16,11 @@ import ProtectedRoute from './components/ProtectedRoute';
 import PermissionRoute from './components/PermissionRoute';
 import RelativeAdminRoute from './components/RelativeAdminRoute';
 import RelativeAdminPage from './pages/Relatives/RelativeAdminPage';
-import { StaffWorkspaceRoute, RelativeWorkspaceRoute, WebHomeRoute } from './components/WorkspaceRoutes';
+import { StaffWorkspaceRoute, RelativeWorkspaceRoute, ElderlyWorkspaceRoute, WebHomeRoute } from './components/WorkspaceRoutes';
 import RelativePortalPage from './pages/Relatives/RelativePortalPage';
+import ElderlyPortalPage from './pages/ElderlyPortal/ElderlyPortalPage';
+import { ElderlyHomePage, ElderlySchedulePage, ElderlyHealthPage, ElderlyProfilePage, ElderlySosPage,
+  ElderlyAlertsPage, ElderlyAssistantPage, ElderlyNotFoundPage } from './pages/ElderlyPortal/ElderlyWorkspaceScreens';
 
 // Pages
 import LoginPage from './pages/Login/LoginPage';
@@ -49,6 +52,16 @@ const App = () => {
               {/* Trang đăng nhập - không dùng layout chính */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/nguoi-than-cua-toi" element={<ProtectedRoute><RelativeWorkspaceRoute><RelativePortalPage /></RelativeWorkspaceRoute></ProtectedRoute>} />
+              <Route path="/ca-nhan" element={<ProtectedRoute><ElderlyWorkspaceRoute><ElderlyPortalPage /></ElderlyWorkspaceRoute></ProtectedRoute>}>
+                <Route index element={<ElderlyHomePage />} />
+                <Route path="lich-trinh" element={<ElderlySchedulePage />} />
+                <Route path="suc-khoe" element={<ElderlyHealthPage />} />
+                <Route path="sos" element={<ElderlySosPage />} />
+                <Route path="canh-bao" element={<ElderlyAlertsPage />} />
+                <Route path="ho-so" element={<ElderlyProfilePage />} />
+                <Route path="tro-ly" element={<ElderlyAssistantPage />} />
+                <Route path="*" element={<ElderlyNotFoundPage />} />
+              </Route>
 
               {/* Các trang yêu cầu đăng nhập - dùng MainLayout */}
               <Route

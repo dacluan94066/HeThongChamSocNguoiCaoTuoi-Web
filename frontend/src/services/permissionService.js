@@ -1,7 +1,7 @@
 import axiosClient from './axiosClient';
 
-export const getMyPermissions = async () => {
-  const response = await axiosClient.get('/permissions/me');
+export const getMyPermissions = async (config = {}) => {
+  const response = await axiosClient.get('/permissions/me', config);
   return response.data?.data || [];
 };
 

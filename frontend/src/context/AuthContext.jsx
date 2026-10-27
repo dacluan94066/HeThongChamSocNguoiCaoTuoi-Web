@@ -1,8 +1,9 @@
 // AuthContext.jsx - Quản lý trạng thái đăng nhập toàn bộ ứng dụng
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import axiosClient from '../services/axiosClient';
 import { getMyPermissions } from '../services/permissionService';
 import { connectSocket, disconnectSocket } from '../services/socketClient';
+import { webSession, sessionChangedError } from '../utils/webSession';
 
 // ─── Tạo Context ─────────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
@@ -13,40 +14,63 @@ export const AuthProvider = ({ children }) => {
   const [authLoading, setAuthLoading] = useState(true); // Đang khởi tạo phiên
   const [permissions, setPermissions] = useState([]);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [authError, setAuthError] = useState(null);
+  const alive = useRef(false);
+  const inFlight = useRef(null);
+  const activeRequest = useRef(null);
 
-  // Khi app khởi động: nếu có token trong localStorage thì gọi GET /auth/me
-  // để khôi phục thông tin user và duy trì phiên đăng nhập
-  useEffect(() => {
-    const restoreSession = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setAuthLoading(false);
-        return;
-      }
-      setPermissionsLoading(true);
+  // Verify the server identity again on reload or a storage change in another tab.
+  // A late response must never restore the account that just signed out.
+  const retrySession = useCallback(() => {
+    const stamp = webSession.capture();
+    if (inFlight.current && webSession.isCurrent(inFlight.current.stamp)) return inFlight.current.promise;
+    activeRequest.current?.abort();
+    disconnectSocket();
+    setUser(null); setPermissions([]); setAuthError(null);
+    if (!stamp.token) {
+      setAuthLoading(false); setPermissionsLoading(false); inFlight.current = null;
+      return Promise.resolve(null);
+    }
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const current = () => alive.current && !controller.signal.aborted && webSession.isCurrent(stamp);
+    setAuthLoading(true); setPermissionsLoading(true);
+    const promise = (async () => {
       try {
         const [res, permissionData] = await Promise.all([
-          axiosClient.get('/auth/me'),
-          getMyPermissions(),
+          axiosClient.get('/auth/me', { signal: controller.signal, webSessionStamp: stamp }),
+          getMyPermissions({ signal: controller.signal, webSessionStamp: stamp }),
         ]);
-        // Backend trả về thông tin user trong res.data.data hoặc res.data.user
+        if (!current()) throw sessionChangedError();
         const userData = res.data?.data || res.data?.user || res.data;
+        if (!userData?.userId || !userData?.tenVaiTro) throw new Error('Thông tin phiên đăng nhập không hợp lệ.');
+        webSession.updateUser(userData, stamp);
         setUser(userData);
         setPermissions(permissionData);
-      } catch {
-        // Token không hợp lệ hoặc hết hạn → xóa khỏi localStorage
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setUser(null);
-        setPermissions([]);
+        return userData;
+      } catch (error) {
+        if (current() && error.code !== 'ERR_CANCELED') {
+          setAuthError(error.response?.status === 403
+            ? 'Tài khoản chưa có quyền sử dụng chức năng này. Vui lòng liên hệ quản trị viên.'
+            : 'Không thể kiểm tra phiên đăng nhập. Kiểm tra kết nối và thử lại.');
+        }
+        throw error;
       } finally {
-        setPermissionsLoading(false);
-        setAuthLoading(false);
+        if (current()) { setPermissionsLoading(false); setAuthLoading(false); }
+        if (inFlight.current?.stamp === stamp) inFlight.current = null;
       }
-    };
-
-    restoreSession();
+    })();
+    inFlight.current = { stamp, promise };
+    return promise;
   }, []);
+
+  useEffect(() => {
+    alive.current = true;
+    const refresh = () => { void retrySession().catch(() => {}); };
+    const unsubscribe = webSession.subscribe(refresh);
+    refresh();
+    return () => { alive.current = false; activeRequest.current?.abort(); inFlight.current = null; unsubscribe(); };
+  }, [retrySession]);
 
   useEffect(() => {
     if (user && localStorage.getItem('token')) connectSocket();
@@ -56,25 +80,18 @@ export const AuthProvider = ({ children }) => {
   // Hàm đăng xuất: xóa token + user khỏi localStorage, reset state, về /login
   const logout = useCallback(() => {
     disconnectSocket();
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    webSession.clear();
     setUser(null);
     setPermissions([]);
     window.location.href = '/login';
   }, []);
 
   // Hàm cập nhật user sau khi đăng nhập thành công
-  const setUserData = useCallback(async (userData) => {
-    setPermissionsLoading(true);
-    try {
-      const permissionData = await getMyPermissions();
-      setPermissions(permissionData);
-      setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
-    } finally {
-      setPermissionsLoading(false);
-    }
-  }, []);
+  const setUserData = useCallback(async () => {
+    const verified = await retrySession();
+    if (!verified) throw sessionChangedError();
+    return verified;
+  }, [retrySession]);
 
   const hasPermission = useCallback((maChucNang, hanhDong = 'xem') => {
     const permission = permissions.find((item) => item.maChucNang === maChucNang);
@@ -86,6 +103,8 @@ export const AuthProvider = ({ children }) => {
     authLoading,    // true khi đang khôi phục phiên lúc app mới mở
     permissions,
     permissionsLoading,
+    authError,
+    retrySession,
     hasPermission,
     logout,
     setUserData,

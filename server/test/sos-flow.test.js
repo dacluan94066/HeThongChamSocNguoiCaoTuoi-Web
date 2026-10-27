@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function fixture({ duplicate = false, assignedCaregiver = true, commitFails = false,
+function fixture({ duplicate = false, assignedCaregiver = true, commitFails = false, ownerReceives = false,
   notificationFails = false } = {}) {
   const writes = [];
   const events = [];
@@ -17,6 +17,7 @@ function fixture({ duplicate = false, assignedCaregiver = true, commitFails = fa
   class Request {
     input(name, _, value) { this[name] = value; return this; }
     async query(query) {
+      if (query.includes('AS sosOwnerUserId')) return { recordset: ownerReceives ? [{ sosOwnerUserId: 3 }] : [] };
       if (query.includes(' AS ready')) return { recordset: [{ ready: 0 }] }; // Legacy unpatched schema.
       if (query.includes('FROM HoSoNguoiCaoTuoi WHERE UserID')) {
         return { recordset: [{ id: 7, name: 'Người cao tuổi thử nghiệm' }] };
@@ -157,3 +158,12 @@ for (const failure of ['commitFails', 'notificationFails']) {
     assert.equal(events.length, 0);
   });
 }
+
+test('committed SOS also refreshes the owner Web/Mobile room without creating another notification', async () => {
+  const f = fixture({ ownerReceives: true }); await f.send({});
+  const ownerEvents = f.events.filter(event => event.recipient === 3);
+  assert.equal(ownerEvents.length, 1); assert.equal(ownerEvents[0].event, 'canhbao:new');
+  assert.equal(ownerEvents[0].data.nguoiCaoTuoiId, 7);
+  assert.equal('kinhDo' in ownerEvents[0].data, false); assert.equal('ghiChuXuLy' in ownerEvents[0].data, false);
+  assert.equal(f.writes.filter(row => row.table === 'notification').length, 2);
+});
