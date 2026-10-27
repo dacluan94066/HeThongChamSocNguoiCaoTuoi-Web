@@ -509,7 +509,7 @@ const login = async (req, res, next) => {
     }
 
     // Quan tri vien va nguoi cham soc dung Web; nguoi cao tuoi dung Mobile.
-    if (platform === 'web' && !['QuanTriVien', 'NguoiChamSoc'].includes(user.TenVaiTro)) {
+    if (platform === 'web' && !['QuanTriVien', 'NguoiChamSoc', 'NguoiThan'].includes(user.TenVaiTro)) {
       await writeLoginLog(pool, req, user.UserID, 'ThatBai', platform);
       return fail(
         res,

@@ -71,6 +71,7 @@ const VAI_TRO_MAP = {
   QuanTriVien: { ma: 'QUAN_TRI', label: 'Quản trị viên' },
   NguoiChamSoc: { ma: 'NGUOI_CHAM_SOC', label: 'Người chăm sóc' },
   NguoiCaoTuoi: { ma: 'NGUOI_CAO_TUOI', label: 'Người cao tuổi' },
+  NguoiThan: { ma: 'NGUOI_THAN', label: 'Người thân' },
 };
 
 const findRoleNameByCode = (code) => Object.entries(VAI_TRO_MAP)
@@ -190,6 +191,10 @@ const create = async (req, res, next) => {
 
     const roleName = findRoleNameByCode(vaiTro);
     if (!roleName) return fail(res, 'Vai tro khong hop le', 'INVALID_ROLE', 400);
+    if (roleName==='NguoiThan' && (typeof hoTen!=='string' || !hoTen.trim() || hoTen.trim().length>100
+      || typeof username!=='string' || !username.trim() || username.length>50
+      || Buffer.byteLength(password,'utf8')>72 || (normalizedPhone && !/^0\d{9}$/.test(normalizedPhone))))
+      return fail(res,'Thông tin tài khoản Người thân không hợp lệ hoặc vượt độ dài cho phép.','INVALID_RELATIVE_ACCOUNT',422);
     if (roleName === 'NguoiChamSoc' && !/^[0-9]{10,11}$/.test(normalizedPhone))
       return fail(res, 'Nguoi cham soc can so dien thoai 10-11 chu so', 'INVALID_PHONE', 400);
     const roleResult = await pool.request().input('tenVaiTro', sql.NVarChar, roleName)
@@ -275,10 +280,15 @@ const update = async (req, res, next) => {
     }
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const normalizedPhone = typeof soDienThoai === 'string' ? soDienThoai.trim() : '';
+    if (roleName==='NguoiThan' && typeof hoTen!=='string')
+      return fail(res,'Họ tên Người thân không hợp lệ.','INVALID_RELATIVE_ACCOUNT',422);
     if (!hoTen?.trim() || !normalizedEmail || normalizedEmail.length > 100
       || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return fail(res, 'Can ho ten va email hop le', 'INVALID_CONTACT', 400);
     }
+    if (roleName==='NguoiThan' && (typeof hoTen!=='string' || hoTen.trim().length>100
+      || (normalizedPhone && !/^0\d{9}$/.test(normalizedPhone))))
+      return fail(res,'Thông tin tài khoản Người thân không hợp lệ.','INVALID_RELATIVE_ACCOUNT',422);
     if (roleName === 'NguoiChamSoc' && !/^[0-9]{10,11}$/.test(normalizedPhone))
       return fail(res, 'Nguoi cham soc can so dien thoai 10-11 chu so', 'INVALID_PHONE', 400);
 

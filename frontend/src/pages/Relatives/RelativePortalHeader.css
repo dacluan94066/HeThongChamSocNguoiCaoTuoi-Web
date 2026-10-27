@@ -1,0 +1,64 @@
+.relative-family-header {
+  background: #fff;
+  border-bottom: 1px solid #dfebe5;
+  box-shadow: 0 3px 16px #155e4b06;
+  color: #155e4b;
+}
+.relative-family-header-inner {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 16px clamp(16px, 3vw, 48px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(20px, 3vw, 40px);
+}
+.relative-family-header button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.relative-family-brand { display: flex; align-items: center; gap: 11px; padding: 0; border: 0; background: transparent; color: #155e4b; text-align: left; border-radius: 12px; }
+.relative-family-brand-mark { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; border-radius: 14px; font-size: 22px; color: #fff; background: linear-gradient(145deg, #21966f, #155e4b); box-shadow: 0 4px 9px #21966f20, inset 0 1px #ffffff30; }
+.relative-family-brand-copy { display: grid; gap: 2px; }
+.relative-family-brand-copy strong { font-size: 22px; font-weight: 800; letter-spacing: -.7px; line-height: 1.2; }
+.relative-family-brand-copy small { font-size: 11px; color: #637d72; line-height: 1.5; }
+.relative-family-navigation { border-left: 1px solid #e3ece7; padding-left: clamp(20px, 3vw, 40px); min-width: 0; }
+.relative-family-navigation button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 10px 16px; border: 1px solid #d9eee3; border-radius: 12px; background: #eef8f3; color: #155e4b; font-size: 14px; font-weight: 650; line-height: 1.5; text-align: left; }
+.relative-family-navigation .anticon { color: #21966f; font-size: 18px; }
+.relative-family-navigation button:hover { background: #e3f3eb; border-color: #b3ddc9; }
+.relative-family-account-trigger { display: flex; align-items: center; gap: 11px; min-width: 0; min-height: 52px; max-width: 310px; padding: 5px 9px 5px 5px; background: transparent; border: 1px solid transparent; border-radius: 14px; color: #214b3d; text-align: left; transition: background .16s ease, border-color .16s ease; }
+.relative-family-account-trigger:hover, .relative-family-account-trigger.is-open { background: #f4faf7; border-color: #deece4; }
+.relative-family-avatar.ant-avatar { flex-shrink: 0; background: #e8f5ee; color: #155e4b; border: 1px solid #d7eade; font-size: 14px; font-weight: 750; }
+.relative-family-account-copy { display: grid; min-width: 0; gap: 3px; }
+.relative-family-account-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 650; line-height: 1.5; }
+.relative-family-account-copy small { display: flex; align-items: center; gap: 6px; color: #627d70; font-size: 12px; line-height: 1.5; }
+.relative-family-account-copy i { width: 5px; height: 5px; background: #21966f; border-radius: 50%; }
+.relative-family-account-caret { flex-shrink: 0; color: #7b9186; font-size: 10px; transition: transform .16s ease; }
+.relative-family-account-trigger.is-open .relative-family-account-caret { transform: rotate(180deg); }
+.relative-family-header button:focus-visible { outline: 3px solid #21966f; outline-offset: 3px; }
+.relative-family-account-popup { width: min(288px, calc(100vw - 24px)); max-width: calc(100vw - 24px); }
+.relative-family-account-menu { padding: 6px; background: #fff; border: 1px solid #dfebe4; border-radius: 17px; box-shadow: 0 12px 40px #155e4b1c, 0 2px 6px #155e4b08; }
+.relative-family-menu-identity { display: grid; gap: 5px; padding: 12px 12px 15px; margin-bottom: 5px; border-bottom: 1px solid #edf2ef; overflow-wrap: anywhere; }
+.relative-family-menu-identity strong { color: #214b3d; font-size: 14px; line-height: 1.5; }
+.relative-family-menu-identity span { color: #637d72; font-size: 12px; }
+.relative-family-account-popup .ant-dropdown-menu { padding: 0; border-radius: 10px; box-shadow: none; }
+.relative-family-account-popup .ant-dropdown-menu .ant-dropdown-menu-item { min-height: 44px; padding: 11px 12px; border-radius: 9px; font-size: 14px; }
+.relative-family-account-popup .ant-dropdown-menu-item:not(.ant-dropdown-menu-item-danger):hover,
+.relative-family-account-popup .ant-dropdown-menu-item:not(.ant-dropdown-menu-item-danger).ant-dropdown-menu-item-active { color: #155e4b; background: #eef8f3; }
+.relative-family-account-popup .ant-dropdown-menu-item:focus-visible { outline: 2px solid #21966f; outline-offset: -2px; }
+@media (max-width: 900px) {
+  .relative-family-header-inner { gap: 18px; }
+  .relative-family-navigation { padding-left: 18px; }
+  .relative-family-account-trigger { max-width: 230px; }
+}
+@media (max-width: 700px) {
+  .relative-family-header-inner { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding-top: 12px; padding-bottom: 12px; }
+  .relative-family-navigation { grid-row: 2; grid-column: 1 / -1; border-left: 0; padding-left: 0; }
+  .relative-family-navigation button { width: 100%; }
+  .relative-family-account-trigger { grid-column: 2; grid-row: 1; }
+  .relative-family-brand-copy strong { font-size: 21px; }
+}
+@media (max-width: 480px) {
+  .relative-family-account-copy { display: none; }
+  .relative-family-account-trigger { gap: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .relative-family-account-trigger, .relative-family-account-caret { transition: none; }
+}

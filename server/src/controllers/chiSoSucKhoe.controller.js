@@ -8,6 +8,7 @@ const { scopedWhere, targetElderlyId, isMobileRole } = require('../middlewares/m
 const { emitToAdmin } = require('../socket');
 const { notifyAlertRecipients, emitAlertNotifications } = require('../services/alertNotification.service');
 const { validateMetricValues, validateMeasurementTime } = require('../utils/healthMetricValidation');
+const { alertTimestampSql: vietnamTimestampSql } = require('../utils/alertTime');
 
 // Map TenChiSo trong DB -> loaiChiSo frontend
 const MAP_LOAI = {
@@ -52,7 +53,8 @@ const mapMetric = (row) => {
   const giaTri = row.giaTriPhu != null
     ? `${row.giaTri}/${row.giaTriPhu}`
     : String(row.giaTri);
-  const wallTime = row.thoiGianDo instanceof Date ? row.thoiGianDo.toISOString() : row.thoiGianDo;
+  // Web receives a UTC instant; date/time form fields keep the stored Vietnam calendar clock.
+  const wallTime = row.thoiGianDoDiaPhuong || '';
 
   return {
     id:              row.id,
@@ -65,7 +67,7 @@ const mapMetric = (row) => {
     giaTriChinh:     Number(row.giaTri),
     giaTriPhu:       row.giaTriPhu == null ? null : Number(row.giaTriPhu),
     donVi:           row.donVi || loaiInfo.donVi,
-    thoiGianDo:      wallTime || null,
+    thoiGianDo:      row.thoiGianDo || null,
     ngayDo:          wallTime?.slice(0, 10) || '',
     gioDo:           wallTime?.slice(11, 16) || '',
     nguoiDoId:       row.nguoiDoId,
@@ -337,6 +339,7 @@ const createMine = async (req, res, next) => {
             c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo,
             l.DonVi AS donVi, c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
             c.ThoiGianDo AS thoiGianDo, c.LaBatThuong AS laBatThuong,
+            ${vietnamTimestampSql('c.ThoiGianDo')} AS thoiGianDoUtc,
             c.GhiChu AS ghiChu, @alertId AS alertId
           FROM ChiSoSucKhoe c
           JOIN LoaiChiSoSucKhoe l ON l.LoaiChiSoID = c.LoaiChiSoID
@@ -358,7 +361,7 @@ const createMine = async (req, res, next) => {
       giaTri: Number(row.giaTri),
       giaTriPhu: row.giaTriPhu == null ? null : Number(row.giaTriPhu),
       laBatThuong: Boolean(row.laBatThuong),
-      thoiGianDo: row.thoiGianDo,
+      thoiGianDo: row.thoiGianDoUtc,
     });
     if (row.alertId != null) {
       await notifyAbnormalMetric(pool, elderlyId, row.alertId,
@@ -371,7 +374,7 @@ const createMine = async (req, res, next) => {
         mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
         mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
         moTa: assessment.description,
-        thoiGianPhatHien: row.thoiGianDo,
+        thoiGianPhatHien: row.thoiGianDoUtc,
         trangThai: 'CHUA_XU_LY',
         trangThaiLabel: 'Chưa xử lý',
         nguonBang: 'ChiSoSucKhoe',
@@ -399,7 +402,9 @@ const getAll = async (req, res, next) => {
       SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         nct.HoTen AS nguoiCaoTuoiTen, c.LoaiChiSoID AS loaiChiSoId,
         l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
-        c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu, c.ThoiGianDo AS thoiGianDo,
+        c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
+        ${vietnamTimestampSql('c.ThoiGianDo')} AS thoiGianDo,
+        CONVERT(VARCHAR(19),c.ThoiGianDo,126) AS thoiGianDoDiaPhuong,
         c.NguoiDoID AS nguoiDoId, nd.HoTen AS nguoiDoTen,
         c.LaBatThuong AS laBatThuong, c.GhiChu AS ghiChu
       FROM ChiSoSucKhoe c
@@ -505,7 +510,9 @@ const create = async (req, res, next) => {
           SET @canhBaoId = SCOPE_IDENTITY();
         END;
 
-        SELECT @chiSoId AS id, @canhBaoId AS alertId;
+        SELECT c.ChiSoID AS id, @canhBaoId AS alertId,
+          ${vietnamTimestampSql('c.ThoiGianDo')} AS thoiGianDoUtc
+        FROM ChiSoSucKhoe c WHERE c.ChiSoID=@chiSoId;
       `);
     emitToAdmin('chisuckhoe:new', {
       id: r.recordset[0].id,
@@ -516,7 +523,7 @@ const create = async (req, res, next) => {
       giaTri: giaTriNum,
       giaTriPhu: giaTriPhuNum,
       laBatThuong: assessment.abnormal,
-      thoiGianDo,
+      thoiGianDo: r.recordset[0].thoiGianDoUtc,
     });
     if (r.recordset[0].alertId != null) {
       await notifyAbnormalMetric(pool, nguoiCaoTuoiId, r.recordset[0].alertId,
@@ -529,7 +536,7 @@ const create = async (req, res, next) => {
         mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
         mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
         moTa: assessment.description,
-        thoiGianPhatHien: thoiGianDo,
+        thoiGianPhatHien: r.recordset[0].thoiGianDoUtc,
         trangThai: 'CHUA_XU_LY',
         trangThaiLabel: 'Chưa xử lý',
         nguonBang: 'ChiSoSucKhoe',

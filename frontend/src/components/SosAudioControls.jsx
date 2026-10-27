@@ -3,7 +3,7 @@ import { AudioMutedOutlined, SoundOutlined, StopOutlined, WarningOutlined } from
 import './SosAudioControls.css';
 
 // Presentation only: muting the sound never calls a SOS status/mutation API.
-const SosAudioControls = ({ state = {}, onEnable, onDisable, onSilence }) => {
+const SosAudioControls = ({ state = {}, onEnable, onDisable, onSilence, readOnly = false }) => {
   const enabled = Boolean(state.enabled);
   const needsRetry = enabled && Boolean(state.blocked || state.error);
   const coordinationUnavailable = state.coordinationAvailable === false;
@@ -16,7 +16,8 @@ const SosAudioControls = ({ state = {}, onEnable, onDisable, onSilence }) => {
       <div className="sos-audio-controls__toolbar">
         <Tooltip title={enabled
           ? 'Tắt âm thanh cho các SOS tiếp theo. Cảnh báo trên màn hình vẫn được giữ.'
-          : 'Bật âm thanh SOS và nghe thử một tiếng chuông ngắn. SOS chưa xử lý vừa nhận khi tắt âm thanh cũng có thể phát chuông.'}>
+          : readOnly ? 'Bật âm thanh SOS và nghe thử một tiếng ngắn. Chỉ SOS vừa được kiểm tra quyền mới được phát chuông.'
+            : 'Bật âm thanh SOS và nghe thử một tiếng chuông ngắn. SOS chưa xử lý vừa nhận khi tắt âm thanh cũng có thể phát chuông.'}>
           <Button
             className={`sos-audio-controls__toggle${enabled ? ' is-enabled' : ''}`}
             icon={enabled ? <SoundOutlined /> : <AudioMutedOutlined />}
@@ -29,7 +30,7 @@ const SosAudioControls = ({ state = {}, onEnable, onDisable, onSilence }) => {
         </Tooltip>
 
         {state.ringing && (
-          <Tooltip title="Tắt chuông không đánh dấu SOS đã xử lý. Hãy mở chi tiết để tiếp nhận hoặc xử lý.">
+          <Tooltip title={readOnly ? 'Chỉ dừng âm thanh, không thay đổi trạng thái SOS.' : 'Tắt chuông không đánh dấu SOS đã xử lý. Hãy mở chi tiết để tiếp nhận hoặc xử lý.'}>
             <Button
               danger
               className="sos-audio-controls__silence"

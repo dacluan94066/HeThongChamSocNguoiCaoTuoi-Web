@@ -42,12 +42,14 @@ async function seedPhanQuyen() {
 
     transaction = new sql.Transaction(pool);
     await transaction.begin();
-    await new sql.Request(transaction).query('DELETE FROM PhanQuyen');
+    // Install missing defaults only; preserve configured permissions and unknown roles.
+    const relativeFeatures=new Set(['QLHOSONCT','QLCHISOSK','QLLICHUONGTHUOC','QLLICHKHAM','QLCANHBAO']);
     for (const feature of functions) {
       for (const [roleName, permissions] of [
         ['QuanTriVien', actions(1, 1, 1, 1)],
         ['NguoiChamSoc', caregiver[feature.MaChucNang] || actions()],
         ['NguoiCaoTuoi', elderly[feature.MaChucNang] || actions()],
+        ...(roleIds.NguoiThan ? [['NguoiThan',actions(relativeFeatures.has(feature.MaChucNang)?1:0)]] : []),
       ]) {
         await new sql.Request(transaction)
           .input('vaiTroId', sql.Int, roleIds[roleName])
@@ -56,14 +58,16 @@ async function seedPhanQuyen() {
           .input('them', sql.Bit, permissions.them)
           .input('sua', sql.Bit, permissions.sua)
           .input('xoa', sql.Bit, permissions.xoa)
-          .query(`INSERT INTO PhanQuyen
+          .query(`IF NOT EXISTS(SELECT 1 FROM PhanQuyen WITH(UPDLOCK,HOLDLOCK)
+              WHERE VaiTroID=@vaiTroId AND ChucNangID=@chucNangId)
+            INSERT INTO PhanQuyen
             (VaiTroID, ChucNangID, ChoPhepXem, ChoPhepThem, ChoPhepSua, ChoPhepXoa)
             VALUES (@vaiTroId, @chucNangId, @xem, @them, @sua, @xoa)`);
       }
     }
     await transaction.commit();
     transaction = null;
-    console.log(`[SEED] Da cap ${functions.length * 3} dong phan quyen cho 3 vai tro.`);
+    console.log('[SEED] Da bo sung quyen mac dinh con thieu; giu nguyen cac quyen da cau hinh.');
   } catch (error) {
     if (transaction) await transaction.rollback().catch(() => {});
     console.error('[SEED] Loi:', error);

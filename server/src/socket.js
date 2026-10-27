@@ -39,7 +39,7 @@ const initSocket = (server) => {
       const user = result.recordset[0];
       if (!user || user.TrangThai !== 'HoatDong'
         || user.VaiTroID !== decoded.vaiTroId || user.TenVaiTro !== decoded.tenVaiTro
-        || !['QuanTriVien', 'NguoiChamSoc', 'NguoiCaoTuoi'].includes(user.TenVaiTro)) {
+        || !['QuanTriVien', 'NguoiChamSoc', 'NguoiCaoTuoi', 'NguoiThan'].includes(user.TenVaiTro)) {
         return next(new Error('INVALID_TOKEN'));
       }
       socket.user = {

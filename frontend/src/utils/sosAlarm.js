@@ -67,6 +67,8 @@ export function createSosAlarmController(options = {}) {
   let disposed = false;
   let audio = null;
   let previewTimer = null;
+  let ringTimer = null;
+  let ringLimitMs = 0;
   let releaseLock = null;
   let attempting = false;
   let channel = null;
@@ -115,6 +117,7 @@ export function createSosAlarmController(options = {}) {
   };
   const stopAudio = () => {
     if (previewTimer != null) { cancel(previewTimer); previewTimer = null; }
+    if (ringTimer != null) { cancel(ringTimer); ringTimer = null; }
     const current = audio;
     audio = null;
     try { current?.pause(); if (current) current.currentTime = 0; } catch { /* best effort */ }
@@ -182,6 +185,9 @@ export function createSosAlarmController(options = {}) {
         return false;
       }
       publish({ ringing: loop, blocked: false, error: null });
+      if (loop && ringLimitMs > 0) ringTimer = schedule(() => {
+        if (audio === current) controller.silence();
+      }, ringLimitMs);
       if (!loop) previewTimer = schedule(() => {
         if (audio === current) stopAudio();
       }, 350);
@@ -266,15 +272,16 @@ export function createSosAlarmController(options = {}) {
     }
   };
   const controller = {
-    configure({ userId: nextUser, authorized: nextAuthorized }) {
+    configure({ userId: nextUser, authorized: nextAuthorized, maxRingMs = 0 }) {
       const id = positiveId(nextUser);
       const allowed = Boolean(id && nextAuthorized && !disposed);
-      if (userId === id && authorized === allowed) return;
+      const limit = Number.isFinite(maxRingMs) && maxRingMs > 0 ? Math.min(maxRingMs, 600000) : 0;
+      if (userId === id && authorized === allowed && ringLimitMs === limit) return;
       generation++;
       attempting = false;
       stopAudio();
       channel?.close(); channel = null;
-      userId = id; authorized = allowed; seen = new Set(); pending = new Map(); failedIds = new Set();
+      userId = id; authorized = allowed; ringLimitMs = limit; seen = new Set(); pending = new Map(); failedIds = new Set();
       knownSos = new Map(); alertToSos = new Map();
       const available = allowed && Boolean(locks?.request) && storageWorks();
       publish({ ...initialSnapshot(), enabled: allowed && read('enabled') === '1', coordinationAvailable: available });
@@ -307,7 +314,8 @@ export function createSosAlarmController(options = {}) {
       // Generic CanhBao updates do not contain a trusted SOS source. Only use
       // the alert-to-SOS relationship learned from a previous SOS event.
       const alertId = positiveId(alert.canhBaoId);
-      const sosId = alertId && alertToSos.get(alertId);
+      const explicitId = alert.nguonBang === 'CanhBaoKhanCap' ? positiveId(alert.canhBaoKhanCapId ?? alert.nguonId) : null;
+      const sosId = explicitId || (alertId && alertToSos.get(alertId));
       const previous = sosId && knownSos.get(sosId);
       if (!previous || (alert.nguoiCaoTuoiId != null && positiveId(alert.nguoiCaoTuoiId) !== previous.elderlyId)) return null;
       const labels = { CHUA_XU_LY: 'Chưa xử lý', DangGui: 'Chưa xử lý', DA_XEM: 'Đã tiếp nhận', DaTiepNhan: 'Đã tiếp nhận', DA_XU_LY: 'Đã xử lý', DaXuLy: 'Đã xử lý' };
@@ -327,6 +335,16 @@ export function createSosAlarmController(options = {}) {
         rememberSilenced([sosId]);
       }
       return updated;
+    },
+    retainElderly(elderlyIds) {
+      const allowedIds = new Set(elderlyIds.map(positiveId).filter(Boolean));
+      for (const [sosId, sos] of knownSos) if (!allowedIds.has(sos.elderlyId)) {
+        pending.delete(sosId); failedIds.delete(sosId); seen.delete(sosId); knownSos.delete(sosId);
+        if (sos.alertId) alertToSos.delete(sos.alertId);
+      }
+      if (!pending.size) {
+        generation++; attempting = false; stopAudio(); publish({ blocked: false, error: null });
+      }
     },
     async enable() {
       if (!authorized || disposed) return false;

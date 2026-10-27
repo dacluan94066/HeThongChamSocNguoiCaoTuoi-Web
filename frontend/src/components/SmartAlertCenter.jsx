@@ -28,6 +28,7 @@ import dayjs from 'dayjs';
 import { getAlerts, markAlertSeen, resolveAlert } from '../services/alertService';
 import { getCurrentUser } from '../services/authService';
 import usePermission from '../hooks/usePermission';
+import { formatAlertWaiting } from '../utils/alertTime';
 import ModalForm, { FormSection } from './ModalForm';
 
 const PRIORITY_META = {
@@ -37,14 +38,7 @@ const PRIORITY_META = {
   THAP: { label: 'Theo dõi', color: '#2E7D9A', bg: '#EBF5FB' },
 };
 
-const formatWaitingTime = (minutes = 0) => {
-  if (minutes < 1) return 'Vừa ghi nhận';
-  if (minutes < 60) return `${minutes} phút`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)} giờ ${minutes % 60} phút`;
-  const days = Math.floor(minutes / 1440);
-  const hours = Math.floor((minutes % 1440) / 60);
-  return `${days} ngày${hours ? ` ${hours} giờ` : ''}`;
-};
+const formatWaitingTime = formatAlertWaiting;
 
 const SmartAlertCenter = ({ onChanged }) => {
   const navigate = useNavigate();

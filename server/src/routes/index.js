@@ -21,9 +21,11 @@ const emergencyAlertRoutes = require('./emergencyAlert.routes');
 const notificationRoutes = require('./notification.routes');
 const careAssistantRoutes = require('./careAssistant.routes');
 const reportRoutes = require('./report.routes');
+const relativeRoutes = require('./relative.routes');
 
 // Mount cac nhom route (phai khop voi axiosClient goi ben frontend)
 router.use('/auth',                  authRoutes);
+router.use('/relatives',             relativeRoutes);
 router.use('/elderly',               hoSoNguoiCaoTuoiRoutes);
 router.use('/users',                 nguoiDungRoutes);
 router.use('/caregivers',            nguoiChamSocRoutes);

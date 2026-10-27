@@ -1,0 +1,60 @@
+.relative-admin-page { color: #173c40; min-width: 0; }
+.relative-admin-page h1 { font-size: clamp(24px, 2.1vw, 32px); margin: 6px 0; color: #123a3f; }
+.relative-page-heading, .relative-section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
+.relative-page-heading p, .relative-section-heading p { color: #657d86; line-height: 1.6; margin: 5px 0 0; }
+.relative-eyebrow { font-size: 12px; font-weight: 700; color: #16656a; letter-spacing: .04em; }
+.relative-admin-summary { display: flex; gap: 14px 28px; flex-wrap: wrap; background: #edf8f6; border: 1px solid #d1e8e4; border-radius: 16px; padding: 18px 22px; margin: 20px 0; }
+.relative-admin-summary strong { font-size: 22px; margin-right: 6px; color: #10615b; }
+.relative-admin-workspace { display: grid; grid-template-columns: minmax(240px, 310px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.relative-accounts-panel, .relative-selected-panel, .relative-links-panel { min-width: 0; }
+.relative-accounts-panel, .relative-selected-panel { padding: 22px; background: #fff; border: 1px solid #dfebed; border-radius: 20px; box-shadow: 0 6px 22px #193d4d05; }
+.relative-accounts-panel h2, .relative-selected-panel h2 { margin: 0 0 12px; font-size: 20px; }
+.relative-accounts-panel > .ant-select, .relative-accounts-panel > .ant-input-affix-wrapper { width: 100%; margin-bottom: 12px; }
+.relative-account-list { display: grid; gap: 10px; margin-bottom: 16px; }
+.relative-account-list > button { display: flex; align-items: flex-start; gap: 12px; padding: 14px; background: #fff; border: 1px solid #e2ecee; border-radius: 14px; text-align: left; cursor: pointer; width: 100%; min-width: 0; font: inherit; }
+.relative-account-list > button:hover { border-color: #71b1a6; }
+.relative-account-list > button.is-selected { background: #edf8f5; border-color: #238875; box-shadow: inset 3px 0 #238875; }
+.relative-account-list > button > span:last-child { min-width: 0; }
+.relative-account-list strong, .relative-account-list small { display: block; overflow-wrap: anywhere; }
+.relative-account-list small { color: #6f858b; margin: 3px 0 8px; }
+.relative-selected-account { padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid #e5eeee; }
+.relative-selected-account p { color: #71858c; margin: 0; }
+.relative-links-panel h3 { font-size: 19px; margin: 5px 0; }
+.relative-links-panel > .ant-alert, .relative-admin-page > .ant-alert { margin-bottom: 16px; }
+.relative-link-filters { display: flex; gap: 12px; margin: 18px 0; flex-wrap: wrap; }
+.relative-link-filters .ant-input-affix-wrapper { flex: 1 1 220px; min-width: 0; }
+.relative-link-filters .ant-select { flex: 0 1 200px; min-width: 170px; }
+.relative-links-list { display: grid; gap: 14px; }
+.relative-link-card { border: 1px solid #dcebea; border-radius: 16px; padding: 18px; background: #fff; min-width: 0; }
+.relative-link-card.is-revoked { border-style: dashed; background: #fafcfc; }
+.relative-link-title { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.relative-link-title strong { display: block; font-size: 17px; overflow-wrap: anywhere; }
+.relative-link-title span:not(.ant-tag) { color: #6b8187; }
+.relative-muted { color: #74878b; font-size: 13px; line-height: 1.6; margin: 12px 0; }
+.relative-links-panel .ant-tag { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.relative-link-actions { margin-top: 6px; }
+.relative-list-footer { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; color: #75888d; font-size: 13px; margin-top: 16px; }
+.relative-modal-actions { display: flex; justify-content: flex-end; width: 100%; }
+.relative-consent-modal .ant-modal-body, .relative-detail-modal .ant-modal-body, .relative-history-modal .ant-modal-body { max-height: min(72vh, 760px); overflow-y: auto; overflow-x: hidden; }
+.relative-consent-modal .ant-alert { margin-bottom: 16px; }
+.relative-consent-modal .ant-form-item { min-width: 0; }
+.relative-consent-modal .ant-checkbox-wrapper { line-height: 1.6; }
+.relative-consent-modal .ant-btn-sm + .ant-form-item { margin-top: 16px; }
+.relative-scope-options { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.relative-scope-options .ant-form-item { margin-bottom: 4px; }
+.relative-detail-modal .ant-descriptions-item-content { overflow-wrap: anywhere; white-space: pre-wrap; }
+.relative-history-list { display: grid; gap: 16px; }
+.relative-history-list > article { border-left: 3px solid #2a8c78; border-radius: 8px; background: #f5faf9; padding: 16px; overflow-wrap: anywhere; }
+.relative-history-list header { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.relative-history-list header > span { color: #6b8387; font-size: 13px; }
+.relative-history-list p { margin: 7px 0; }
+.relative-history-list dl { display: grid; gap: 10px; margin-top: 12px; }
+.relative-history-list dl > div { display: grid; grid-template-columns: minmax(100px, 140px) minmax(0, 1fr); gap: 10px; }
+.relative-history-list dt { font-weight: 600; color: #49656b; }
+.relative-history-list dd { margin: 0; white-space: pre-wrap; }
+.elderly-relative-section { margin-top: 22px; border-top: 1px solid #e0eceb; padding-top: 20px; }
+.elderly-relative-section > summary { cursor: pointer; font-size: 18px; font-weight: 700; color: #175e62; padding: 10px 0; }
+.elderly-relative-section .relative-links-panel { padding-top: 14px; }
+.users-permissions-page .user-role-tag.is-relative { color: #236b68; background: #e4f5ef; }
+@media (max-width: 1100px) { .relative-admin-workspace { grid-template-columns: minmax(0, 1fr); } .relative-account-list { grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); } }
+@media (max-width: 640px) { .relative-accounts-panel, .relative-selected-panel { padding: 16px; border-radius: 16px; } .relative-link-filters .ant-select { flex: 1 1 100%; } .relative-link-card { padding: 14px; } .relative-history-list dl > div { grid-template-columns: minmax(0, 1fr); gap: 3px; } .relative-links-panel .relative-section-heading > .ant-space { width: 100%; } }

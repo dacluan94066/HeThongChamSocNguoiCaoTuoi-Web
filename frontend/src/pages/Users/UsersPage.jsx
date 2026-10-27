@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Button, Checkbox, Col, Form, Input, message, Popconfirm, Row, Select, Tabs,
+  Alert, Button, Checkbox, Col, Form, Input, message, Popconfirm, Row, Select, Tabs,
 } from 'antd';
 import {
   EditOutlined, EyeOutlined, KeyOutlined, LockOutlined, SafetyCertificateOutlined, SaveOutlined,
@@ -19,11 +20,14 @@ import TableActionButton from '../../components/TableActionButton';
 import RecordDetailModal from '../../components/RecordDetailModal';
 import { ElderlyPersonalFields, ElderlyHealthFields } from '../../components/ElderlyProfileFields';
 import { buildUserCreatePayload, mobilePasswordRules } from '../../utils/accountFormRules';
+import { canEditRelativePermission, isFamilyAccount } from '../../utils/relativeAdmin';
+import '../Relatives/RelativeAdmin.css';
 
 const ROLE_OPTIONS = [
   { value: 'QUAN_TRI', name: 'QuanTriVien', label: 'Quản trị viên', tone: 'admin' },
   { value: 'NGUOI_CHAM_SOC', name: 'NguoiChamSoc', label: 'Người chăm sóc', tone: 'caregiver' },
   { value: 'NGUOI_CAO_TUOI', name: 'NguoiCaoTuoi', label: 'Người cao tuổi', tone: 'elderly' },
+  { value: 'NGUOI_THAN', name: 'NguoiThan', label: 'Người thân', tone: 'relative' },
 ];
 
 const STATUS_OPTIONS = [
@@ -76,6 +80,8 @@ const buildPermissionValues = (data) => {
 };
 
 const UsersPage = () => {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { hasPermission } = usePermission();
   const canCreate = hasPermission('QLNGUOIDUNG', 'them');
@@ -101,6 +107,23 @@ const UsersPage = () => {
   const [form] = Form.useForm();
   const selectedRole = Form.useWatch('vaiTro', form);
   const creatingElderly = !editingUser && selectedRole === 'NGUOI_CAO_TUOI';
+  const relativeAccount = selectedRole === 'NGUOI_THAN';
+  const relativeRoleReady = matrixData.roles.some(role => role.tenVaiTro === 'NguoiThan');
+  const availableRoles = ROLE_OPTIONS.filter(role => role.name !== 'NguoiThan' || relativeRoleReady);
+  const [relativeAccountError, setRelativeAccountError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      if (searchParams.get('role') === 'NGUOI_THAN') setFilterRole('NGUOI_THAN');
+      if (searchParams.get('create') !== '1' || searchParams.get('role') !== 'NGUOI_THAN'
+        || !relativeRoleReady || !canCreate || user?.tenVaiTro !== 'QuanTriVien') return;
+      setEditingUser(null); setRelativeAccountError(null); form.resetFields(); form.setFieldValue('vaiTro', 'NGUOI_THAN'); setModalOpen(true);
+      const next = new URLSearchParams(searchParams); next.delete('create'); setSearchParams(next, { replace: true });
+    });
+    return () => { active = false; };
+  }, [searchParams, setSearchParams, relativeRoleReady, canCreate, user?.tenVaiTro, form]);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -153,9 +176,9 @@ const UsersPage = () => {
     });
   }, [filterRole, filterStatus, search, users]);
 
-  const kpis = useMemo(() => [
+  const kpis = [
     { key: 'total', label: 'Tổng tài khoản', value: users.length, icon: <TeamOutlined />, tone: 'total' },
-    ...ROLE_OPTIONS.map((role) => ({
+    ...ROLE_OPTIONS.filter(role => role.name !== 'NguoiThan' || relativeRoleReady).map((role) => ({
       key: role.value,
       label: role.label,
       value: users.filter((user) => user.vaiTro === role.value).length,
@@ -169,15 +192,18 @@ const UsersPage = () => {
       icon: <LockOutlined />,
       tone: 'locked',
     },
-  ], [users]);
+  ];
 
   const handleAdd = () => {
     setEditingUser(null);
     form.resetFields();
+    setRelativeAccountError(null);
+    if (filterRole === 'NGUOI_THAN' && relativeRoleReady) form.setFieldValue('vaiTro', 'NGUOI_THAN');
     setModalOpen(true);
   };
 
   const handleEdit = (record) => {
+    setRelativeAccountError(null);
     setEditingUser(record);
     form.resetFields();
     form.setFieldsValue(record);
@@ -216,26 +242,37 @@ const UsersPage = () => {
   };
 
   const handleSaveUser = async (values) => {
+    if (values.vaiTro === 'NGUOI_THAN' && !editingUser && !relativeRoleReady) {
+      setRelativeAccountError('Chưa xác nhận được vai trò Người thân trên hệ thống. Vui lòng tải lại quyền.'); return;
+    }
     setSaving(true);
+    setRelativeAccountError(null);
+    let createdId;
     try {
       if (editingUser) {
         await updateUser(editingUser.id, { hoTen: values.hoTen, vaiTro: values.vaiTro,
           email: values.email, soDienThoai: values.soDienThoai });
         message.success('Cập nhật người dùng thành công');
       } else {
-        await createUser(buildUserCreatePayload(values));
+        if (values.vaiTro === 'NGUOI_THAN') {
+          values = { ...values, hoTen: values.hoTen.trim(), soDienThoai: values.soDienThoai?.trim() };
+        }
+        const created = await createUser(buildUserCreatePayload(values));
+        createdId = created?.id;
         message.success(creatingElderly ? 'Đã tạo hồ sơ NCT và tài khoản Mobile. NCT có thể đăng nhập ngay.' : 'Thêm người dùng thành công');
       }
       setModalOpen(false);
       form.resetFields();
       await loadUsers();
+      if (values.vaiTro === 'NGUOI_THAN' && createdId && searchParams.get('from') === 'relatives') navigate(`/nguoi-than?userId=${createdId}`);
     } catch (error) {
-      const field = { USERNAME_TAKEN: 'username', INVALID_USERNAME: 'username', EMAIL_TAKEN: 'email',
+      const field = { DUPLICATE: 'username', USERNAME_TAKEN: 'username', INVALID_USERNAME: 'username', EMAIL_TAKEN: 'email',
         INVALID_EMAIL: 'email', INVALID_PASSWORD: 'password', PHONE_TAKEN: 'soDienThoai',
         INVALID_SODIENTHOAI: 'soDienThoai', INVALID_NGAYSINH: 'ngaySinh', INVALID_GIOITINH: 'gioiTinh',
         INVALID_CCCD: 'cccd', CCCD_TAKEN: 'cccd', INVALID_HOTEN: 'hoTen', INVALID_DIACHI: 'diaChi',
         INVALID_BENHNEN: 'benhNen', INVALID_DIUNG: 'diUng' }[error.response?.data?.errorCode];
       if (field) form.setFields([{ name: field, errors: [error.response.data.message] }]);
+      if (values.vaiTro === 'NGUOI_THAN') setRelativeAccountError(error.response?.data?.message || error.message);
       if (!error.config) message.error(error.message || 'Không thể lưu người dùng. Vui lòng thử lại.');
     } finally {
       setSaving(false);
@@ -305,6 +342,8 @@ const UsersPage = () => {
       render: (_, record) => (
         <div className="user-table-actions">
           <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setDetailRecord(record)} />
+          {user?.tenVaiTro === 'QuanTriVien' && isFamilyAccount(record) && <TableActionButton type="view" tooltip="Quản lý quyền theo dõi"
+            aria-label={`Quản lý theo dõi của ${record.hoTen}`} icon={<TeamOutlined />} onClick={() => navigate(`/nguoi-than?userId=${record.id}`)} />}
           {canEdit && <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(record)} />}
           {canResetPassword && <TableActionButton type="edit" tooltip="Đặt lại mật khẩu" aria-label={`Đặt lại mật khẩu cho ${record.username}`} icon={<KeyOutlined />} onClick={() => handleOpenPasswordReset(record)} />}
           {canEdit && (
@@ -349,7 +388,7 @@ const UsersPage = () => {
               <Checkbox
                 key={action.key}
                 checked={Boolean(values[action.key])}
-                disabled={!canEdit}
+                disabled={!canEdit || !canEditRelativePermission(role.tenVaiTro, feature.maChucNang, action.key)}
                 onChange={(event) => togglePermission(role.id, feature.id, action.key, event.target.checked)}
               >
                 {action.label}
@@ -379,7 +418,7 @@ const UsersPage = () => {
         <div>
           <span><SafetyCertificateOutlined /></span>
           <div>
-            <h2>Ma trận phân quyền 3 vai trò × {matrixData.functions.length} chức năng</h2>
+            <h2>Ma trận phân quyền {matrixData.roles.length} vai trò × {matrixData.functions.length} chức năng</h2>
             <p>Dữ liệu vai trò, chức năng và quyền được đọc trực tiếp từ hệ thống.</p>
           </div>
         </div>
@@ -410,6 +449,10 @@ const UsersPage = () => {
       </section>
 
       <section className="users-workspace-card">
+        {searchParams.get('role') === 'NGUOI_THAN' && !matrixLoading && !relativeRoleReady && <Alert type="info" showIcon
+          title="Chưa xác nhận được vai trò Người thân trên hệ thống"
+          description="Các chức năng quản lý tài khoản hiện có vẫn sử dụng bình thường. Vui lòng kiểm tra cài đặt chức năng Người thân trước khi tạo tài khoản."
+          action={<Button onClick={() => { void loadMatrix().catch(() => {}); }}>Tải lại quyền</Button>} />}
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -449,11 +492,12 @@ const UsersPage = () => {
         loading={saving}
         form={form}
       >
+        {relativeAccount && relativeAccountError && <Alert type="error" showIcon title={relativeAccountError} />}
         {creatingElderly ? (
           <>
             <FormSection title="Vai trò tài khoản" description="Người cao tuổi dùng Mobile; hồ sơ được tạo đồng thời, không cần thêm lần nữa ở trang Hồ sơ NCT.">
               <Form.Item name="vaiTro" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}>
-                <Select options={ROLE_OPTIONS.map(({ value, label }) => ({ value, label }))} />
+                <Select options={availableRoles.map(({ value, label }) => ({ value, label }))} />
               </Form.Item>
             </FormSection>
             <ElderlyPersonalFields />
@@ -475,16 +519,16 @@ const UsersPage = () => {
         ) : <>
         <FormSection title="Thông tin tài khoản" description="Thông tin đăng nhập và vai trò người dùng">
           <Row gutter={18}>
-            <Col xs={24} md={12}><Form.Item name="hoTen" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }]}><Input placeholder="VD: Nguyễn Văn An" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="vaiTro" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}><Select placeholder="Chọn vai trò" disabled={Boolean(editingUser)} options={ROLE_OPTIONS.map(({ value, label }) => ({ value, label }))} /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="username" label="Tên đăng nhập" rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }, { min: 3, message: 'Tên đăng nhập phải có ít nhất 3 ký tự' }]}><Input placeholder="VD: cham.soc01" disabled={Boolean(editingUser)} /></Form.Item></Col>
-            {!editingUser && <Col xs={24} md={12}><Form.Item name="password" label="Mật khẩu" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }, { min: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' }]}><Input.Password placeholder="Tối thiểu 6 ký tự" /></Form.Item></Col>}
+            <Col xs={24} md={12}><Form.Item name="hoTen" label="Họ và tên" rules={[{ required: true, whitespace: relativeAccount, message: 'Vui lòng nhập họ và tên' }, ...(relativeAccount ? [{ max: 100, message: 'Họ tên tối đa 100 ký tự' }] : [])]}><Input maxLength={relativeAccount ? 100 : undefined} placeholder="VD: Nguyễn Văn An" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="vaiTro" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}><Select placeholder="Chọn vai trò" disabled={Boolean(editingUser)} options={availableRoles.map(({ value, label }) => ({ value, label }))} /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="username" label="Tên đăng nhập" rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }, { min: 3, message: 'Tên đăng nhập phải có ít nhất 3 ký tự' }, ...(relativeAccount ? [{ max: 50, message: 'Tên đăng nhập tối đa 50 ký tự' }, { validator: (_, value) => !value || editingUser || !users.some(account => account.username?.toLowerCase() === value.trim().toLowerCase()) ? Promise.resolve() : Promise.reject(new Error('Tên đăng nhập đã tồn tại')) }] : [])]}><Input maxLength={relativeAccount ? 50 : undefined} placeholder="VD: cham.soc01" disabled={Boolean(editingUser)} /></Form.Item></Col>
+            {!editingUser && <Col xs={24} md={12}><Form.Item name="password" label="Mật khẩu" rules={relativeAccount ? mobilePasswordRules : [{ required: true, message: 'Vui lòng nhập mật khẩu' }, { min: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' }]}><Input.Password placeholder="Tối thiểu 6 ký tự" /></Form.Item></Col>}
           </Row>
         </FormSection>
         <FormSection title="Thông tin liên hệ" description="Email và số điện thoại của tài khoản">
           <Row gutter={18}>
-            <Col xs={24} md={12}><Form.Item name="email" label="Email" rules={[{ required: !editingUser || selectedRole === 'NGUOI_CHAM_SOC', message: 'Vui lòng nhập email' }, { type: 'email', message: 'Email không đúng định dạng' }]}><Input placeholder="VD: nguoidung@email.com" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại" rules={[{ required: selectedRole === 'NGUOI_CHAM_SOC', message: 'Vui lòng nhập số điện thoại người chăm sóc' }, { pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' }]}><Input placeholder="VD: 0901234567" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="email" label="Email" rules={[{ required: !editingUser || selectedRole === 'NGUOI_CHAM_SOC' || relativeAccount, message: 'Vui lòng nhập email' }, { type: 'email', message: 'Email không đúng định dạng' }, ...(relativeAccount ? [{ max: 100, message: 'Email tối đa 100 ký tự' }, { validator: (_, value) => !value || !users.some(account => account.id !== editingUser?.id && account.email?.trim().toLowerCase() === value.trim().toLowerCase()) ? Promise.resolve() : Promise.reject(new Error('Email đã được sử dụng')) }] : [])]}><Input maxLength={relativeAccount ? 100 : undefined} placeholder="VD: nguoidung@email.com" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại" rules={[{ required: selectedRole === 'NGUOI_CHAM_SOC', message: 'Vui lòng nhập số điện thoại người chăm sóc' }, { pattern: relativeAccount ? /^0\d{9}$/ : /^[0-9]{10,11}$/, message: relativeAccount ? 'Số điện thoại phải gồm 10 số, bắt đầu bằng 0' : 'Số điện thoại phải gồm 10–11 chữ số' }]}><Input maxLength={relativeAccount ? 10 : undefined} placeholder="VD: 0901234567" /></Form.Item></Col>
           </Row>
         </FormSection>
         </>}

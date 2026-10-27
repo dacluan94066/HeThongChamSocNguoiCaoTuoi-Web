@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Button, Form, Input, message, Modal, Select, Space, Spin, Tag,
@@ -24,6 +24,8 @@ import ModalForm, { FormSection } from '../../components/ModalForm';
 import { formatEntityCode } from '../../utils/displayUtils';
 import { mobilePasswordRules } from '../../utils/accountFormRules';
 import { ElderlyPersonalFields, ElderlyHealthFields } from '../../components/ElderlyProfileFields';
+import RelativeLinksPanel from '../../components/RelativeLinksPanel';
+import { canViewRelativeAdmin } from '../../utils/relativeAdmin';
 
 const ElderlyProfilesPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -53,6 +55,7 @@ const ElderlyProfilesPage = () => {
   const [resetForm] = Form.useForm();
   const [form] = Form.useForm();
   const [assignForm] = Form.useForm();
+  const [relativeSectionOpen, setRelativeSectionOpen] = useState(false);
 
   const loadElders = async () => {
     setLoading(true);
@@ -98,7 +101,8 @@ const ElderlyProfilesPage = () => {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const handleView = async (record) => {
+  const handleView = useCallback(async (record) => {
+    setRelativeSectionOpen(false);
     setSelected(record);
     setActiveMedications([]);
     setDetailOpen(true);
@@ -140,8 +144,21 @@ const ElderlyProfilesPage = () => {
     } finally {
       setDetailLoading(false);
     }
-  };
+  }, []);
 
+  useEffect(() => {
+    if (loading || !searchParams.has('view') || user?.tenVaiTro !== 'QuanTriVien' || !hasPermission('QLHOSONCT', 'xem')) return;
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      const id = Number(searchParams.get('view'));
+      const next = new URLSearchParams(searchParams); next.delete('view'); setSearchParams(next, { replace: true });
+      const record = Number.isInteger(id) && id > 0 ? elders.find(elder => Number(elder.id) === id) : null;
+      if (record) void handleView(record);
+      else message.warning('Không tìm thấy hồ sơ NCT được chọn trong danh sách hiện tại.');
+    });
+    return () => { active = false; };
+  }, [elders, loading, searchParams, setSearchParams, user?.tenVaiTro, hasPermission, handleView]);
   const handleEdit = (record) => {
     setEditing(record);
     form.resetFields();
@@ -519,6 +536,11 @@ const ElderlyProfilesPage = () => {
                 )}
               </section>
             </div>
+            {canViewRelativeAdmin(user, hasPermission) && <details className="elderly-relative-section" key={selected.id}
+              open={relativeSectionOpen} onToggle={event => setRelativeSectionOpen(event.currentTarget.open)}>
+              <summary>Người thân được phép theo dõi</summary>
+              {detailOpen && relativeSectionOpen && <RelativeLinksPanel key={selected.id} elderly={selected} />}
+            </details>}
           </Spin>
         )}
       </Modal>

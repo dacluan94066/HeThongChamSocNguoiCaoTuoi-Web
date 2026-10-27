@@ -6,7 +6,7 @@ import {
   EnvironmentOutlined, EyeOutlined, MedicineBoxOutlined, PhoneOutlined,
   SearchOutlined, SafetyCertificateOutlined, UserOutlined, WarningOutlined,
 } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import { parseAlertTime, formatAlertTime, vietnamAlertParts, alertElapsedMinutes } from '../../utils/alertTime';
 import {
   getAlerts, getEmergencyAlerts, markAlertSeen, markEmergencyAlertSeen,
   resolveAlert, resolveEmergencyAlert,
@@ -28,7 +28,7 @@ const MUC_DO_ORDER = { THAP: 1, TRUNG_BINH: 2, CAO: 3, KHAN_CAP: 4 };
 const sortAlerts = (items) => [...items].sort((a, b) => {
   const severity = (MUC_DO_ORDER[b.mucDo] || 0) - (MUC_DO_ORDER[a.mucDo] || 0);
   if (severity !== 0) return severity;
-  return dayjs(b.thoiGianPhatHien).valueOf() - dayjs(a.thoiGianPhatHien).valueOf();
+  return (parseAlertTime(b.thoiGianPhatHien)?.getTime() || 0) - (parseAlertTime(a.thoiGianPhatHien)?.getTime() || 0);
 });
 
 const settledValue = (result) => (result.status === 'fulfilled' && Array.isArray(result.value) ? result.value : []);
@@ -75,22 +75,21 @@ const fetchAlertBundle = async () => {
 };
 
 const formatRelativeTime = (value) => {
-  if (!value || !dayjs(value).isValid()) return 'Chưa cập nhật thời gian';
-  const minutes = Math.max(0, dayjs().diff(dayjs(value), 'minute'));
+  const minutes = alertElapsedMinutes(value);
+  if (minutes == null) return 'Thời gian chưa hợp lệ';
   if (minutes < 1) return 'Vừa xong';
   if (minutes < 60) return `${minutes} phút trước`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} giờ trước`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} ngày trước`;
-  return dayjs(value).format('DD/MM/YYYY HH:mm');
+  return formatAlertTime(value);
 };
 
 const getDurationMinutes = (item) => {
   const createdAt = item.sourceType === 'sos' ? item.ngayTao : item.thoiGianPhatHien;
   if (!createdAt || !item.thoiGianXuLy) return null;
-  const duration = dayjs(item.thoiGianXuLy).diff(dayjs(createdAt), 'minute');
-  return duration >= 0 ? duration : null;
+  return alertElapsedMinutes(createdAt, item.thoiGianXuLy);
 };
 
 const formatDuration = (minutes) => {
@@ -141,7 +140,7 @@ const AlertCard = ({ alert, canEdit, onAccept, onResolve, onDetail, onProfile })
           <div className="alert-card-time">
             <ClockCircleOutlined />
             <strong>{formatRelativeTime(alert.thoiGianPhatHien)}</strong>
-            <span>{dayjs(alert.thoiGianPhatHien).isValid() ? dayjs(alert.thoiGianPhatHien).format('DD/MM/YYYY · HH:mm') : ''}</span>
+            <span>{formatAlertTime(alert.thoiGianPhatHien)}</span>
           </div>
         </div>
 
@@ -298,9 +297,9 @@ const AlertsPage = () => {
 
   const historyAlerts = useMemo(() => allAlerts.filter((item) => {
     if (!historyDates?.[0] || !historyDates?.[1]) return true;
-    const createdAt = dayjs(item.thoiGianPhatHien);
-    return !createdAt.isBefore(historyDates[0].startOf('day'))
-      && !createdAt.isAfter(historyDates[1].endOf('day'));
+    const day = vietnamAlertParts(item.thoiGianPhatHien)?.dayKey;
+    return day != null && day >= historyDates[0].format('YYYY-MM-DD')
+      && day <= historyDates[1].format('YYYY-MM-DD');
   }), [allAlerts, historyDates]);
 
   const kpi = useMemo(() => {
@@ -314,7 +313,7 @@ const AlertsPage = () => {
       resolvedToday: allAlerts.filter((item) => (
         item.trangThai === 'DA_XU_LY'
         && item.thoiGianXuLy
-        && dayjs(item.thoiGianXuLy).isSame(dayjs(), 'day')
+        && vietnamAlertParts(item.thoiGianXuLy)?.dayKey === vietnamAlertParts(new Date().toISOString())?.dayKey
       )).length,
       averageMinutes: resolvedDurations.length
         ? Math.round(resolvedDurations.reduce((sum, value) => sum + value, 0) / resolvedDurations.length)
@@ -359,7 +358,7 @@ const AlertsPage = () => {
   const historyColumns = [
     {
       title: 'Thời gian', dataIndex: 'thoiGianPhatHien', key: 'thoiGianPhatHien', width: 150,
-      render: (value) => value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '—',
+      render: (value) => formatAlertTime(value),
     },
     {
       title: 'Người cao tuổi', key: 'elderly', width: 220,
@@ -528,7 +527,7 @@ const AlertsPage = () => {
           { label: 'Loại cảnh báo', key: 'loaiCanhBaoLabel' },
           { label: 'Mức độ', key: 'mucDo', render: (value) => <StatusTag {...getAlertLevelStatus(value)} /> },
           { label: 'Trạng thái', key: 'trangThai', render: (value) => <StatusTag {...getAlertStatusMap(value)} /> },
-          { label: 'Thời gian', key: 'thoiGianPhatHien', render: (value) => value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '—' },
+          { label: 'Thời gian', key: 'thoiGianPhatHien', render: (value) => formatAlertTime(value) },
           { label: 'Nội dung', key: 'moTa', span: 2 },
           { label: 'Người chăm sóc', key: 'nguoiChamSocTen' },
           { label: 'SĐT người chăm sóc', key: 'nguoiChamSocSoDienThoai' },
@@ -539,7 +538,7 @@ const AlertsPage = () => {
               : null,
           },
           { label: 'Người xử lý', key: 'nguoiXuLy' },
-          { label: 'Thời gian xử lý', key: 'thoiGianXuLy', render: (value) => value ? dayjs(value).format('DD/MM/YYYY HH:mm') : null },
+          { label: 'Thời gian xử lý', key: 'thoiGianXuLy', render: (value) => value ? formatAlertTime(value) : null },
           { label: 'Kết quả xử lý', key: 'ghiChuXuLy', span: 2 },
         ]}
       />

@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const { poolPromise, sql } = require('../config/db');
 const { fail } = require('../utils/response');
+const { allowedRelativeRequest } = require('../utils/relativePolicy');
 
 const authMiddleware = async (req, res, next) => {
   // Lay token tu header Authorization: Bearer <token>
@@ -35,7 +36,7 @@ const authMiddleware = async (req, res, next) => {
     const user = result.recordset[0];
     if (!user || user.TrangThai !== 'HoatDong'
       || user.VaiTroID !== decoded.vaiTroId || user.TenVaiTro !== decoded.tenVaiTro
-      || !['QuanTriVien', 'NguoiChamSoc', 'NguoiCaoTuoi'].includes(user.TenVaiTro)) {
+      || !['QuanTriVien', 'NguoiChamSoc', 'NguoiCaoTuoi', 'NguoiThan'].includes(user.TenVaiTro)) {
       return fail(res, 'Phien dang nhap khong con hieu luc', 'INVALID_TOKEN', 401);
     }
     req.user = {
@@ -43,6 +44,12 @@ const authMiddleware = async (req, res, next) => {
       vaiTroId: user.VaiTroID,
       tenVaiTro: user.TenVaiTro,
     };
+    if (user.TenVaiTro === 'NguoiThan') {
+      res.set('Cache-Control', 'no-store');
+      if (!allowedRelativeRequest(req)) {
+        return fail(res, 'Người thân chỉ được xem dữ liệu qua chức năng được cấp quyền.', 'FORBIDDEN', 403);
+      }
+    }
     return next();
   } catch (error) {
     return next(error);

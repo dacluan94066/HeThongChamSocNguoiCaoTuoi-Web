@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
-const { checkPermission } = require('../middlewares/permission.middleware');
+const { checkPermission, checkOwnPasswordPermission } = require('../middlewares/permission.middleware');
 
 // POST /api/auth/register - Dang ky tai khoan moi (public)
 router.post('/register', authController.register);
@@ -27,7 +27,7 @@ router.get('/me', authMiddleware, checkPermission('QLHOSONCT','xem'), authContro
 router.put('/me', authMiddleware, checkPermission('QLHOSONCT','sua'), authController.updateMe);
 
 // Doi mat khau va xem lich su dang nhap
-router.post('/change-password', authMiddleware, checkPermission('QLHOSONCT','sua'), authController.changePassword);
+router.post('/change-password', authMiddleware, checkOwnPasswordPermission, authController.changePassword);
 router.get('/login-history', authMiddleware, checkPermission('QLHOSONCT','xem'), authController.getLoginHistory);
 
 module.exports = router;

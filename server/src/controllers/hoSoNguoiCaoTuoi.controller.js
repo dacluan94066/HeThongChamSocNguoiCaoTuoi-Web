@@ -7,6 +7,8 @@ const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
 const { validateElderlyProfile } = require('../utils/elderlyProfileValidation');
 const { validateElderlyPassword } = require('../utils/elderlyAccountValidation');
 const { createElderlyProfile, ElderlyCreationError } = require('../services/elderlyCreation.service');
+// NgayTao is Vietnam wall time; resolve its zone before the SQL driver serializes it.
+const { alertTimestampSql: vietnamTimestampSql } = require('../utils/alertTime');
 const bcrypt = require('bcryptjs');
 
 // GET /api/elderly/me - chi tai khoan NguoiCaoTuoi co ho so lien ket.
@@ -19,7 +21,7 @@ const getMe = async (req, res, next) => {
         nct.CCCD AS cccd, nct.DiaChi AS diaChi, nct.SoDienThoai AS soDienThoai,
         nd.Email AS email,
         nct.NhomMau AS nhomMau, nct.BenhNen AS benhNen, nct.DiUng AS diUng,
-        nct.TrangThai AS trangThai, nct.NgayTao AS ngayTao,
+        nct.TrangThai AS trangThai, ${vietnamTimestampSql('nct.NgayTao')} AS ngayTao,
         ncsMain.NguoiChamSocID AS nguoiChamSocId,
         ncsMain.HoTen AS nguoiChamSocTen
       FROM HoSoNguoiCaoTuoi nct
@@ -146,7 +148,7 @@ const getAll = async (req, res, next) => {
         nct.DiUng           AS diUng,
         nct.TrangThai       AS trangThai,
         nct.NguoiTaoID      AS nguoiTaoId,
-        nct.NgayTao         AS ngayTao,
+        ${vietnamTimestampSql('nct.NgayTao')} AS ngayTao,
         ncsMain.NguoiChamSocID AS nguoiChamSocId,
         ncsMain.HoTen           AS nguoiChamSocTen
       FROM HoSoNguoiCaoTuoi nct
@@ -207,7 +209,7 @@ const getById = async (req, res, next) => {
           nct.DiUng           AS diUng,
           nct.TrangThai       AS trangThai,
           nct.NguoiTaoID      AS nguoiTaoId,
-          nct.NgayTao         AS ngayTao,
+          ${vietnamTimestampSql('nct.NgayTao')} AS ngayTao,
           ncsMain.NguoiChamSocID AS nguoiChamSocId,
           ncsMain.HoTen           AS nguoiChamSocTen
         FROM HoSoNguoiCaoTuoi nct

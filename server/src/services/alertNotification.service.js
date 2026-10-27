@@ -96,6 +96,19 @@ async function emitSosNotifications(delivery, payload) {
     // or leak to an unverified recipient. Persisted notifications remain available.
     console.error('[SOS] Khong the xac minh nguoi nhan realtime:', error.code || 'DELIVERY_FAILED');
     return false;
+  } finally {
+    await emitRelativeSos(delivery.elderlyId, payload, 'canhbao:new');
+  }
+}
+
+async function emitRelativeSos(elderlyId, payload, event) {
+  if (!Number.isInteger(Number(elderlyId)) || Number(elderlyId) < 1) return;
+  try {
+    const pool = await poolPromise;
+    await require('./relativeRealtime.service').createRelativeRealtime(pool, sql, emitToUser)
+      .emitSos(Number(elderlyId), { ...payload, nguoiCaoTuoiId: Number(elderlyId), nguonBang: 'CanhBaoKhanCap' }, event);
+  } catch (error) {
+    if (error.code !== 'RELATIVES_NOT_INSTALLED') console.error('[SOS] Khong gui duoc cho Nguoi than:', error.code || 'RELATIVE_DELIVERY_FAILED');
   }
 }
 
@@ -129,6 +142,8 @@ async function emitSosAlertUpdate(elderlyId, payload) {
   } catch (error) {
     console.error('[SOS] Khong the xac minh nguoi nhan cap nhat realtime:', error.code || 'DELIVERY_FAILED');
     return false;
+  } finally {
+    await emitRelativeSos(elderlyId, payload, 'canhbao:updated');
   }
 }
 

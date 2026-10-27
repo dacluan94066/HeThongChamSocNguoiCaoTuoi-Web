@@ -11,7 +11,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
+import { formatAlertTime } from '../../utils/alertTime';
 import {
   BarElement,
   CategoryScale,
@@ -53,7 +53,7 @@ const LatestAlertCard = ({ alert, onOpen }) => {
     <article className={`dashboard-alert-card dashboard-alert-${String(alert.mucDo || '').toLowerCase()}`}>
       <div className="dashboard-alert-topline">
         <StatusTag {...level} size="small" />
-        <time>{alert.thoiGianPhatHien ? dayjs(alert.thoiGianPhatHien).format('HH:mm · DD/MM/YYYY') : '—'}</time>
+        <time>{formatAlertTime(alert.thoiGianPhatHien, true)}</time>
       </div>
       <div className="dashboard-alert-person">
         <span className="dashboard-alert-initial">

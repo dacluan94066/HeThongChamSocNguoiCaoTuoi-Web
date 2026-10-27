@@ -43,6 +43,7 @@ function fixture(socketOverride) {
   class Request {
     input(name, _type, value) { this[name] = value; return this; }
     async query(statement) {
+      if (statement.includes(' AS ready')) return { recordset: [{ ready: 0 }] }; // Legacy staff path.
       if (statement.includes('SELECT DISTINCT nd.UserID AS userId')) {
         if (state.failReads) throw Object.assign(new Error('fixture-only failure'), { code: 'FIXTURE_READ_FAILED' });
         queries.push(statement);

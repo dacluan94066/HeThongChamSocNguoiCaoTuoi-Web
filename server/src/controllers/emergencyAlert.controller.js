@@ -2,6 +2,7 @@ const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const {scopedWhere}=require('../middlewares/mobile-scope.middleware');
 const { notifyAlertRecipients, emitAlertNotifications } = require('../services/alertNotification.service');
+const { alertTimestampSql } = require('../utils/alertTime');
 const getMine=async(req,res,next)=>{
  try{
   const pool=await poolPromise;
@@ -14,11 +15,11 @@ const getMine=async(req,res,next)=>{
       sos.ViDo AS viDo,
       sos.KinhDo AS kinhDo,
       sos.TrangThai AS trangThai,
-      CONVERT(VARCHAR(19),sos.NgayGui,126) AS ngayGui,
+      ${alertTimestampSql('sos.NgayGui')} AS ngayGui,
       sos.NguoiXuLyID AS nguoiXuLyId,
       nd.HoTen AS nguoiXuLy,
-      CONVERT(VARCHAR(19),sos.NgayXuLy,126) AS ngayXuLy,
-      CONVERT(VARCHAR(19),linked.NgayTao,126) AS ngayTao,
+      ${alertTimestampSql('sos.NgayXuLy')} AS ngayXuLy,
+      ${alertTimestampSql('linked.NgayTao')} AS ngayTao,
       linked.GhiChuXuLy AS ghiChuXuLy
     FROM CanhBaoKhanCap sos
     INNER JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID = sos.NguoiCaoTuoiID
@@ -84,7 +85,7 @@ const create = async (req, res, next) => {
       .input('elderlyId', sql.Int, elderlyId)
       .query(`SELECT TOP (1) sos.CanhBaoKhanCapID AS id, sos.TrangThai AS trangThai,
         sos.ViDo AS viDo, sos.KinhDo AS kinhDo,
-        CONVERT(VARCHAR(19),sos.NgayGui,126) AS ngayGui,
+        ${alertTimestampSql('sos.NgayGui')} AS ngayGui,
         linked.CanhBaoID AS canhBaoId,
         (SELECT COUNT(DISTINCT tb.UserID) FROM ThongBao tb
           JOIN NguoiDung nd ON nd.UserID=tb.UserID
@@ -115,7 +116,7 @@ const create = async (req, res, next) => {
       .query(`
         INSERT INTO CanhBaoKhanCap (NguoiCaoTuoiID, NguoiGuiID, ViDo, KinhDo, NoiDung)
         OUTPUT INSERTED.CanhBaoKhanCapID AS id,
-          CONVERT(VARCHAR(19),INSERTED.NgayGui,126) AS ngayGui,INSERTED.TrangThai AS trangThai,
+          ${alertTimestampSql('INSERTED.NgayGui')} AS ngayGui,INSERTED.TrangThai AS trangThai,
           INSERTED.ViDo AS viDo, INSERTED.KinhDo AS kinhDo
         VALUES (@elderlyId, @userId, @viDo, @kinhDo, @noiDung)
       `);

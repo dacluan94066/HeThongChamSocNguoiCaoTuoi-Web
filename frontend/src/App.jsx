@@ -1,6 +1,6 @@
 // App.jsx - Cấu hình routing toàn bộ ứng dụng
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ConfigProvider, App as AntApp } from 'antd';
 import viVN from 'antd/locale/vi_VN';
 import dayjs from 'dayjs';
@@ -14,6 +14,10 @@ import { AuthProvider } from './context/AuthContext';
 import MainLayout from './layouts/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import PermissionRoute from './components/PermissionRoute';
+import RelativeAdminRoute from './components/RelativeAdminRoute';
+import RelativeAdminPage from './pages/Relatives/RelativeAdminPage';
+import { StaffWorkspaceRoute, RelativeWorkspaceRoute, WebHomeRoute } from './components/WorkspaceRoutes';
+import RelativePortalPage from './pages/Relatives/RelativePortalPage';
 
 // Pages
 import LoginPage from './pages/Login/LoginPage';
@@ -44,18 +48,19 @@ const App = () => {
             <Routes>
               {/* Trang đăng nhập - không dùng layout chính */}
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/nguoi-than-cua-toi" element={<ProtectedRoute><RelativeWorkspaceRoute><RelativePortalPage /></RelativeWorkspaceRoute></ProtectedRoute>} />
 
               {/* Các trang yêu cầu đăng nhập - dùng MainLayout */}
               <Route
                 path="/"
                 element={
                   <ProtectedRoute>
-                    <MainLayout />
+                    <StaffWorkspaceRoute><MainLayout /></StaffWorkspaceRoute>
                   </ProtectedRoute>
                 }
               >
                 {/* Redirect từ / về /dashboard */}
-                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route index element={<WebHomeRoute />} />
 
                 {/* Tổng quan */}
                 <Route path="dashboard" element={<DashboardPage />} />
@@ -63,6 +68,7 @@ const App = () => {
 
                 {/* Quản lý hệ thống */}
                 <Route path="nguoi-dung" element={<PermissionRoute maChucNang="QLNGUOIDUNG"><UsersPage /></PermissionRoute>} />
+                <Route path="nguoi-than" element={<RelativeAdminRoute><RelativeAdminPage /></RelativeAdminRoute>} />
                 <Route path="ho-so-nguoi-cao-tuoi" element={<PermissionRoute maChucNang="QLHOSONCT"><ElderlyProfilesPage /></PermissionRoute>} />
                 <Route path="nguoi-cham-soc" element={<PermissionRoute maChucNang="QLNGUOICHAMSOC"><CaregiversPage /></PermissionRoute>} />
 
@@ -82,7 +88,7 @@ const App = () => {
               </Route>
 
               {/* Fallback - redirect về dashboard */}
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<WebHomeRoute />} />
             </Routes>
           </BrowserRouter>
         </AuthProvider>

@@ -76,14 +76,14 @@ test('Admin reset returns 404 for missing user and forwards SQL failure without 
   assert.ok(failed.error); assert.equal(failed.res.status, undefined);
 });
 
-test('User password reset route requires auth, Admin and QLNGUOIDUNG/sua; own password flow is unchanged', () => {
+test('User password reset stays Admin-only; personal password uses a separate own-account guard', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/routes/nguoiDung.routes.js'), 'utf8');
   assert.match(source, /router\.use\(auth\)/);
   const guard = source.indexOf("req.user?.tenVaiTro !== 'QuanTriVien'");
   const reset = source.indexOf("router.post('/:id/reset-password'");
   assert.ok(guard > 0 && reset > guard);
   assert.match(source, /router\.post\('\/:id\/reset-password', checkPermission\('QLNGUOIDUNG','sua'\), ctrl\.resetPassword\)/);
-  assert.match(source, /router\.put\('\/me\/password', checkPermission\('QLHOSONCT','sua'\), ctrl\.changeMyPassword\)/);
+  assert.match(source, /router\.put\('\/me\/password', checkOwnPasswordPermission, ctrl\.changeMyPassword\)/);
 });
 
 test('Users UI exposes a separate Admin-only reset action, isolated confirm form and whitelisted service payload', () => {

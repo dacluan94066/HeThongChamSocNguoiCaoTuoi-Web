@@ -62,6 +62,7 @@ const MAIN_NAVIGATION = [
 
 const SYSTEM_NAVIGATION = [
   { key: '/nguoi-dung', icon: <UserOutlined />, label: 'Người dùng & Phân quyền', permission: 'QLNGUOIDUNG' },
+  { key: '/nguoi-than', icon: <TeamOutlined />, label: 'Quản lý Người thân', permission: 'QLNGUOIDUNG', adminOnly: true },
 ];
 
 const SidebarLogo = ({ collapsed, onClick }) => (
@@ -106,20 +107,24 @@ const MainLayout = () => {
   const canViewAlerts = hasPermission('QLCANHBAO', 'xem');
 
   const navigationItems = useMemo(() => {
-    const decorateItem = (item) => ({
-      ...item,
-      label: item.alertItem ? (
-        <span className="sidebar-menu-label">
-          <span>{item.label}</span>
-          {unreadAlerts > 0 && <Badge count={unreadAlerts} size="small" overflowCount={99} />}
-        </span>
-      ) : item.label,
-    });
+    const decorateItem = (item) => {
+      const menuItem = { ...item };
+      delete menuItem.adminOnly;
+      return {
+        ...menuItem,
+        label: item.alertItem ? (
+          <span className="sidebar-menu-label">
+            <span>{item.label}</span>
+            {unreadAlerts > 0 && <Badge count={unreadAlerts} size="small" overflowCount={99} />}
+          </span>
+        ) : item.label,
+      };
+    };
     const mainItems = MAIN_NAVIGATION
       .filter((item) => !item.permission || hasPermission(item.permission, 'xem'))
       .map(decorateItem);
     const systemItems = SYSTEM_NAVIGATION
-      .filter((item) => hasPermission(item.permission, 'xem'))
+      .filter((item) => hasPermission(item.permission, 'xem') && (!item.adminOnly || currentUser?.tenVaiTro === 'QuanTriVien'))
       .map(decorateItem);
     if (systemItems.length === 0) return mainItems;
     return [
@@ -127,7 +132,7 @@ const MainLayout = () => {
       { type: 'divider' },
       { type: 'group', label: 'HỆ THỐNG', children: systemItems },
     ];
-  }, [hasPermission, unreadAlerts]);
+  }, [hasPermission, unreadAlerts, currentUser?.tenVaiTro]);
 
   useEffect(() => {
     const handleResize = () => {

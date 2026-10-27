@@ -11,7 +11,7 @@ import {
   CloudOutlined, DashboardOutlined, ExperimentOutlined, FireOutlined,
   HeartFilled, HeartOutlined, PlusOutlined, SwapOutlined,
 } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import { metricTime, metricNow } from '../../utils/healthMetricTime';
 import {
   createHealthMetric, getHealthMetrics, getHealthMetricTypes,
 } from '../../services/healthMetricService';
@@ -83,7 +83,6 @@ const secondaryValue = (metric) => {
   return part == null ? null : Number(part);
 };
 
-const metricTime = (metric) => dayjs(metric.thoiGianDo || `${metric.ngayDo}T${metric.gioDo || '00:00'}`);
 const isAbnormal = (metric) => metric.laBatThuong != null
   ? Boolean(metric.laBatThuong)
   : !metric.binhThuong;
@@ -186,7 +185,7 @@ const HealthMetricsPage = () => {
   }, [metrics]);
 
   const periodMetrics = useMemo(() => {
-    const now = dayjs();
+    const now = metricNow();
     const start = period === '24h'
       ? now.subtract(24, 'hour')
       : now.subtract(period === '7d' ? 7 : 30, 'day').startOf('day');
@@ -317,11 +316,12 @@ const HealthMetricsPage = () => {
 
   const handleAdd = () => {
     form.resetFields();
+    const now = metricNow();
     form.setFieldsValue({
       nguoiCaoTuoiId: selectedElder,
       loaiChiSo: selectedType,
-      ngayDo: dayjs(),
-      gioDo: dayjs(),
+      ngayDo: now,
+      gioDo: now,
       binhThuong: true,
     });
     setModalOpen(true);

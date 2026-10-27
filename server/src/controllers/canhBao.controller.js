@@ -5,6 +5,7 @@ const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere } = require('../middlewares/mobile-scope.middleware');
 const { emitToAdmin } = require('../socket');
+const { alertTimestampSql, alertTiming } = require('../utils/alertTime');
 
 const MUC_DO = {
   Thap:      { ma: 'THAP',       label: 'Thấp' },
@@ -47,11 +48,10 @@ const SLA_PHUT = {
   Thap: 1440,
 };
 
-const getSmartInsights = (row) => {
+const getSmartInsights = (row, now = Date.now()) => {
   const severityScore = { Thap: 15, TrungBinh: 40, Cao: 68, KhanCap: 90 }[row.mucDo] || 20;
-  const createdAt = new Date(row.ngayTao).getTime();
-  const finishedAt = row.ngayXuLy ? new Date(row.ngayXuLy).getTime() : Date.now();
-  const waitingMinutes = Math.max(0, Math.floor((finishedAt - createdAt) / 60000));
+  const timing = alertTiming(row.ngayTao, row.ngayXuLy, now);
+  const waitingMinutes = timing.minutes;
   const repeatCount = Number(row.soLanLap7Ngay || 1);
   const slaMinutes = SLA_PHUT[row.mucDo] || 1440;
   const isOpen = row.trangThai === 'ChuaXuLy' || row.trangThai === 'DaXem';
@@ -96,6 +96,7 @@ const getSmartInsights = (row) => {
     lyDoUuTien: reasons,
     khuyenNghi: recommendations[row.loaiCanhBao] || recommendations.Khac,
     thoiGianChoPhut: waitingMinutes,
+    loiThoiGian: timing.error,
     slaPhut: slaMinutes,
     quaSla: isOpen && waitingMinutes >= slaMinutes,
     soLanCanhBao7Ngay: repeatCount,
@@ -159,7 +160,7 @@ const getForElderly = async (req, res, next, elderlyId) => {
       SELECT c.CanhBaoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         nct.HoTen AS nguoiCaoTuoiTen, c.LoaiCanhBao AS loaiCanhBao,
         c.NoiDung AS noiDung, c.MucDo AS mucDo, c.TrangThai AS trangThai,
-        c.NgayTao AS ngayTao, c.NgayXuLy AS ngayXuLy, nd.HoTen AS nguoiXuLyTen,
+        ${alertTimestampSql('c.NgayTao')} AS ngayTao, ${alertTimestampSql('c.NgayXuLy')} AS ngayXuLy, nd.HoTen AS nguoiXuLyTen,
         c.GhiChuXuLy AS ghiChuXuLy, c.NguonBang AS nguonBang, c.NguonID AS nguonId,
         (
           SELECT COUNT(*)
@@ -227,7 +228,7 @@ const getAll = async (req, res, next) => {
       SELECT c.CanhBaoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         nct.HoTen AS nguoiCaoTuoiTen, c.LoaiCanhBao AS loaiCanhBao,
         c.NoiDung AS noiDung, c.MucDo AS mucDo, c.TrangThai AS trangThai,
-        c.NgayTao AS ngayTao, c.NgayXuLy AS ngayXuLy, nd.HoTen AS nguoiXuLyTen,
+        ${alertTimestampSql('c.NgayTao')} AS ngayTao, ${alertTimestampSql('c.NgayXuLy')} AS ngayXuLy, nd.HoTen AS nguoiXuLyTen,
         c.GhiChuXuLy AS ghiChuXuLy, c.NguonBang AS nguonBang, c.NguonID AS nguonId,
         (
           SELECT COUNT(*)
@@ -259,4 +260,4 @@ const getAll = async (req, res, next) => {
 const {endpoint}=require('../services/alertWorkflow.service');
 const markSeen=endpoint(req=>({alertId:req.params.id,action:'seen'}));
 const resolve=endpoint(req=>({alertId:req.params.id,action:'resolve',note:req.body.ghiChu}));
-module.exports={getAll,markSeen,resolve};
+module.exports={getAll,markSeen,resolve,getSmartInsights};

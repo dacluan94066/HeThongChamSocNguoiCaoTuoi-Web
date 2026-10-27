@@ -17,6 +17,7 @@ function fixture({ duplicate = false, assignedCaregiver = true, commitFails = fa
   class Request {
     input(name, _, value) { this[name] = value; return this; }
     async query(query) {
+      if (query.includes(' AS ready')) return { recordset: [{ ready: 0 }] }; // Legacy unpatched schema.
       if (query.includes('FROM HoSoNguoiCaoTuoi WHERE UserID')) {
         return { recordset: [{ id: 7, name: 'Người cao tuổi thử nghiệm' }] };
       }
@@ -69,9 +70,11 @@ function fixture({ duplicate = false, assignedCaregiver = true, commitFails = fa
   };
   const notifications = load('../src/services/alertNotification.service.js', {
     '../config/db': db, '../socket': socket,
+    './relativeRealtime.service': require('../src/services/relativeRealtime.service'),
   });
   const controller = load('../src/controllers/emergencyAlert.controller.js', {
     '../config/db': db,
+    '../utils/alertTime': require('../src/utils/alertTime'),
     '../utils/response': {
       ok: (res, data, _, status = 200) => { res.code = status; res.data = data; return data; },
       fail: (res, message, code, status) => { res.code = status; res.error = code; res.message = message; },

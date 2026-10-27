@@ -32,6 +32,10 @@ axiosClient.interceptors.response.use(
 
   // Nếu có lỗi, xử lý theo mã lỗi HTTP
   (error) => {
+    // Scoped reads cancel on selection/session changes; this is not a network outage.
+    if (error.code === 'ERR_CANCELED' && error.config?.relativePortalRead === true) {
+      return Promise.reject(error);
+    }
     if (!error.response) {
       // Lỗi mạng — backend chưa chạy hoặc không kết nối được
       message.error(

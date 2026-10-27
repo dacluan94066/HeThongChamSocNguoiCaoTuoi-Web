@@ -8,11 +8,10 @@ import {
 import { useNavigate } from 'react-router-dom';
 import {
   login,
-  isAuthenticated,
   logout as clearStoredAuth,
 } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
-import { canAccessWeb } from '../../utils/accessControl';
+import { canAccessWeb, getWebHome } from '../../utils/accessControl';
 import loginIllustration from '../../assets/login_illustration.png';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import CaregiverRegistrationModal from './CaregiverRegistrationModal';
@@ -200,7 +199,7 @@ const LoginForm = ({ onSubmit, onForgotPassword, onRegisterCaregiver, loading, e
 // --- Trang chính ---
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { setUserData } = useAuth();
+  const { setUserData, user: currentUser, authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [alertType, setAlertType] = useState('error');
@@ -209,8 +208,8 @@ const LoginPage = () => {
 
   // Nếu đã đăng nhập, chuyển về dashboard
   React.useEffect(() => {
-    if (isAuthenticated()) navigate('/dashboard', { replace: true });
-  }, [navigate]);
+    if (!authLoading && currentUser && canAccessWeb(currentUser)) navigate(getWebHome(currentUser), { replace: true });
+  }, [navigate, currentUser, authLoading]);
 
   // Xử lý submit: gọi POST /auth/login với { tenDangNhap, matKhau }
   const handleSubmit = async (values) => {
@@ -229,7 +228,7 @@ const LoginPage = () => {
 
       // Cập nhật user vào AuthContext để toàn app biết ngay
       if (user) await setUserData(user);
-      navigate('/dashboard', { replace: true });
+      navigate(getWebHome(user), { replace: true });
     } catch (err) {
       const errorCode = err.response?.data?.errorCode;
 

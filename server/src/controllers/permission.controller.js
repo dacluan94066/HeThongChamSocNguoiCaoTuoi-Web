@@ -1,6 +1,7 @@
 // controllers/permission.controller.js - Quyen tai khoan va ma tran phan quyen
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
+const { READ_FEATURES } = require('../utils/relativePolicy');
 
 const requireAdministrator = (req, res) => {
   if (req.user?.tenVaiTro === 'QuanTriVien') return true;
@@ -31,10 +32,10 @@ const getMyPermissions = async (req, res, next) => {
     const permissions = result.recordset.map((row) => ({
       maChucNang: row.MaChucNang,
       tenChucNang: row.TenChucNang,
-      xem: Boolean(row.ChoPhepXem),
-      them: Boolean(row.ChoPhepThem),
-      sua: Boolean(row.ChoPhepSua),
-      xoa: Boolean(row.ChoPhepXoa),
+      xem: Boolean(row.ChoPhepXem) && (req.user.tenVaiTro!=='NguoiThan' || READ_FEATURES.includes(row.MaChucNang)),
+      them: req.user.tenVaiTro!=='NguoiThan' && Boolean(row.ChoPhepThem),
+      sua: req.user.tenVaiTro!=='NguoiThan' && Boolean(row.ChoPhepSua),
+      xoa: req.user.tenVaiTro!=='NguoiThan' && Boolean(row.ChoPhepXoa),
     }));
 
     return ok(res, permissions, 'Lay danh sach quyen thanh cong');
@@ -52,7 +53,7 @@ const getPermissionMatrix = async (req, res, next) => {
       pool.request().query(`
         SELECT VaiTroID AS id, TenVaiTro AS tenVaiTro, MoTa AS moTa
         FROM VaiTro
-        WHERE TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi')
+        WHERE TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi',N'NguoiThan')
         ORDER BY CASE TenVaiTro
           WHEN N'QuanTriVien' THEN 1
           WHEN N'NguoiChamSoc' THEN 2 WHEN N'NguoiCaoTuoi' THEN 3 ELSE 4 END
@@ -69,7 +70,7 @@ const getPermissionMatrix = async (req, res, next) => {
           pq.ChoPhepSua AS sua, pq.ChoPhepXoa AS xoa
         FROM PhanQuyen pq
         INNER JOIN VaiTro vt ON vt.VaiTroID=pq.VaiTroID
-        WHERE vt.TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi')
+        WHERE vt.TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi',N'NguoiThan')
       `),
     ]);
     const permissions = permissionsResult.recordset.map((row) => ({
@@ -99,14 +100,19 @@ const updatePermissionMatrix = async (req, res, next) => {
     const pool = await poolPromise;
     const [rolesResult, functionsResult] = await Promise.all([
       pool.request().query(`
-        SELECT VaiTroID AS id FROM VaiTro
-        WHERE TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi')
+        SELECT VaiTroID AS id, TenVaiTro AS tenVaiTro FROM VaiTro
+        WHERE TenVaiTro IN (N'QuanTriVien',N'NguoiChamSoc',N'NguoiCaoTuoi',N'NguoiThan')
       `),
-      pool.request().query('SELECT ChucNangID AS id FROM ChucNang'),
+      pool.request().query('SELECT ChucNangID AS id, MaChucNang AS maChucNang FROM ChucNang'),
     ]);
     const roleIds = new Set(rolesResult.recordset.map((row) => Number(row.id)));
+    const relativeId=rolesResult.recordset.find(row=>row.tenVaiTro==='NguoiThan')?.id;
+    const featureNames=new Map(functionsResult.recordset.map(row=>[Number(row.id),row.maChucNang]));
     const functionIds = new Set(functionsResult.recordset.map((row) => Number(row.id)));
-    const expectedCount = roleIds.size * functionIds.size;
+    // Old Web clients still submit the complete 3-role matrix. Preserve the new
+    // role when it is absent from that payload, rather than resetting it.
+    const includesRelative=relativeId!=null && entries.some(row=>Number(row.vaiTroId)===Number(relativeId));
+    const expectedCount = (roleIds.size-(relativeId!=null && !includesRelative ? 1 : 0)) * functionIds.size;
     const normalized = entries.map((entry) => ({
       vaiTroId: Number(entry.vaiTroId),
       chucNangId: Number(entry.chucNangId),
@@ -119,7 +125,9 @@ const updatePermissionMatrix = async (req, res, next) => {
     const invalid = normalized.some((entry) => (
       !roleIds.has(entry.vaiTroId) || !functionIds.has(entry.chucNangId)
     ));
-    if (roleIds.size !== 3 || !expectedCount || normalized.length !== expectedCount
+    const unsafeRelative=normalized.some(entry=>entry.vaiTroId===Number(relativeId)
+      && (entry.them || entry.sua || entry.xoa || (entry.xem && !READ_FEATURES.includes(featureNames.get(entry.chucNangId)))));
+    if (![3,4].includes(roleIds.size) || unsafeRelative || !expectedCount || normalized.length !== expectedCount
       || uniqueKeys.size !== expectedCount || invalid) {
       return fail(res, 'Ma tran phan quyen khong day du hoac khong hop le', 'INVALID_PERMISSION_MATRIX', 400);
     }
