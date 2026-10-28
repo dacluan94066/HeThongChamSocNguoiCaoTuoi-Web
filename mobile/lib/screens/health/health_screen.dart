@@ -1,3 +1,4 @@
+import '../../utils/metric_assessment.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/api_client.dart';
@@ -15,14 +16,36 @@ class _HealthScreenState extends State<HealthScreen> {
   List<Map<String, dynamic>> _metrics = [];
   bool _loading = true;
   String? _error;
+  BuildContext? _inputSheetContext;
 
   @override
   void initState() {
     super.initState();
+    ApiClient.sessionChanges.addListener(_onSessionChanged);
     _loadData();
   }
 
+  @override
+  void dispose() {
+    ApiClient.sessionChanges.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    final sheet = _inputSheetContext;
+    _inputSheetContext = null;
+    if (sheet != null && sheet.mounted) Navigator.of(sheet).pop();
+    if (!mounted) return;
+    setState(() {
+      _metricTypes = [];
+      _metrics = [];
+      _loading = false;
+      _error = 'Phiên đăng nhập đã thay đổi. Vui lòng mở lại màn Sức khỏe.';
+    });
+  }
+
   Future<void> _loadData({bool refresh = false}) async {
+    final version = ApiClient.sessionVersion;
     if (mounted && (_metricTypes.isEmpty || _metrics.isEmpty)) {
       setState(() => _loading = true);
     }
@@ -31,7 +54,7 @@ class _HealthScreenState extends State<HealthScreen> {
         HealthMetricService.instance.getMetricTypes(refresh: refresh),
         HealthMetricService.instance.getMyHealthMetrics(refresh: refresh),
       ]);
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       setState(() {
         _metricTypes = results[0];
         _metrics = results[1];
@@ -39,13 +62,13 @@ class _HealthScreenState extends State<HealthScreen> {
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       setState(() {
         _error = 'Không thể tải dữ liệu sức khỏe.';
         _loading = false;
@@ -69,6 +92,7 @@ class _HealthScreenState extends State<HealthScreen> {
     var primaryText = '';
     var secondaryText = '';
     var noteText = '';
+    final version = ApiClient.sessionVersion;
 
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -79,6 +103,7 @@ class _HealthScreenState extends State<HealthScreen> {
       ),
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) {
+          _inputSheetContext = sheetContext;
           final selectedType = _metricTypes
               .cast<Map<String, dynamic>?>()
               .firstWhere(
@@ -86,11 +111,13 @@ class _HealthScreenState extends State<HealthScreen> {
                 orElse: () => null,
               );
           final needsSecondary =
+              selectedType?['tenChiSo'] == 'Huyết áp' ||
               selectedType?['giaTriMin2'] != null ||
               selectedType?['giaTriMax2'] != null;
           final unit = selectedType?['donVi']?.toString() ?? '';
 
           Future<void> save() async {
+            if (version != ApiClient.sessionVersion || saving) return;
             final primary = double.tryParse(
               primaryText.trim().replaceAll(',', '.'),
             );
@@ -114,16 +141,18 @@ class _HealthScreenState extends State<HealthScreen> {
                 giaTriPhu: needsSecondary ? secondary : null,
                 ghiChu: noteText,
               );
-              if (!sheetContext.mounted) return;
+              if (!sheetContext.mounted || version != ApiClient.sessionVersion) {
+                return;
+              }
               Navigator.pop(sheetContext, result);
             } on ApiException catch (error) {
-              if (!mounted) return;
+              if (!mounted || version != ApiClient.sessionVersion) return;
               _showMessage(error.message);
               if (sheetContext.mounted) {
                 setSheetState(() => saving = false);
               }
             } catch (_) {
-              if (!mounted) return;
+              if (!mounted || version != ApiClient.sessionVersion) return;
               _showMessage('Không thể ghi nhận chỉ số. Vui lòng thử lại.');
               if (sheetContext.mounted) {
                 setSheetState(() => saving = false);
@@ -175,13 +204,20 @@ class _HealthScreenState extends State<HealthScreen> {
                         onChanged: saving
                             ? null
                             : (value) => setSheetState(() {
+                                if (value == null || value == selectedId) {
+                                  return;
+                                }
                                 selectedId = value;
+                                primaryText = '';
+                                secondaryText = '';
+                                noteText = '';
                               }),
                       ),
                     ),
                   ),
                   const SizedBox(height: 14),
                   TextField(
+                    key: ValueKey('health-primary-$selectedId'),
                     enabled: !saving,
                     onChanged: (value) => primaryText = value,
                     keyboardType: const TextInputType.numberWithOptions(
@@ -195,6 +231,7 @@ class _HealthScreenState extends State<HealthScreen> {
                   if (needsSecondary) ...[
                     const SizedBox(height: 14),
                     TextField(
+                      key: ValueKey('health-secondary-$selectedId'),
                       enabled: !saving,
                       onChanged: (value) => secondaryText = value,
                       keyboardType: const TextInputType.numberWithOptions(
@@ -208,6 +245,7 @@ class _HealthScreenState extends State<HealthScreen> {
                   ],
                   const SizedBox(height: 14),
                   TextField(
+                    key: ValueKey('health-note-$selectedId'),
                     enabled: !saving,
                     onChanged: (value) => noteText = value,
                     maxLength: 300,
@@ -246,9 +284,12 @@ class _HealthScreenState extends State<HealthScreen> {
         },
       ),
     );
-    if (!mounted || result == null) return;
+    _inputSheetContext = null;
+    if (!mounted || result == null || version != ApiClient.sessionVersion) {
+      return;
+    }
     await _loadData(refresh: true);
-    if (!mounted) return;
+    if (!mounted || version != ApiClient.sessionVersion) return;
     if (result['laBatThuong'] == true) {
       await _showAbnormalWarning(result);
     } else {
@@ -337,10 +378,10 @@ class _HealthScreenState extends State<HealthScreen> {
                               Icon(
                                 abnormal
                                     ? Icons.warning_amber_rounded
-                                    : Icons.check_circle_outline,
+                                    : MetricAssessment.assessed(item) ? Icons.check_circle_outline : Icons.help_outline,
                                 color: abnormal
                                     ? const Color(0xffe45151)
-                                    : const Color(0xff07856d),
+                                    : MetricAssessment.assessed(item) ? const Color(0xff07856d) : Colors.grey,
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -556,6 +597,7 @@ class _HealthScreenState extends State<HealthScreen> {
                       ? _normalRange(type)
                       : _formatDateTime(metric['thoiGianDo']),
                   abnormal: metric?['laBatThuong'] == true,
+                  assessed: MetricAssessment.assessed(metric),
                   onTap: () => _showHistory(type),
                 ),
               );
@@ -663,6 +705,7 @@ class _MetricCard extends StatelessWidget {
     required this.value,
     required this.time,
     required this.abnormal,
+    required this.assessed,
     required this.onTap,
   });
 
@@ -670,12 +713,12 @@ class _MetricCard extends StatelessWidget {
   final String title;
   final String value;
   final String time;
-  final bool abnormal;
+  final bool abnormal, assessed;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = abnormal ? const Color(0xffd94b32) : const Color(0xff07856d);
+    final color = abnormal ? const Color(0xffd94b32) : assessed ? const Color(0xff07856d) : Colors.grey;
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(22),

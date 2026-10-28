@@ -289,6 +289,9 @@ const create = async (req, res, next) => {
     // The UTC suffix prevents the Node host timezone from shifting the value
     // before the mssql driver writes it into the DATETIME2 column.
     const thoiGianKham = new Date(`${ngayKham}T${gioKham}:00Z`);
+    if (Date.parse(`${ngayKham}T${gioKham}:00+07:00`) <= Date.now()) {
+      return fail(res, 'Giờ khám mới phải ở tương lai', 'PAST_APPOINTMENT_TIME', 422);
+    }
     const pool = await poolPromise;
     const result = await pool.request()
       .input('nctId', sql.Int, Number(nguoiCaoTuoiId))
@@ -303,10 +306,14 @@ const create = async (req, res, next) => {
           (NguoiCaoTuoiID, TenBenhVien, BacSiPhuTrach, ChuyenKhoa,
            ThoiGianKham, LyDoKham, TrangThai, NguoiTaoID)
         OUTPUT INSERTED.LichKhamID AS id
-        VALUES
-          (@nctId, @tenBenhVien, @bacSi, @chuyenKhoa,
+        SELECT
+          @nctId, @tenBenhVien, @bacSi, @chuyenKhoa,
            @thoiGian,
-           @lyDo, N'ChuaDen', @nguoiTaoId)`);
+           @lyDo, N'ChuaDen', @nguoiTaoId
+        WHERE @thoiGian>DATEADD(HOUR,7,SYSUTCDATETIME())`);
+    if (!result.recordset.length) {
+      return fail(res, 'Giờ khám đã qua trong lúc lưu. Vui lòng chọn giờ ở tương lai.', 'PAST_APPOINTMENT_TIME', 422);
+    }
     const eventData = { id: result.recordset[0].id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'created' };
     await emitAppointmentUpdate(pool, [Number(nguoiCaoTuoiId)], eventData);
     return ok(res, { id: result.recordset[0].id }, 'Thêm lịch khám thành công', 201);
@@ -330,6 +337,7 @@ const update = async (req, res, next) => {
       .query(`SELECT NguoiCaoTuoiID AS elderlyId,
                      CONVERT(VARCHAR(10), ThoiGianKham, 23) AS ngayKham,
                      CONVERT(VARCHAR(16), ThoiGianKham, 126) AS thoiGianKham,
+                     CONVERT(VARCHAR(33), ThoiGianKham, 126) AS originalTime,
                      TrangThai AS trangThai
               FROM LichKhamBenh WHERE LichKhamID=@id`);
     if (!previous.recordset.length) return fail(res, 'Không tìm thấy lịch khám', 'NOT_FOUND', 404);
@@ -352,6 +360,9 @@ const update = async (req, res, next) => {
       .input('chuyenKhoa', sql.NVarChar, ghiChu?.trim() || null)
       .input('thoiGian', sql.DateTime2, thoiGianKham)
       .input('changedTime', sql.Bit, changedTime ? 1 : 0)
+      .input('previousElderlyId', sql.Int, previousElderlyId)
+      .input('expectedStatus', sql.NVarChar, previous.recordset[0].trangThai)
+      .input('originalTime', sql.VarChar, previous.recordset[0].originalTime)
       .input('actorId', sql.Int, req.user.userId)
       .input('lyDo', sql.NVarChar, lyDoKham?.trim() || null)
       .query(`
@@ -364,7 +375,9 @@ const update = async (req, res, next) => {
           ThoiGianKham=@thoiGian,
           LyDoKham=@lyDo,
           TrangThai=CASE WHEN @changedTime=1 THEN N'ChuaDen' ELSE TrangThai END
-        WHERE LichKhamID=@id;
+        WHERE LichKhamID=@id AND NguoiCaoTuoiID=@previousElderlyId
+          AND TrangThai=@expectedStatus
+          AND ThoiGianKham=CONVERT(DATETIME2(7),@originalTime,126);
         DECLARE @affectedRows INT=@@ROWCOUNT;
         IF @affectedRows > 0
           DELETE FROM ThongBao
@@ -402,7 +415,9 @@ const update = async (req, res, next) => {
         COMMIT TRANSACTION;
         SELECT @affectedRows AS affectedRows;
         SELECT id,userId FROM @notifications;`);
-    if (!result.recordset[0]?.affectedRows) return fail(res, 'Không tìm thấy lịch khám', 'NOT_FOUND', 404);
+    if (!result.recordset[0]?.affectedRows) return fail(res,
+      'Lịch khám đã được cập nhật từ phiên hoặc thiết bị khác. Vui lòng tải lại trước khi sửa.',
+      'APPOINTMENT_CHANGED', 409);
     for (const notification of result.recordsets?.[1] || []) {
       emitToUser(notification.userId, 'thongbao:new', {
         id: notification.id, loaiThongBao: 'NhacLichKham', lichKhamId: id,

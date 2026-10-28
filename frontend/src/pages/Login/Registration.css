@@ -1,0 +1,40 @@
+.account-registration-modal { max-width: calc(100vw - 24px); padding-bottom: 0; }
+.account-registration-modal .ant-modal-container { border-radius: 20px; padding: 0; overflow: hidden; max-height: 90vh; max-height: 90dvh; display: flex; flex-direction: column; }
+.account-registration-modal .ant-modal-header { margin: 0; padding: 22px 56px 20px 24px; border-bottom: 1px solid var(--color-border); }
+.account-registration-modal .ant-modal-body { overflow-y: auto; padding: 20px 24px 24px; min-height: 0; }
+.account-registration-modal .ant-modal-close { top: 22px; right: 18px; width: 36px; height: 36px; }
+.account-registration-heading { display: flex; align-items: center; gap: 12px; }
+.account-registration-heading > span { width: 44px; height: 44px; display: grid; place-items: center; flex-shrink: 0; border-radius: 13px; color: var(--color-primary); background: var(--color-primary-bg); font-size: 23px; }
+.account-registration-heading h2 { margin: 0; color: var(--color-text-primary); font-size: 21px; font-weight: 700; line-height: 1.4; }
+.account-registration-heading p { margin: 3px 0 0; color: var(--color-text-secondary); font-weight: 400; font-size: 13px; }
+.account-registration-roles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.account-registration-roles .ant-radio-button-wrapper { height: auto; min-height: 108px; padding: 13px 12px; border: 1px solid var(--color-border); border-radius: 12px; white-space: normal; line-height: 1.4; }
+.account-registration-roles .ant-radio-button-wrapper::before { display: none; }
+.account-registration-roles .ant-radio-button-wrapper-checked { color: var(--color-primary-dark); background: var(--color-primary-bg); box-shadow: 0 0 0 1px var(--color-primary); }
+.account-registration-role-icon { display: block; font-size: 21px; margin-bottom: 8px; color: var(--color-primary); }
+.account-registration-roles strong { display: block; font-size: 14px; }
+.account-registration-roles small { display: block; margin-top: 5px; color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
+.account-registration-note { margin: -4px 0 22px; border-left: 3px solid var(--color-primary); padding: 10px 14px; border-radius: 0 9px 9px 0; color: var(--color-text-secondary); background: var(--color-primary-bg); font-size: 14px; line-height: 1.6; }
+.account-registration-error { margin-bottom: 20px; }
+.account-registration-profile { padding: 18px 18px 0; margin: 0 0 20px; border: 1px solid var(--color-border); border-radius: 12px; }
+.account-registration-profile h3 { font-size: 16px; margin: 0 0 6px; }
+.account-registration-profile p, .account-registration-security { color: var(--color-text-secondary); font-size: 13px; line-height: 1.6; }
+.account-registration-profile p { margin: 0 0 18px; }
+.account-registration-security { margin: 0 0 14px; }
+.account-registration-modal .ant-form-item { margin-bottom: 20px; }
+.account-registration-modal .ant-form-item-label > label { font-weight: 600; }
+.account-registration-modal :is(.ant-input-affix-wrapper, .ant-input, .ant-picker, .ant-select-selector) { border-radius: 9px; }
+.account-registration-modal .ant-btn-primary { min-height: 46px; border-radius: 10px; }
+.account-registration-result { display: grid; gap: 20px; padding: 12px 0; }
+.account-registration-modal :is(button, input, [tabindex]):focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+@media (max-width: 575px) {
+  .account-registration-modal .ant-modal-header { padding: 18px 52px 16px 18px; }
+  .account-registration-modal .ant-modal-body { padding: 18px 16px; }
+  .account-registration-heading h2 { font-size: 18px; }
+  .account-registration-roles { grid-template-columns: 1fr; gap: 8px; }
+  .account-registration-roles .ant-radio-button-wrapper { min-height: 72px; padding: 12px 14px 12px 54px; }
+  .account-registration-role-icon { position: absolute; left: 16px; top: 23px; margin: 0; }
+  .account-registration-roles small { margin-top: 3px; }
+  .account-registration-profile { padding: 16px 12px 0; }
+}
+@media (prefers-reduced-motion: reduce) { .account-registration-modal * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }

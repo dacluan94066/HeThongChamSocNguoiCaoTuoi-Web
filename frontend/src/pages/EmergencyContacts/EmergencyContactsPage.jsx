@@ -15,6 +15,7 @@ import ModalForm, { FormSection } from '../../components/ModalForm';
 import usePermission from '../../hooks/usePermission';
 import TableAvatar from '../../components/TableAvatar';
 import { formatEntityCode } from '../../utils/displayUtils';
+import LinkedRelativeContactPicker from '../../components/LinkedRelativeContactPicker';
 
 const EmergencyContactsPage = () => {
   const { hasPermission } = usePermission();
@@ -81,6 +82,10 @@ const EmergencyContactsPage = () => {
   }, [selectedElder]);
 
   const handleSelectElder = (value) => {
+    setModalOpen(false);
+    setEditing(null);
+    form.resetFields();
+    setContacts([]);
     setLoading(true);
     setSelectedElder(value);
   };
@@ -183,6 +188,7 @@ const EmergencyContactsPage = () => {
             showSearch
             optionFilterProp="label"
             value={selectedElder}
+            disabled={saving}
             placeholder="Chọn người cao tuổi"
             onChange={handleSelectElder}
             options={elders.map((item) => ({
@@ -323,6 +329,8 @@ const EmergencyContactsPage = () => {
       >
         <Form.Item name="nguoiCaoTuoiId" hidden><Input /></Form.Item>
         <Form.Item name="uuTien" hidden><Input /></Form.Item>
+        {modalOpen && !editing && <LinkedRelativeContactPicker key={selectedElder} elderlyId={selectedElder}
+          disabled={saving} onChoose={values => form.setFieldsValue(values)} />}
         <FormSection title="Thông tin liên hệ" description="Họ tên và mối quan hệ với người cao tuổi">
           <Row gutter={18}>
             <Col xs={24} md={12}>
@@ -365,6 +373,7 @@ const EmergencyContactsPage = () => {
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} placeholder="Thông tin cần lưu ý khi liên hệ" />
           </Form.Item>
         </FormSection>
+        {!editing && <p className="linked-contact-priority">Ưu tiên liên hệ: <strong>{sortedContacts.length + 1}</strong> (cuối danh sách).{canEdit && ' Sau khi lưu, bạn có thể dùng nút mũi tên để thay đổi thứ tự.'}</p>}
       </ModalForm>
     </div>
   );

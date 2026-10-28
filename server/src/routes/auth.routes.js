@@ -8,6 +8,7 @@ const { checkPermission, checkOwnPasswordPermission } = require('../middlewares/
 // POST /api/auth/register - Dang ky tai khoan moi (public)
 router.post('/register', authController.register);
 router.post('/register-caregiver', authController.registerCaregiver);
+router.post('/register-relative', authController.registerRelative);
 
 // POST /api/auth/login - Dang nhap lay token (public)
 router.post('/login', authController.login);

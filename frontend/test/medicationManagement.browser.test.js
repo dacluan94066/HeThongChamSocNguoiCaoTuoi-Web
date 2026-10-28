@@ -36,16 +36,22 @@ test('Admin/caregiver medication UI: isolated Chrome with RAM API, no SQL/.env',
           io.emit('lichuongthuoc:updated', { id: 2, trangThaiDb: 'DaUong' });
         }
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ patches: fixture.patches, readsAfterWrite: fixture.readsAfterWrite })); return;
+        res.end(JSON.stringify({ patches: fixture.patches, readsAfterWrite: fixture.readsAfterWrite, prescriptions: fixture.prescriptions })); return;
       }
       if (req.url.startsWith('/fixture-api')) {
         const endpoint = req.url.slice('/fixture-api'.length).split('?')[0];
         if (req.headers.authorization !== 'Bearer fixture-medication-ui') return send(res, 401, null);
         fixture.calls.push({ method: req.method, endpoint });
         if (endpoint === '/auth/me') return send(res, 200, { userId: 70, hoTen: 'Fixture quản lý thuốc', tenVaiTro: fixture.role });
-        if (endpoint === '/permissions/me') return send(res, 200, ['QLLICHUONGTHUOC', 'QLTHUOC'].map(maChucNang => ({ maChucNang, xem: true, sua: fixture.scenario !== 'readonly', them: false })));
+        if (endpoint === '/permissions/me') return send(res, 200, ['QLLICHUONGTHUOC', 'QLTHUOC'].map(maChucNang => ({ maChucNang, xem: true, sua: fixture.scenario !== 'readonly', them: fixture.scenario.startsWith('prescription-') })));
         if (endpoint === '/elderly') return send(res, 200, [{ id: 1, hoTen: 'NCT fixture', trangThai: 'DangTheoDoi' }]);
-        if (endpoint === '/medications') return send(res, 200, []);
+        if (endpoint === '/medications') return send(res, 200, [{ id: 71, tenThuoc: 'Thuốc kiểm thử thời gian', donViTinh: 'Viên' }]);
+        if (endpoint === '/elderly/1/prescriptions' && req.method === 'POST') {
+          let body = ''; for await (const chunk of req) body += chunk;
+          assert.ok(fixture.scenario.startsWith('prescription-'));
+          fixture.prescriptions.push(JSON.parse(body));
+          return send(res, 201, { soLichDaTao: 1 });
+        }
         if (endpoint === '/medication-schedules' && req.method === 'GET') {
           if (fixture.patches) fixture.readsAfterWrite++;
           return send(res, 200, fixture.doses);
@@ -75,10 +81,11 @@ test('Admin/caregiver medication UI: isolated Chrome with RAM API, no SQL/.env',
   t.after(async () => { await new Promise(resolve => io.close(resolve)); await vite.close(); if (server.listening) await new Promise(resolve => server.close(resolve)); });
   const evidence = process.env.CARESENIOR_MEDICATION_UI_EVIDENCE || await mkdtemp(path.join(os.tmpdir(), 'caresenior-medication-ui-chrome-'));
   for (const [width, role, scenario] of [[360, 'QuanTriVien', 'ready'], [768, 'NguoiChamSoc', 'ready'], [1024, 'QuanTriVien', 'conflict'], [1440, 'NguoiChamSoc', 'conflict-missed'],
-    [1024, 'NguoiChamSoc', 'success'], [1024, 'NguoiChamSoc', 'readonly'], [1024, 'QuanTriVien', 'server-error'], [1024, 'QuanTriVien', 'other-conflict'], [360, 'NguoiChamSoc', 'large-text'], [1024, 'NguoiChamSoc', 'realtime-detail']]) {
+    [1024, 'NguoiChamSoc', 'success'], [1024, 'NguoiChamSoc', 'readonly'], [1024, 'QuanTriVien', 'server-error'], [1024, 'QuanTriVien', 'other-conflict'], [360, 'NguoiChamSoc', 'large-text'], [1024, 'NguoiChamSoc', 'realtime-detail'],
+    [360, 'QuanTriVien', 'prescription-past'], [1024, 'NguoiChamSoc', 'prescription-recurrence']]) {
     await t.test(`${role} ${scenario} ${width}px`, { timeout: 25000 }, async () => {
       const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10), yesterday = new Date(Date.now() + 7 * 3600000 - 86400000).toISOString().slice(0, 10);
-      fixture = { role, scenario, width, today, patches: 0, readsAfterWrite: 0, bodies: [], unexpected: [], calls: [], doses:
+      fixture = { role, scenario, width, today, patches: 0, readsAfterWrite: 0, bodies: [], prescriptions: [], unexpected: [], calls: [], doses:
         ['DA_UONG', 'CHUA_DEN_GIO', 'BO_LO', 'TU_CHOI', 'BO_LO', 'DA_UONG'].map((status, i) => ({ id: i + 1, nguoiCaoTuoiId: 1, nguoiCaoTuoiTen: 'NCT fixture', tenThuoc: `Thuốc fixture ${i + 1}`, lieuDung: 'Theo đơn fixture',
           thoiGianDuKien: `${i === 4 ? yesterday : today}T08:00:00`, trangThaiHom_nay: status, thoiGianThucTe: i === 0 ? `${today}T13:05:00` : null, nguoiXacNhanTen: null })) };
       report = null;
@@ -94,6 +101,7 @@ test('Admin/caregiver medication UI: isolated Chrome with RAM API, no SQL/.env',
         for (const check of report.checks) assert.equal(check.pass, true, check.name);
         assert.deepEqual(fixture.unexpected, []);
         assert.equal(fixture.patches, ['conflict', 'conflict-missed', 'success', 'server-error', 'other-conflict'].includes(scenario) ? 1 : 0);
+        assert.equal(fixture.prescriptions.length, scenario === 'prescription-recurrence' ? 1 : 0);
       } finally {
         clearTimeout(timer); if (child.exitCode === null) child.kill();
         const relative = path.relative(os.tmpdir(), profile);

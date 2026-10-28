@@ -9,6 +9,7 @@ import '../alerts/alert_history_screen.dart';
 import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
 import 'profile_dashboard_ui.dart';
+import 'own_relatives_section.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.accountOnly = false});
@@ -129,7 +130,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         ProfileItem(
                           icon: Icons.badge_outlined,
-                          title: 'Họ và tên',
+                          title: 'Họ tên hồ sơ NCT',
                           value: name,
                         ),
                         const Divider(height: 28),
@@ -147,7 +148,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const Divider(height: 28),
                         ProfileItem(
                           icon: Icons.phone_outlined,
-                          title: 'Số điện thoại',
+                          title: 'Số điện thoại liên hệ',
                           value: phone,
                         ),
                         const Divider(height: 28),
@@ -211,6 +212,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  if (profile['id'] is int) ...[
+                    OwnRelativesSection(
+                      key: ValueKey(
+                        'relatives-${profile['id']}-${ApiClient.sessionVersion}',
+                      ),
+                      elderlyId: profile['id'] as int,
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                   const _SectionTitle('Tiện ích'),
                   AppCard(
                     padding: EdgeInsets.zero,
@@ -367,7 +377,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const Divider(height: 28),
                         ProfileItem(
                           icon: Icons.phone_outlined,
-                          title: 'Số điện thoại',
+                          title: 'Số điện thoại tài khoản',
                           value: phone?.isNotEmpty == true
                               ? phone!
                               : 'Chưa cập nhật',

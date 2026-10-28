@@ -470,11 +470,11 @@ const UsersPage = () => {
         record={detailRecord}
         fields={[
           { label: 'Tên đăng nhập', key: 'username' },
-          { label: 'Họ và tên', key: 'hoTen' },
+          { label: 'Tên tài khoản', key: 'hoTen' },
           { label: 'Vai trò', key: 'vaiTro', render: (value) => roleMeta(value).label },
           { label: 'Trạng thái', key: 'trangThai', render: (value) => <StatusTag {...getUserStatusMap(value)} /> },
           { label: 'Email', key: 'email' },
-          { label: 'Số điện thoại', key: 'soDienThoai' },
+          { label: 'Số điện thoại tài khoản', key: 'soDienThoai' },
           { label: 'Ngày tạo', key: 'ngayTao' },
           { label: 'Lần đăng nhập cuối', key: 'lanDangNhapCuoi', render: formatRelativeTime },
         ]}
@@ -519,7 +519,7 @@ const UsersPage = () => {
         ) : <>
         <FormSection title="Thông tin tài khoản" description="Thông tin đăng nhập và vai trò người dùng">
           <Row gutter={18}>
-            <Col xs={24} md={12}><Form.Item name="hoTen" label="Họ và tên" rules={[{ required: true, whitespace: relativeAccount, message: 'Vui lòng nhập họ và tên' }, ...(relativeAccount ? [{ max: 100, message: 'Họ tên tối đa 100 ký tự' }] : [])]}><Input maxLength={relativeAccount ? 100 : undefined} placeholder="VD: Nguyễn Văn An" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="hoTen" label="Tên tài khoản" rules={[{ required: true, whitespace: relativeAccount, message: 'Vui lòng nhập họ và tên' }, ...(relativeAccount ? [{ max: 100, message: 'Họ tên tối đa 100 ký tự' }] : [])]}><Input maxLength={relativeAccount ? 100 : undefined} placeholder="VD: Nguyễn Văn An" /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="vaiTro" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}><Select placeholder="Chọn vai trò" disabled={Boolean(editingUser)} options={availableRoles.map(({ value, label }) => ({ value, label }))} /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="username" label="Tên đăng nhập" rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }, { min: 3, message: 'Tên đăng nhập phải có ít nhất 3 ký tự' }, ...(relativeAccount ? [{ max: 50, message: 'Tên đăng nhập tối đa 50 ký tự' }, { validator: (_, value) => !value || editingUser || !users.some(account => account.username?.toLowerCase() === value.trim().toLowerCase()) ? Promise.resolve() : Promise.reject(new Error('Tên đăng nhập đã tồn tại')) }] : [])]}><Input maxLength={relativeAccount ? 50 : undefined} placeholder="VD: cham.soc01" disabled={Boolean(editingUser)} /></Form.Item></Col>
             {!editingUser && <Col xs={24} md={12}><Form.Item name="password" label="Mật khẩu" rules={relativeAccount ? mobilePasswordRules : [{ required: true, message: 'Vui lòng nhập mật khẩu' }, { min: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' }]}><Input.Password placeholder="Tối thiểu 6 ký tự" /></Form.Item></Col>}
@@ -528,7 +528,7 @@ const UsersPage = () => {
         <FormSection title="Thông tin liên hệ" description="Email và số điện thoại của tài khoản">
           <Row gutter={18}>
             <Col xs={24} md={12}><Form.Item name="email" label="Email" rules={[{ required: !editingUser || selectedRole === 'NGUOI_CHAM_SOC' || relativeAccount, message: 'Vui lòng nhập email' }, { type: 'email', message: 'Email không đúng định dạng' }, ...(relativeAccount ? [{ max: 100, message: 'Email tối đa 100 ký tự' }, { validator: (_, value) => !value || !users.some(account => account.id !== editingUser?.id && account.email?.trim().toLowerCase() === value.trim().toLowerCase()) ? Promise.resolve() : Promise.reject(new Error('Email đã được sử dụng')) }] : [])]}><Input maxLength={relativeAccount ? 100 : undefined} placeholder="VD: nguoidung@email.com" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại" rules={[{ required: selectedRole === 'NGUOI_CHAM_SOC', message: 'Vui lòng nhập số điện thoại người chăm sóc' }, { pattern: relativeAccount ? /^0\d{9}$/ : /^[0-9]{10,11}$/, message: relativeAccount ? 'Số điện thoại phải gồm 10 số, bắt đầu bằng 0' : 'Số điện thoại phải gồm 10–11 chữ số' }]}><Input maxLength={relativeAccount ? 10 : undefined} placeholder="VD: 0901234567" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại tài khoản" rules={[{ required: selectedRole === 'NGUOI_CHAM_SOC', message: 'Vui lòng nhập số điện thoại người chăm sóc' }, { pattern: relativeAccount ? /^0\d{9}$/ : /^[0-9]{10,11}$/, message: relativeAccount ? 'Số điện thoại phải gồm 10 số, bắt đầu bằng 0' : 'Số điện thoại phải gồm 10–11 chữ số' }]}><Input maxLength={relativeAccount ? 10 : undefined} placeholder="VD: 0901234567" /></Form.Item></Col>
           </Row>
         </FormSection>
         </>}

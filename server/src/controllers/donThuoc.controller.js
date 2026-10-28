@@ -157,7 +157,7 @@ const create = async (req, res, next) => {
            NgayKetThuc, GhiChu, NguoiTaoID)
         OUTPUT INSERTED.DonThuocID AS id
         VALUES
-          (@elderlyId, @bacSiKeDon, CONVERT(DATE, GETDATE()), @ngayBatDau,
+          (@elderlyId, @bacSiKeDon, CONVERT(DATE, DATEADD(HOUR,7,SYSUTCDATETIME())), @ngayBatDau,
            @ngayKetThuc, @ghiChu, @creatorId)`);
     const prescriptionId = prescription.recordset[0].id;
     let generatedScheduleCount = 0;
@@ -246,12 +246,20 @@ const create = async (req, res, next) => {
     ThoiGianDuKien,
     N'ChuaDenGio'
   FROM Lich
-  WHERE ThoiGianDuKien > SYSDATETIME()
+  WHERE ThoiGianDuKien > DATEADD(HOUR,7,SYSUTCDATETIME())
   OPTION (MAXRECURSION ${MAX_PRESCRIPTION_DAYS});
 
   SELECT @@ROWCOUNT AS generatedCount;
 `);
       const count = Number(schedules.recordset[0]?.generatedCount || 0);
+      if (count === 0) {
+        const error = new Error(
+          `Thuốc ${medicine.recordset[0].tenThuoc}: không còn giờ uống hợp lệ trong khoảng ngày đã chọn. Vui lòng chọn giờ còn ở tương lai hoặc kéo dài ngày kết thúc.`,
+        );
+        error.statusCode = 422;
+        error.errorCode = 'NO_FUTURE_DOSES';
+        throw error;
+      }
       generatedScheduleCount += count;
       createdDetails.push({
         id: detailId,
@@ -264,6 +272,21 @@ const create = async (req, res, next) => {
       });
     }
 
+    // A long request can cross a dose time or midnight after generating rows.
+    // Recheck only this new prescription before committing; never edit old doses.
+    const timing = await new sql.Request(transaction)
+      .input('prescriptionId', sql.Int, prescriptionId).query(`
+        SELECT COUNT(*) AS expiredCount
+        FROM LichUongThuoc l
+        JOIN DonThuocChiTiet ct ON ct.DonThuocChiTietID=l.DonThuocChiTietID
+        WHERE ct.DonThuocID=@prescriptionId
+          AND l.ThoiGianDuKien<=DATEADD(HOUR,7,SYSUTCDATETIME())`);
+    if (Number(timing.recordset[0]?.expiredCount) > 0) {
+      const error = new Error('Giờ uống đầu tiên đã qua trong lúc tạo đơn. Chưa lưu đơn thuốc; vui lòng kiểm tra lại ngày và giờ uống.');
+      error.statusCode = 409;
+      error.errorCode = 'PRESCRIPTION_TIME_CHANGED';
+      throw error;
+    }
     await transaction.commit();
     transaction = null;
     const eventData = { id: prescriptionId, nguoiCaoTuoiId: elderlyId, action: 'created' };

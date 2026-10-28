@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Avatar, Button, ConfigProvider, Dropdown, Result, Spin } from 'antd';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BellOutlined, CalendarOutlined, DownOutlined, HeartFilled, HomeOutlined, LockOutlined, LogoutOutlined, MessageOutlined, SafetyOutlined, UserOutlined } from '@ant-design/icons';
+import { BellOutlined, CalendarOutlined, DownOutlined, HeartFilled, HeartOutlined, HomeOutlined, LockOutlined, LogoutOutlined, MessageOutlined, SafetyOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import useElderlyWorkspace from '../../hooks/useElderlyWorkspace';
 import useElderlyRealtime from '../../hooks/useElderlyRealtime';
@@ -41,7 +41,7 @@ export default function ElderlyPortalPage() {
   const [accountOpen, setAccountOpen] = useState(false);
   const assistantReturnTo = useRef('/ca-nhan');
   useEffect(() => {
-    if (['/ca-nhan', '/ca-nhan/suc-khoe', '/ca-nhan/lich-trinh', '/ca-nhan/sos', '/ca-nhan/canh-bao', '/ca-nhan/ho-so'].includes(location.pathname)) assistantReturnTo.current = location.pathname + location.search;
+    if (['/ca-nhan', '/ca-nhan/suc-khoe', '/ca-nhan/lich-trinh', '/ca-nhan/sos', '/ca-nhan/canh-bao', '/ca-nhan/ho-so', '/ca-nhan/nguoi-than'].includes(location.pathname)) assistantReturnTo.current = location.pathname + location.search;
   }, [location.pathname, location.search]);
   const { state, store } = useElderlyWorkspace(user.userId);
   const ready = state.phase === 'ready' && hasPermission('QLHOSONCT', 'xem');
@@ -78,7 +78,7 @@ export default function ElderlyPortalPage() {
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [ready]);
   const displayName = state.profile?.hoTen || user.hoTen || user.tenDangNhap;
-  const pageLabel = ({ '/ca-nhan/suc-khoe': 'Sức khỏe', '/ca-nhan/tro-ly': 'Trợ lý AI' })[location.pathname]
+  const pageLabel = ({ '/ca-nhan/suc-khoe': 'Sức khỏe', '/ca-nhan/tro-ly': 'Trợ lý AI', '/ca-nhan/nguoi-than': 'Người thân' })[location.pathname]
     || navigation.find(item => item.end ? item.to === location.pathname : location.pathname.startsWith(item.to))?.label || 'Không gian cá nhân';
   return <ConfigProvider theme={elderlyTheme} modal={{ className: 'elderly-care-modal' }}><ElderlyLiveContext.Provider value={live}><div ref={rootRef} className={`elderly-web${ready ? ' is-ready' : ''}`}>
     <a className="elderly-skip-link" href="#elderly-web-content">Đến nội dung chính</a>
@@ -93,11 +93,13 @@ export default function ElderlyPortalPage() {
           { key: 'identity', disabled: true, label: <div className="elderly-web-account-identity"><strong>{displayName}</strong><span>Người cao tuổi</span></div> },
           { type: 'divider' },
           { key: 'profile', icon: <UserOutlined />, label: 'Hồ sơ của tôi' },
+          ...(ready ? [{ key: 'relatives', icon: <TeamOutlined />, label: 'Người thân của tôi' }] : []),
           { key: 'password', icon: <LockOutlined />, label: 'Đổi mật khẩu' },
           { type: 'divider' }, { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', danger: true },
         ], onClick: ({ key }) => {
           setAccountOpen(false);
           if (key === 'logout') logout();
+          else if (key === 'relatives') navigate('/ca-nhan/nguoi-than');
           else if (key === 'profile' || isSosRoute) navigate('/ca-nhan/ho-so');
           else setAccountModal('change-password');
         } }}>
@@ -113,6 +115,15 @@ export default function ElderlyPortalPage() {
         className={({ isActive }) => `${isActive ? 'is-active ' : ''}${item.emergency ? 'is-sos' : ''}`}>
         <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>
       </NavLink>)}
+      <div className="elderly-web-secondary-nav" role="group" aria-label="Lối tắt theo dõi sức khỏe">
+        <span className="elderly-web-nav-heading">Truy cập nhanh</span>
+        {hasPermission('QLCHISOSK', 'xem') && <NavLink to="/ca-nhan/suc-khoe" className={({ isActive }) => isActive ? 'is-active' : ''}>
+          <span aria-hidden="true"><HeartOutlined /></span><span className="elderly-secondary-copy"><strong>Chỉ số sức khỏe</strong><small>Xem và thêm số đo</small></span>
+        </NavLink>}
+        <NavLink to="/ca-nhan/nguoi-than" className={({ isActive }) => isActive ? 'is-active' : ''}>
+          <span aria-hidden="true"><TeamOutlined /></span><span className="elderly-secondary-copy"><strong>Người thân</strong><small>Xem quyền theo dõi</small></span>
+        </NavLink>
+      </div>
       <div className="elderly-web-nav-note"><HeartFilled aria-hidden="true" /><strong>Chăm sóc từ những điều nhỏ</strong><span>Theo dõi sức khỏe, mỗi ngày một chút.</span></div>
     </nav>}
     <main id="elderly-web-content" className="elderly-web-main" tabIndex={-1}>

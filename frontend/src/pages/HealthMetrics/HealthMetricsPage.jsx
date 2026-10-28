@@ -1,3 +1,4 @@
+import { metricAssessment } from '../../utils/metricAssessment';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Button, Col, DatePicker, Form, Input, message, Row, Select, Tag, TimePicker,
@@ -17,7 +18,7 @@ import {
 } from '../../services/healthMetricService';
 import { getElders } from '../../services/elderlyService';
 import DataTable from '../../components/DataTable';
-import StatusTag, { getHealthStatusMap } from '../../components/StatusTag';
+import StatusTag from '../../components/StatusTag';
 import ModalForm, { FormSection } from '../../components/ModalForm';
 import usePermission from '../../hooks/usePermission';
 import TableAvatar from '../../components/TableAvatar';
@@ -208,7 +209,7 @@ const HealthMetricsPage = () => {
       data: mainPoints,
       borderColor: '#0f5c63',
       backgroundColor: 'rgba(15, 92, 99, .08)',
-      pointBackgroundColor: mainAbnormal.map((abnormal) => (abnormal ? '#b42318' : '#0f5c63')),
+      pointBackgroundColor: mainAbnormal.map((abnormal, index) => (abnormal ? '#b42318' : metricAssessment(periodMetrics[index]).state === 'CHUA_CO_NGUONG' ? '#6b7280' : '#0f5c63')),
       pointBorderColor: '#fff',
       pointBorderWidth: 2,
       pointRadius: mainAbnormal.map((abnormal) => (abnormal ? 6 : 4)),
@@ -226,7 +227,7 @@ const HealthMetricsPage = () => {
         data: secondaryPoints,
         borderColor: '#55aeb0',
         backgroundColor: 'rgba(85, 174, 176, .08)',
-        pointBackgroundColor: secondaryAbnormal.map((abnormal) => (abnormal ? '#b42318' : '#55aeb0')),
+        pointBackgroundColor: secondaryAbnormal.map((abnormal, index) => (abnormal ? '#b42318' : metricAssessment(periodMetrics[index]).state === 'CHUA_CO_NGUONG' ? '#6b7280' : '#55aeb0')),
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
         pointRadius: secondaryAbnormal.map((abnormal) => (abnormal ? 6 : 4)),
@@ -288,12 +289,13 @@ const HealthMetricsPage = () => {
     const compose = (first, second) => second == null
       ? formatValue(first)
       : `${formatValue(first)}/${formatValue(second)}`;
-    const normalCount = periodMetrics.filter((metric) => !isAbnormal(metric)).length;
+    const normalCount = periodMetrics.filter((metric) => metricAssessment(metric).state === 'BINH_THUONG').length;
+    const assessedCount = periodMetrics.filter((metric) => metricAssessment(metric).state !== 'CHUA_CO_NGUONG').length;
     return {
       highest: compose(pair(primaryValues, Math.max), pair(secondaryValues, Math.max)),
       lowest: compose(pair(primaryValues, Math.min), pair(secondaryValues, Math.min)),
       average: compose(average(primaryValues), average(secondaryValues)),
-      normalRate: Math.round((normalCount / periodMetrics.length) * 100),
+      normalRate: assessedCount ? Math.round((normalCount / assessedCount) * 100) : null,
       total: periodMetrics.length,
     };
   }, [periodMetrics]);
@@ -362,7 +364,7 @@ const HealthMetricsPage = () => {
     },
     {
       title: 'Giá trị', key: 'value', width: 150,
-      render: (_, record) => <strong className={isAbnormal(record) ? 'metric-value-danger' : 'metric-value-normal'}>{metricDisplayValue(record)}</strong>,
+      render: (_, record) => <strong className={isAbnormal(record) ? 'metric-value-danger' : metricAssessment(record).state === 'BINH_THUONG' ? 'metric-value-normal' : undefined}>{metricDisplayValue(record)}</strong>,
     },
     {
       title: 'Người đo', dataIndex: 'nguoiDoTen', key: 'nguoiDoTen', width: 190,
@@ -370,7 +372,7 @@ const HealthMetricsPage = () => {
     },
     {
       title: 'Trạng thái', key: 'status', width: 145,
-      render: (_, record) => <StatusTag {...getHealthStatusMap(!isAbnormal(record))} size="small" />,
+      render: (_, record) => <StatusTag {...metricAssessment(record)} size="small" />,
     },
     {
       title: 'Ghi chú', dataIndex: 'ghiChu', key: 'ghiChu', width: 260,
@@ -481,7 +483,7 @@ const HealthMetricsPage = () => {
             <div className="is-average"><small>Trung bình</small><strong>{statistics?.average || '—'}</strong><span>{currentType?.donVi || ''}</span></div>
           </div>
           <div className="metric-normal-rate">
-            <div><span>Tỷ lệ lần đo trong ngưỡng</span><strong>{statistics ? `${statistics.normalRate}%` : '—'}</strong></div>
+            <div><span>Tỷ lệ trong ngưỡng (các lần đã có đánh giá)</span><strong>{statistics?.normalRate != null ? `${statistics.normalRate}%` : '—'}</strong></div>
             <div><i style={{ width: `${statistics?.normalRate || 0}%` }} /></div>
           </div>
         </aside>
@@ -514,7 +516,7 @@ const HealthMetricsPage = () => {
           { label: 'Loại chỉ số', key: 'loaiChiSoLabel' },
           { label: 'Giá trị', key: 'giaTri', render: (_, record) => metricDisplayValue(record) },
           { label: 'Người đo', key: 'nguoiDoTen' },
-          { label: 'Trạng thái', key: 'laBatThuong', render: (_, record) => <StatusTag {...getHealthStatusMap(!isAbnormal(record))} /> },
+          { label: 'Trạng thái', key: 'laBatThuong', render: (_, record) => <StatusTag {...metricAssessment(record)} /> },
           { label: 'Ghi chú', key: 'ghiChu', span: 2 },
         ]}
       />

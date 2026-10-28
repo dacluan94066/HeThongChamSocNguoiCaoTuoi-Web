@@ -74,6 +74,7 @@ class ProfileUiAdapter implements HttpClientAdapter {
         '/elderly/me' => empty ? <String, dynamic>{} : profile,
         '/auth/me' => empty ? <String, dynamic>{} : account,
         '/elderly/me/alerts' => <Map<String, dynamic>>[],
+        '/elderly/me/relatives' => <Map<String, dynamic>>[],
         _ => throw StateError('Unexpected GET: ${options.path}'),
       };
       return response({'data': data});

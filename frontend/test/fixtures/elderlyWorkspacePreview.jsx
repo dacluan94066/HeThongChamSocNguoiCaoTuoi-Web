@@ -8,6 +8,19 @@ import { getSocket } from '../../src/services/socketClient';
 
 const { scenario, width } = window.__ELDERLY_FIXTURE__;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Measure stable colors and hit targets, not an intermediate navigation/modal
+// transition. Infinite decorative animations must not block the fixture.
+const settleMotion = async () => {
+  // Chrome virtual-time timers and compositor timelines need not advance in
+  // lockstep. Complete finite transitions in this fixture only, then measure
+  // their final styles. Leave infinite decorative animations unchanged.
+  for (let i = 0; i < 3; i++) {
+    for (const animation of document.getAnimations()) {
+      if (animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish();
+    }
+    await delay(40);
+  }
+};
 const wait = async predicate => { for (let i = 0; i < 150; i++) { if (predicate()) return; await delay(40); } throw new Error(`UI timeout: ${scenario}, ${document.body.textContent.slice(0, 200)}`); };
 const text = () => document.body.textContent;
 const clickButton = label => [...document.querySelectorAll('button')].find(button => button.textContent.trim() === label)?.click();
@@ -41,7 +54,7 @@ async function run() {
       await wait(ready); check('Google restores NCT workspace and own real API profile', text().includes('NCT fixture 70') && localStorage.getItem('token') === 'fixture-elder');
       route('/ca-nhan/ho-so'); await wait(() => text().includes('Đã liên kết Google'));
       check('linked state survives logout/new login via backend status', text().includes('Đã liên kết Google'));
-      check('Google never creates a sixth destination', document.querySelectorAll('.elderly-web-nav a').length === 5);
+      check('Google retains five primary destinations', document.querySelectorAll('.elderly-web-nav > a').length === 5);
       check('Google UI fits viewport', document.documentElement.scrollWidth <= innerWidth + 1);
       const nodes = [...document.querySelectorAll('.elderly-web *')].filter(el => !['svg', 'path'].includes(el.tagName.toLowerCase()));
       const sizes = nodes.map(el => parseFloat(getComputedStyle(el).fontSize)); nodes.forEach((el, i) => { el.style.fontSize = `${sizes[i] * 1.8}px`; });
@@ -142,12 +155,100 @@ async function run() {
   await wait(ready);
   check('exact responsive viewport', innerWidth === width);
   check('own account/profile is shown', text().includes('NCT fixture 70'));
-  check('five navigation destinations', document.querySelectorAll('.elderly-web-nav a').length === 5);
+  check('five primary navigation destinations', document.querySelectorAll('.elderly-web-nav > a').length === 5);
   check('no horizontal overflow', document.documentElement.scrollWidth <= innerWidth + 1);
-  check('header and navigation targets fit', [...document.querySelectorAll('.elderly-web-header button,.elderly-web-nav a')].every(el => {
+  check('header and visible navigation targets fit', [...document.querySelectorAll('.elderly-web-header button,.elderly-web-nav a')].filter(el => el.checkVisibility()).every(el => {
     const rect = el.getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth + 1 && rect.height >= 44;
   }));
   check('personal profile is not persisted', ![...Array(localStorage.length)].map((_, i) => localStorage.key(i)).some(key => !['token', 'user'].includes(key)));
+  if (scenario === 'nav-shortcuts') {
+    const group = () => document.querySelector('.elderly-web-secondary-nav');
+    const health = () => group().querySelector('a[href="/ca-nhan/suc-khoe"]');
+    const family = () => group().querySelector('a[href="/ca-nhan/nguoi-than"]');
+    check('two secondary links open independent health and family pages', group().querySelectorAll('a').length === 2 && health() && family());
+    check('mobile bottom bar remains exactly five visible destinations', [...document.querySelectorAll('.elderly-web-nav > a')].filter(node => node.checkVisibility()).length === 5);
+    check('desktop shortcuts do not add mobile bottom destinations', group().checkVisibility() === (width > 768));
+    if (width > 768) health().click(); else document.querySelector('.elderly-home-measure-link').click();
+    await wait(() => document.getElementById('elderly-web-content').textContent.includes('Theo dõi sức khỏe') && [...document.querySelectorAll('button')].some(node => node.textContent.trim() === 'Thêm số đo'));
+    check('health link opens the real owner health screen', location.pathname === '/ca-nhan/suc-khoe');
+    clickButton('Thêm số đo'); await wait(() => document.querySelector('.ant-modal:not([style*="display: none"]) input[aria-label="Giá trị đo"]'));
+    check('existing measurement form is reused', document.body.textContent.includes('Huyết áp tâm thu') && document.body.textContent.includes('Huyết áp tâm trương'));
+    clickButton('Hủy'); await delay(100);
+    if (width > 768) family().click(); else {
+      const account = document.querySelector('[aria-label="Menu tài khoản"]');
+      account.scrollIntoView({ block: 'center' }); account.click();
+      await wait(() => document.querySelector('[role="menuitem"][data-menu-id$="relatives"]'));
+      const item = document.querySelector('[role="menuitem"][data-menu-id$="relatives"]');
+      item.focus(); check('mobile family destination is keyboard focusable', document.activeElement === item);
+      item.click();
+      await wait(() => account.getAttribute('aria-expanded') === 'false');
+    }
+    await wait(() => document.activeElement?.id === 'elderly-web-content' && document.querySelector('h1')?.textContent === 'Người thân của tôi');
+    const section = document.querySelector('[aria-label="Người thân được phép theo dõi"]');
+    check('family opens its own URL and page heading', location.pathname === '/ca-nhan/nguoi-than' && location.hash === '' && section);
+    check('family page cannot grant access or create an account', section.querySelectorAll('button').length === 1);
+    check('profile is not selected on the independent family page', !document.querySelector('.elderly-web-nav > a[href="/ca-nhan/ho-so"]').hasAttribute('aria-current'));
+    if (width > 768) {
+      check('family shortcut shows current page', family().getAttribute('aria-current') === 'page');
+      scrollTo(0, 0); family().click(); await delay(80);
+      check('reselecting the page remains operable', document.activeElement?.id === 'elderly-web-content');
+    }
+    const nodes = [...document.querySelectorAll('.elderly-web *')].filter(node => !['svg', 'path'].includes(node.tagName.toLowerCase()));
+    const sizes = nodes.map(node => parseFloat(getComputedStyle(node).fontSize)); nodes.forEach((node, index) => { node.style.fontSize = `${sizes[index] * 1.8}px`; });
+    await delay(100); check('navigation supports 180% text without horizontal overflow', document.documentElement.scrollWidth <= innerWidth + 1);
+    document.querySelectorAll('.elderly-web *').forEach(node => node.style.removeProperty('font-size'));
+    route('/ca-nhan'); await delay(100); scrollTo(0, 0);
+    return { checks };
+  }
+  if (scenario === 'own-relatives') {
+    const section = () => document.querySelector('[aria-label="Người thân được phép theo dõi"]');
+    await wait(() => section()?.textContent.includes('Người thân fixture 70'));
+    check('direct family URL opens the protected dedicated page', location.pathname === '/ca-nhan/nguoi-than' && document.querySelector('h1').textContent === 'Người thân của tôi');
+    route('/ca-nhan/ho-so'); await wait(() => document.querySelector('h1')?.textContent === 'Hồ sơ của tôi');
+    check('profile no longer embeds the family list', !section() && !text().includes('Người thân fixture 70'));
+    route('/ca-nhan/ho-so#nguoi-than'); await wait(() => section()?.textContent.includes('Người thân fixture 70'));
+    check('old profile anchor redirects to the dedicated page', location.pathname === '/ca-nhan/nguoi-than' && location.hash === '');
+    history.back(); await wait(() => document.querySelector('h1')?.textContent === 'Hồ sơ của tôi');
+    check('back navigation does not loop through the old anchor', location.pathname === '/ca-nhan/ho-so' && !section());
+    history.forward(); await wait(() => section()?.textContent.includes('Người thân fixture 70'));
+    check('forward navigation restores the family page', location.pathname === '/ca-nhan/nguoi-than');
+    check('actual linked family, relation, phone and missing phone render', section().textContent.includes('Con gái') && section().textContent.includes('0000000001') && section().textContent.includes('Chưa cập nhật'));
+    check('sharing scope is explicit and read only', section().textContent.includes('Không chia sẻ: Dị ứng, Kết quả khám') && section().querySelectorAll('button').length === 1);
+    const control = mode => fetch('/__ownRelativesControl', { method: 'POST', body: JSON.stringify({ mode }) });
+    const refresh = () => section().querySelector('button').click();
+    await control('empty'); refresh(); await wait(() => section().textContent.includes('Chưa có Người thân được liên kết'));
+    check('revocation refresh erases previous family', !section().textContent.includes('Người thân fixture 70'));
+    await control('error'); refresh(); await wait(() => section().textContent.includes('Không tải được Người thân fixture'));
+    await control('denied'); refresh(); await wait(() => section().textContent.includes('Đã mất quyền xem fixture'));
+    check('API failure/denial never preserves family details', !section().textContent.includes('0000000001'));
+    await control('foreign'); refresh(); await wait(() => section().textContent.includes('không khớp'));
+    check('foreign family payload is rejected', !section().textContent.includes('Người thân fixture 70'));
+    await control('normal'); refresh(); await wait(() => section().textContent.includes('Người thân fixture 70'));
+    localStorage.setItem('token', 'fixture-switched'); dispatchEvent(new StorageEvent('storage', { key: 'token' }));
+    await wait(() => section()?.textContent.includes('Người thân fixture 71'));
+    check('account switch clears old family', !section().textContent.includes('Người thân fixture 70'));
+    const nodes = [section(), ...section().querySelectorAll('*')].filter(node => !['svg', 'path'].includes(node.tagName.toLowerCase()));
+    const sizes = nodes.map(node => parseFloat(getComputedStyle(node).fontSize)); nodes.forEach((node, index) => { node.style.fontSize = `${sizes[index] * 1.8}px`; });
+    await delay(100); check('family list supports 180% text without horizontal overflow', document.documentElement.scrollWidth <= innerWidth + 1);
+    [section(), ...section().querySelectorAll('*')].forEach(node => node.style.removeProperty('font-size'));
+    section().scrollIntoView({ block: 'start' }); window.scrollBy(0, -120); await delay(100);
+    return { checks };
+  }
+  if (scenario === 'phase2') {
+    await wait(() => text().includes('Chưa có ngưỡng đánh giá'));
+    check('unknown thresholds do not display a normal green tag', !document.querySelector('.elderly-care-metric .ant-tag-green'));
+    route('/ca-nhan/ho-so'); await wait(() => text().includes('Số điện thoại tài khoản'));
+    check('profile name and account name are distinct', text().includes('Họ tên hồ sơ NCT') && text().includes('Tên tài khoản:') && text().includes('Tài khoản fixture 70'));
+    check('profile contact phone and account phone both use real API fields', text().includes('Số điện thoại liên hệ') && text().includes('0000000012') && text().includes('0000000015'));
+    clickButton('Chỉnh sửa hồ sơ'); await wait(() => document.getElementById('elderly-profile-edit_soDienThoai'));
+    check('profile edit label explains phone meaning', document.querySelector('label[for="elderly-profile-edit_soDienThoai"]').textContent === 'Số điện thoại liên hệ');
+    check('only contact phone is edited', document.getElementById('elderly-profile-edit_soDienThoai').value === '0000000012');
+    const nodes = [...document.querySelectorAll('.elderly-web *')].filter(el => !['svg', 'path'].includes(el.tagName.toLowerCase()));
+    const sizes = nodes.map(el => parseFloat(getComputedStyle(el).fontSize)); nodes.forEach((el, i) => { el.style.fontSize = `${sizes[i] * 1.8}px`; });
+    dispatchEvent(new Event('resize')); await delay(100);
+    check('profile remains inside viewport at 180% text', document.documentElement.scrollWidth <= innerWidth + 1);
+    return { checks };
+  }
   if (scenario.startsWith('design-')) {
     const ratio = (fg, bg) => {
       const light = color => color.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255)
@@ -185,14 +286,17 @@ async function run() {
         scaled = nodes.map(el => [el, el.style.fontSize]); nodes.forEach((el, i) => { el.style.fontSize = `${sizes[i] * 1.8}px`; });
         dispatchEvent(new Event('resize')); await delay(80);
       }
+      await settleMotion();
       if (largeForm) {
         const submit = document.querySelector('[role="dialog"] button[type="submit"]');
-        submit.scrollIntoView({ block: 'center', behavior: 'instant' }); await delay(50);
+        submit.scrollIntoView({ block: 'center', behavior: 'instant' }); await settleMotion();
         const rect = submit.getBoundingClientRect();
-        check('180% modal submit fits width and is reachable without a write', rect.left >= 0 && rect.right <= width + 1 && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest('button') === submit);
+        const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        check('180% modal submit fits width and is reachable without a write', rect.left >= 0 && rect.right <= width + 1 && hit?.closest('button') === submit);
+        if (!checks.at(-1).pass) checks.at(-1).details = { rect: rect.toJSON(), hit: hit?.outerHTML.slice(0, 900), viewport: [innerWidth, innerHeight] };
       }
       check(`${name} ${large ? '180% ' : ''}fits viewport`, document.documentElement.scrollWidth <= width + 1);
-      check(`${name} retains exactly five destinations`, document.querySelectorAll('.elderly-web-nav a').length === 5);
+      check(`${name} retains exactly five primary destinations`, document.querySelectorAll('.elderly-web-nav > a').length === 5);
       if (homeSix) {
         const grid = document.querySelector('.elderly-home-metrics'), cards = [...grid.children];
         const expectedColumns = getComputedStyle(grid).gridTemplateColumns.split(' ').length;

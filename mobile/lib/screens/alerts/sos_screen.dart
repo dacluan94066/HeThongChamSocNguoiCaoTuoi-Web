@@ -11,6 +11,7 @@ import '../../services/alert_service.dart';
 import '../../services/api_client.dart';
 import '../../services/caregiver_service.dart';
 import '../../services/mobile_realtime_service.dart';
+import '../../utils/sos_location_policy.dart';
 import 'alerts_dashboard_ui.dart';
 
 class SosScreen extends StatefulWidget {
@@ -21,7 +22,7 @@ class SosScreen extends StatefulWidget {
 }
 
 class _SosScreenState extends State<SosScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const teal = CareSeniorColors.deepGreen;
   static const red = CareSeniorColors.danger;
   late final AnimationController _hold =
@@ -29,7 +30,7 @@ class _SosScreenState extends State<SosScreen>
         ..addStatusListener((status) {
           if (status == AnimationStatus.completed) {
             HapticFeedback.heavyImpact();
-            unawaited(_send());
+            unawaited(_send(generation: _interactionGeneration));
           }
         });
   List<Map<String, dynamic>> _caregivers = const [];
@@ -40,10 +41,18 @@ class _SosScreenState extends State<SosScreen>
   bool _releasedEarly = false;
   String? _error;
   String? _locationNote;
+  int _interactionGeneration = 0;
+  bool _interactive = true;
+  bool _requestInFlight = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _interactive =
+        WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    ApiClient.sessionChanges.addListener(_onSessionChanged);
     MobileRealtimeService.instance.alertRevision.addListener(_refreshHistory);
     MobileRealtimeService.instance.notificationRevision.addListener(
       _refreshHistory,
@@ -53,6 +62,9 @@ class _SosScreenState extends State<SosScreen>
 
   @override
   void dispose() {
+    _interactionGeneration++;
+    WidgetsBinding.instance.removeObserver(this);
+    ApiClient.sessionChanges.removeListener(_onSessionChanged);
     MobileRealtimeService.instance.alertRevision.removeListener(
       _refreshHistory,
     );
@@ -62,6 +74,69 @@ class _SosScreenState extends State<SosScreen>
     _hold.dispose();
     super.dispose();
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _interactive = state == AppLifecycleState.resumed;
+    if (!_interactive) _cancelUnsentInteraction();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!TickerMode.valuesOf(context).enabled) _cancelUnsentInteraction();
+  }
+
+  @override
+  void deactivate() {
+    _cancelUnsentInteraction(notify: false);
+    super.deactivate();
+  }
+
+  void _cancelUnsentInteraction({bool notify = true}) {
+    _interactionGeneration++;
+    // A submitted SOS still needs its real result.
+    if (_requestInFlight) {
+      return;
+    }
+    final wasActive = _hold.isAnimating || _gettingPosition;
+    if (notify) {
+      _hold.reset();
+    } else {
+      // Descendant AnimatedBuilders may already be inactive during teardown.
+      _hold.stop();
+    }
+    void clear() {
+      _sending = false;
+      _gettingPosition = false;
+      if (wasActive) _releasedEarly = true;
+    }
+
+    if (notify && mounted) {
+      setState(clear);
+    } else {
+      clear();
+    }
+  }
+
+  void _onSessionChanged() {
+    _cancelUnsentInteraction();
+    if (!mounted) return;
+    setState(() {
+      _requestInFlight = false;
+      _sending = false;
+      _caregivers = const [];
+      _latest = null;
+      _sent = null;
+      _error = null;
+      _locationNote = null;
+    });
+  }
+
+  bool get _foreground =>
+      _interactive &&
+      TickerMode.valuesOf(context).enabled &&
+      (ModalRoute.of(context)?.isCurrent ?? true);
 
   void _refreshHistory() => unawaited(_load());
 
@@ -89,7 +164,8 @@ class _SosScreenState extends State<SosScreen>
   }
 
   void _startHold(TapDownDetails _) {
-    if (_sending) return;
+    if (_sending || !_foreground) return;
+    _interactionGeneration++;
     setState(() {
       _error = null;
       _releasedEarly = false;
@@ -105,15 +181,24 @@ class _SosScreenState extends State<SosScreen>
     _hold.reset();
   }
 
-  Future<Position?> _positionOrNull() async {
+  Future<({Position? position, String? note})> _positionOrNull() async {
+    Future<bool> mayAttach(Position position) async {
+      final permission = await Geolocator.checkPermission();
+      return (permission == LocationPermission.whileInUse ||
+              permission == LocationPermission.always) &&
+          isUsableSosPosition(position);
+    }
+
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        _locationNote = 'GPS đang tắt. SOS sẽ gửi không kèm vị trí.';
-        return null;
+        return (
+          position: null,
+          note: 'GPS đang tắt. SOS sẽ gửi không kèm vị trí.',
+        );
       }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        if (!mounted) return null;
+        if (!mounted) return (position: null, note: null);
         final explain = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -134,43 +219,60 @@ class _SosScreenState extends State<SosScreen>
           ),
         );
         if (explain != true) {
-          _locationNote = 'Bạn đã chọn gửi SOS không kèm vị trí.';
-          return null;
+          return (
+            position: null,
+            note: 'Bạn đã chọn gửi SOS không kèm vị trí.',
+          );
         }
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        _locationNote = 'Chưa có quyền vị trí. SOS đã gửi không kèm tọa độ.';
-        return null;
+      if (permission != LocationPermission.whileInUse &&
+          permission != LocationPermission.always) {
+        return (
+          position: null,
+          note: 'Chưa có quyền vị trí. SOS đã gửi không kèm tọa độ.',
+        );
       }
       try {
-        return await Geolocator.getCurrentPosition(
+        final current = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
             timeLimit: Duration(seconds: 8),
           ),
         );
-      } catch (_) {
-        final last = await Geolocator.getLastKnownPosition().timeout(
-          const Duration(seconds: 2),
-        );
-        if (last == null) {
-          _locationNote = 'Không lấy được GPS. SOS đã gửi không kèm tọa độ.';
-        } else {
-          _locationNote =
-              'Đã dùng vị trí gần nhất vì GPS hiện tại không khả dụng.';
+        if (await mayAttach(current)) {
+          return (position: current, note: null);
         }
-        return last;
+      } catch (_) {
+        // Only a trustworthy recent cached fix may replace unavailable GPS.
       }
+      final last = await Geolocator.getLastKnownPosition().timeout(
+        const Duration(seconds: 2),
+      );
+      if (last != null && await mayAttach(last)) {
+        return (
+          position: last,
+          note:
+              'Đã dùng vị trí gần nhất, ghi nhận lúc '
+              '${alertsDisplayTime(last.timestamp.toIso8601String())}.',
+        );
+      }
+      return (
+        position: null,
+        note:
+            'Vị trí quá cũ hoặc chưa đủ tin cậy. SOS đã gửi không kèm tọa độ.',
+      );
     } catch (_) {
-      _locationNote = 'Không lấy được vị trí. SOS đã gửi không kèm tọa độ.';
-      return null;
+      return (
+        position: null,
+        note: 'Không lấy được vị trí. SOS đã gửi không kèm tọa độ.',
+      );
     }
   }
 
-  Future<void> _send() async {
-    if (_sending) return;
+  Future<void> _send({int? generation}) async {
+    if (_sending || !_foreground) return;
+    final intent = generation ?? ++_interactionGeneration;
     final version = ApiClient.sessionVersion;
     setState(() {
       _sending = true;
@@ -178,9 +280,22 @@ class _SosScreenState extends State<SosScreen>
       _error = null;
       _locationNote = null;
     });
-    final position = await _positionOrNull();
-    if (!mounted || version != ApiClient.sessionVersion) return;
-    setState(() => _gettingPosition = false);
+    final location = await _positionOrNull();
+    if (!mounted ||
+        version != ApiClient.sessionVersion ||
+        intent != _interactionGeneration) {
+      return;
+    }
+    if (!_foreground) {
+      _cancelUnsentInteraction();
+      return;
+    }
+    final position = location.position;
+    setState(() {
+      _gettingPosition = false;
+      _locationNote = location.note;
+      _requestInFlight = true;
+    });
     try {
       final result = await CaregiverService.instance.sendEmergencyAlert(
         noiDung: 'Cảnh báo SOS khẩn cấp',
@@ -192,6 +307,7 @@ class _SosScreenState extends State<SosScreen>
       setState(() {
         _sent = result;
         _sending = false;
+        _requestInFlight = false;
       });
       _hold.reset();
       unawaited(_load());
@@ -199,6 +315,7 @@ class _SosScreenState extends State<SosScreen>
       if (!mounted || version != ApiClient.sessionVersion) return;
       setState(() {
         _sending = false;
+        _requestInFlight = false;
         _error = error is ApiException
             ? error.message
             : 'Không thể gửi SOS. Vui lòng thử lại.';

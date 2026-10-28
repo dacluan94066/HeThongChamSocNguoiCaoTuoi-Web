@@ -1,3 +1,4 @@
+const { AccountIdentityError, reserveAccountIdentifiers } = require('../utils/accountIdentity');
 // controllers/auth.controller.js - Xu ly dang ky, dang nhap, lay thong tin ca nhan
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -6,6 +7,8 @@ const { poolPromise, sql } = require('../config/db');
 const { sendMail } = require('../config/mailer');
 const { ok, fail } = require('../utils/response');
 const { validateElderlyProfile } = require('../utils/elderlyProfileValidation');
+const { createRelativeRegistration } = require('../services/relativeRegistration.service');
+const registerRelative = createRelativeRegistration({ poolPromise, sql });
 const {
   GoogleIdentityError,
   verifyGoogleIdToken,
@@ -207,6 +210,7 @@ const register = async (req, res, next) => {
     // Tai khoan va ho so tuong ung luon duoc tao trong cung transaction.
     transaction = new sql.Transaction(pool);
     await transaction.begin();
+    await reserveAccountIdentifiers(transaction, sql, { phone: soDienThoai, username: normalizedUsername });
     const caregiverMatch = await new sql.Request(transaction)
       .input('email', sql.VarChar(100), normalizedEmail)
       .query(`
@@ -326,6 +330,7 @@ const register = async (req, res, next) => {
     if (transaction) {
       try { await transaction.rollback(); } catch (_) { /* SQL da ket thuc transaction */ }
     }
+    if (err instanceof AccountIdentityError) return fail(res, err.message, err.errorCode, err.statusCode);
     next(err);
   }
 };
@@ -441,6 +446,7 @@ const registerCaregiver = async (req, res, next) => {
     if (err.number === 2601 || err.number === 2627) {
       return fail(res, 'Tên đăng nhập, email hoặc số điện thoại đã được sử dụng', 'DUPLICATE_ACCOUNT', 409);
     }
+    if (err instanceof AccountIdentityError) return fail(res, err.message, err.errorCode, err.statusCode);
     next(err);
   }
 };
@@ -556,6 +562,7 @@ const login = async (req, res, next) => {
       },
     }, 'Dang nhap thanh cong');
   } catch (err) {
+    if (err instanceof AccountIdentityError) return fail(res, err.message, err.errorCode, err.statusCode);
     next(err);
   }
 };
@@ -885,6 +892,7 @@ const me = async (req, res, next) => {
 
 // PUT /api/auth/me - Cap nhat thong tin tai khoan dang dang nhap
 const updateMe = async (req, res, next) => {
+  let transaction;
   try {
     const { hoTen, email, soDienThoai } = req.body;
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -900,7 +908,10 @@ const updateMe = async (req, res, next) => {
     }
 
     const pool = await poolPromise;
-    const duplicateEmail = await pool.request()
+    transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    await reserveAccountIdentifiers(transaction, sql, { userId: req.user.userId, phone: soDienThoai });
+    const duplicateEmail = await new sql.Request(transaction)
       .input('userId', sql.Int, req.user.userId)
       .input('email', sql.VarChar, normalizedEmail)
       .query(`
@@ -915,10 +926,11 @@ const updateMe = async (req, res, next) => {
       `);
 
     if (duplicateEmail.recordset.length > 0) {
+      await transaction.rollback(); transaction = null;
       return fail(res, 'Email da duoc tai khoan khac su dung', 'EMAIL_TAKEN', 409);
     }
 
-    const result = await pool.request()
+    const result = await new sql.Request(transaction)
       .input('userId', sql.Int, req.user.userId)
       .input('hoTen', sql.NVarChar, hoTen.trim())
       .input('email', sql.VarChar, normalizedEmail)
@@ -941,8 +953,11 @@ const updateMe = async (req, res, next) => {
         WHERE nd.UserID = @userId
       `);
 
+    await transaction.commit(); transaction = null;
     return ok(res, result.recordset[0], 'Cap nhat tai khoan thanh cong');
   } catch (err) {
+    if (transaction) { try { await transaction.rollback(); } catch (_) { /* Already closed. */ } }
+    if (err instanceof AccountIdentityError) return fail(res, err.message, err.errorCode, err.statusCode);
     next(err);
   }
 };
@@ -1205,6 +1220,7 @@ module.exports = {
   googleWeb,
   register,
   registerCaregiver,
+  registerRelative,
   login,
   googleLogin,
   me,

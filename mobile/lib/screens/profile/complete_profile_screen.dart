@@ -203,7 +203,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                     children: [
                       _field(
                         'complete-name',
-                        'Họ và tên *',
+                        'Họ tên hồ sơ NCT *',
                         _name,
                         100,
                         required: true,
@@ -245,7 +245,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                       ),
                       _field(
                         'complete-phone',
-                        'Số điện thoại',
+                        'Số điện thoại liên hệ',
                         _phone,
                         10,
                         digits: true,

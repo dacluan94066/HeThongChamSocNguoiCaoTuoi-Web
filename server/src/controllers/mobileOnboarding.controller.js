@@ -67,9 +67,6 @@ const createMine = async (req, res, next) => {
       .query(`INSERT INTO HoSoNguoiCaoTuoi(UserID,HoTen,NgaySinh,GioiTinh,CCCD,SoDienThoai,DiaChi,NhomMau,BenhNen,DiUng,TrangThai,NguoiTaoID)
         OUTPUT INSERTED.NguoiCaoTuoiID AS id
         VALUES(@userId,@hoTen,@ngaySinh,@gioiTinh,@cccd,@phone,@diaChi,@nhomMau,@benhNen,@diUng,N'DangTheoDoi',@userId)`);
-    await new sql.Request(transaction).input('userId', sql.Int, req.user.userId)
-      .input('hoTen', sql.NVarChar(100), profile.hoTen).input('phone', sql.VarChar(15), profile.soDienThoai)
-      .query('UPDATE NguoiDung SET HoTen=@hoTen,SoDienThoai=@phone WHERE UserID=@userId');
     await transaction.commit(); transaction = null;
     return ok(res, { id: inserted.recordset[0].id, userId: req.user.userId, ...profile,
       email: account.email, trangThai: 'DangTheoDoi' }, 'Đã tạo hồ sơ người cao tuổi', 201);

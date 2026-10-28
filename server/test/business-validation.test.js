@@ -158,7 +158,7 @@ test('Rescheduling keeps ChuaDen and notifies the other assigned account', async
   const pool = { request: () => ({ input() { return this; }, async query(statement) {
     queries++;
     if (queries === 1) return { recordset: [{ elderlyId: 2, ngayKham: originalDay,
-      thoiGianKham: `${originalDay}T08:00`, trangThai: 'ChuaDen' }] };
+      thoiGianKham: `${originalDay}T08:00`, originalTime: `${originalDay}T08:00:00`, trangThai: 'ChuaDen' }] };
     if (queries === 2) {
       updateSql = statement;
       return { recordset: [{ affectedRows: 1 }],

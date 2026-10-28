@@ -3,6 +3,9 @@
 import axiosClient from './axiosClient';
 import { disconnectSocket } from './socketClient';
 import { webSession, sessionChangedError } from '../utils/webSession';
+import { createPublicRegistrationApi } from '../utils/publicRegistration';
+
+export const registerWebAccount = values => createPublicRegistrationApi(axiosClient)(values);
 
 // ─── Đăng nhập ───────────────────────────────────────────────────────────────
 // Gọi POST /auth/login với body { tenDangNhap, matKhau, platform }

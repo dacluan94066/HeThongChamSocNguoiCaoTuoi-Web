@@ -28,6 +28,7 @@ class HealthUiAdapter extends HomeUiAdapter {
       'giaTri': value,
       'giaTriPhu': secondary,
       'laBatThuong': abnormal,
+      'trangThaiDanhGia': abnormal ? 'BAT_THUONG' : 'BINH_THUONG',
       'donVi': unit,
       'thoiGianDo': now
           .subtract(Duration(days: days, hours: 1))
@@ -158,12 +159,10 @@ Future<void> enterHealthPressure(
   WidgetTester tester, {
   String systolic = '139',
   String diastolic = '81',
-  String pulse = '77',
 }) async {
   for (final (key, text) in [
     ('health-field-Tâm thu', systolic),
     ('health-field-Tâm trương', diastolic),
-    ('health-field-Nhịp tim (nhịp/phút)', pulse),
   ]) {
     final field = find.byKey(ValueKey(key));
     await tester.ensureVisible(field);
@@ -194,6 +193,67 @@ void main() {
     HealthMetricService.instance.clearCache();
     fixture.dispose();
   });
+
+  for (final entry in [
+    ('Huyết áp', 701, '139', 'mmHg'),
+    ('Nhịp tim', 17, '85', 'nhịp/phút'),
+    ('Đường huyết', 206, '95', 'mg/dL'),
+    ('Nhiệt độ cơ thể', 42, '37.2', '°C'),
+    ('SpO2', 518, '98', '%'),
+    ('Cân nặng', 90, '75', 'kg'),
+  ]) {
+    testWidgets(
+      '${entry.$1} uses its own fields, unit and shuffled catalog ID',
+      (tester) async {
+        adapter.types.firstWhere(
+          (row) => row['tenChiSo'] == 'Nhiệt độ',
+        )['tenChiSo'] = 'Nhiệt độ cơ thể';
+        adapter.types = adapter.types.reversed.toList();
+        final type = adapter.types.firstWhere(
+          (row) => row['tenChiSo'] == entry.$1,
+        );
+        type['id'] = entry.$2;
+        await tester.pumpWidget(healthUiApp());
+        await settleHomeUi(tester);
+        await chooseHealthType(tester, entry.$1);
+        await openHealthSheet(tester);
+        expect(
+          tester
+              .widget<HealthMeasurementSheet>(
+                find.byType(HealthMeasurementSheet),
+              )
+              .name,
+          entry.$1,
+        );
+        expect(
+          find.byType(TextField),
+          findsNWidgets(entry.$1 == 'Huyết áp' ? 2 : 1),
+        );
+        if (entry.$1 == 'Huyết áp') {
+          expect(
+            find.byKey(const ValueKey('health-field-Nhịp tim (nhịp/phút)')),
+            findsNothing,
+          );
+          await enterHealthPressure(tester);
+        } else {
+          final field = find.byKey(const ValueKey('health-value-field'));
+          expect(
+            tester.widget<TextField>(field).decoration!.labelText,
+            'Giá trị ${entry.$4}',
+          );
+          await tester.enterText(field, entry.$3);
+        }
+        await tapHealthSave(tester);
+        expect(adapter.writes.length, 1);
+        expect(adapter.writes.single.data, {
+          'loaiChiSoId': entry.$2,
+          'giaTri': double.parse(entry.$3),
+          if (entry.$1 == 'Huyết áp') 'giaTriPhu': 81.0,
+        });
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('Health uses API types, latest values, flags, units and ranges', (
     tester,
@@ -273,7 +333,7 @@ void main() {
         await openHealthSheet(tester);
         expect(
           find.byType(TextField),
-          findsNWidgets(type['tenChiSo'] == 'Huyết áp' ? 3 : 1),
+          findsNWidgets(type['tenChiSo'] == 'Huyết áp' ? 2 : 1),
         );
         await tester.tap(find.byKey(const ValueKey('health-close-sheet')));
         await tester.pumpAndSettle();
@@ -285,7 +345,7 @@ void main() {
   );
 
   testWidgets(
-    'Closing and system back preserve controller text and do not save',
+    'Opening a new pressure form resets draft after close and does not save',
     (tester) async {
       await tester.pumpWidget(healthUiApp());
       await settleHomeUi(tester);
@@ -304,7 +364,7 @@ void main() {
             )
             .controller!
             .text,
-        '139',
+        '',
       );
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -315,7 +375,7 @@ void main() {
   );
 
   testWidgets(
-    'Pressure save preserves two separate POSTs and reloads real service data',
+    'Pressure save sends only BP with two values and never creates a heart-rate record',
     (tester) async {
       await tester.pumpWidget(healthUiApp());
       await settleHomeUi(tester);
@@ -328,7 +388,6 @@ void main() {
       );
       expect(adapter.writes.map((r) => r.data).toList(), [
         {'loaiChiSoId': 1, 'giaTri': 139.0, 'giaTriPhu': 81.0},
-        {'loaiChiSoId': 2, 'giaTri': 77.0},
       ]);
       expect(find.text('Đã lưu chỉ số sức khỏe.'), findsOneWidget);
       expect(
@@ -350,12 +409,16 @@ void main() {
       await tapHealthSave(tester);
       expect(adapter.writes, isEmpty);
       expect(
-        find.text('Nhập huyết áp và nhịp tim hợp lệ trước khi lưu.'),
+        find.text(
+          'Nhập huyết áp tâm thu từ 50–300 và tâm trương từ 30–200 mmHg; tâm thu phải lớn hơn tâm trương.',
+        ),
         findsOneWidget,
       );
       expect(
         find
-            .text('Nhập huyết áp và nhịp tim hợp lệ trước khi lưu.')
+            .text(
+              'Nhập huyết áp tâm thu từ 50–300 và tâm trương từ 30–200 mmHg; tâm thu phải lớn hơn tâm trương.',
+            )
             .hitTestable(),
         findsOneWidget,
       );
@@ -507,16 +570,16 @@ void main() {
   );
 
   testWidgets(
-    'Second pressure request failure preserves partial result and backend error',
+    'Pressure request failure retains backend error and does not partially save another metric',
     (tester) async {
-      adapter.rejectType = 2;
+      adapter.rejectType = 1;
       await tester.pumpWidget(healthUiApp());
       await settleHomeUi(tester);
       await openHealthSheet(tester);
       await enterHealthPressure(tester);
       await tapHealthSave(tester);
-      expect(adapter.writes.length, 2);
-      expect(adapter.readings.first['giaTri'], 139);
+      expect(adapter.writes.length, 1);
+      expect(adapter.readings.where((row) => row['id'] != null), isEmpty);
       expect(
         find
             .text('LỖI KIỂM THỬ TỪ BACKEND: giá trị không hợp lệ.')
@@ -527,7 +590,7 @@ void main() {
         tester
             .widget<HealthLatestCard>(find.byType(HealthLatestCard))
             .latest!['giaTri'],
-        139,
+        137,
       );
       expect(tester.takeException(), isNull);
     },

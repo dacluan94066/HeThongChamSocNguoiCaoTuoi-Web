@@ -3,7 +3,7 @@ import axios from 'axios';
 import { message } from 'antd';
 import { webSession, sessionChangedError } from '../utils/webSession';
 
-const publicAuth = config => ['/auth/login', '/auth/register', '/auth/register-caregiver',
+const publicAuth = config => ['/auth/login', '/auth/register', '/auth/register-caregiver', '/auth/register-relative',
   '/auth/forgot-password', '/auth/verify-otp', '/auth/reset-password-with-token',
   '/auth/google/web/config', '/auth/google/web/login/challenge', '/auth/google/web/login']
   .includes(config?.url?.split('?')[0]);

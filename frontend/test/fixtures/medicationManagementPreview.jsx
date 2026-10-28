@@ -20,6 +20,13 @@ const row = id => document.querySelector(`tr[data-row-key="${id}"]`);
 const button = (id, text) => [...(row(id)?.querySelectorAll('button') || [])].find(b => b.textContent.trim() === text);
 const control = async action => (await fetch('/__control', { method: 'POST', body: JSON.stringify({ action }) })).json();
 const dialog = () => [...document.querySelectorAll('[role="dialog"]')].find(el => el.checkVisibility());
+const inputValue = (element, value) => {
+  element.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+};
+const enter = element => element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
 async function run() {
   const checks = [];
   const check = (name, pass) => { checks.push({ name, pass: Boolean(pass) }); if (!pass) throw Error(name); };
@@ -66,6 +73,44 @@ async function run() {
     await wait(() => !button(2, 'Bỏ lỡ') && row(2)?.textContent.includes('Bỏ lỡ'));
     check('successful missed update retains late confirmation', button(2, 'Xác nhận đã uống'));
     const state = await control('snapshot'); check('one successful write followed by refresh', state.patches === 1 && state.readsAfterWrite === 1);
+  } else if (scenario.startsWith('prescription-')) {
+    [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Tạo đơn thuốc').click();
+    await wait(() => dialog()?.querySelector('#nguoiCaoTuoiId'));
+    const selectOption = async (id, text) => {
+      const select = document.getElementById(id);
+      select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      select.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
+      await wait(() => [...document.querySelectorAll('.ant-select-item-option')].some(el => el.checkVisibility() && el.textContent.includes(text)));
+      [...document.querySelectorAll('.ant-select-item-option')].find(el => el.checkVisibility() && el.textContent.includes(text)).click();
+      await delay(80);
+    };
+    await selectOption('nguoiCaoTuoiId', 'NCT fixture');
+    await selectOption('danhSachThuoc_0_thuocId', 'Thuốc kiểm thử thời gian');
+    inputValue(document.getElementById('danhSachThuoc_0_lieuDung'), 'LIỀU GIẢ KIỂM THỬ');
+    const end = document.getElementById('ngayKetThuc');
+    // Copy the displayed start date; do not depend on the browser locale format.
+    inputValue(end, document.getElementById('ngayBatDau').value);
+    await delay(80); enter(end); await delay(80); end.blur();
+    const time = document.getElementById('danhSachThuoc_0_gioUong_0');
+    inputValue(time, '00:00'); await delay(80); enter(time); await delay(80); time.blur();
+    await wait(() => dialog()?.textContent.includes('Không còn giờ uống hợp lệ'));
+    check('past-only range has clear inline first-dose warning', dialog().textContent.includes('Đơn thuốc chưa được lưu.'));
+    dialog().querySelector('.modal-save-button').click();
+    await wait(() => dialog()?.textContent.includes('Thuốc dòng 1: không còn giờ uống hợp lệ'));
+    check('invalid range is blocked before POST and preserves form', (await control('snapshot')).prescriptions.length === 0 && dialog());
+    if (scenario === 'prescription-recurrence') {
+      // Clear the optional end date: existing policy is a 30-day recurrence.
+      const clear = end.closest('.ant-picker').querySelector('.ant-picker-clear');
+      clear.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); clear.click();
+      await wait(() => dialog()?.textContent.includes('Liều đầu tiên: 00:00') && dialog()?.textContent.includes('Bỏ qua 1 cữ'));
+      check('recurrence previews tomorrow instead of rejecting early clock time', dialog().textContent.includes('giờ Việt Nam'));
+      dialog().querySelector('.modal-save-button').click();
+      await wait(() => !dialog());
+      const state = await control('snapshot');
+      check('valid recurrence sends one existing API request without replay', state.prescriptions.length === 1 && state.prescriptions[0].ngayKetThuc === null && state.prescriptions[0].danhSachThuoc[0].gioUong[0] === '00:00');
+    } else {
+      dialog().querySelector('.modal-cancel-button').click(); await wait(() => !dialog());
+    }
   } else if (scenario === 'server-error' || scenario === 'other-conflict') {
     button(2, 'Xác nhận đã uống').click();
     await wait(() => document.querySelector('.ant-message')?.textContent.includes('Fixture API error'));

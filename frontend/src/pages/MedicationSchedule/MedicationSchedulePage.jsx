@@ -23,7 +23,7 @@ import ModalForm, { FormSection } from '../../components/ModalForm';
 import MedicationQuickTabs from '../../components/MedicationQuickTabs';
 import { todayVietnam } from '../../utils/vietnamDate';
 import { getSocket } from '../../services/socketClient';
-import { findDuplicateMedicine, matchesScheduleDateRange, selectedMedicineIds } from '../../utils/medicationScheduleRules';
+import { findDuplicateMedicine, matchesScheduleDateRange, prescriptionDosePreview, selectedMedicineIds } from '../../utils/medicationScheduleRules';
 import { canSupplementDose } from '../../utils/medicationSupplement';
 
 const { Option } = Select;
@@ -55,10 +55,14 @@ const getShiftLabel = (schedule) => (
   SHIFT_OPTIONS.find((item) => item.key === getScheduleShift(schedule))?.label || 'Không xác định'
 );
 
-const PrescriptionMedicationRow = ({ field, form, medications, onRemove, canRemove }) => {
+const PrescriptionMedicationRow = ({ field, form, medications, onRemove, canRemove, now }) => {
   const timesPerDay = Form.useWatch(['danhSachThuoc', field.name, 'soLanMoiNgay'], form) || 1;
   const rows = Form.useWatch('danhSachThuoc', form) || [];
   const selectedElsewhere = selectedMedicineIds(rows, field.name);
+  const start = Form.useWatch('ngayBatDau', form);
+  const end = Form.useWatch('ngayKetThuc', form);
+  const preview = prescriptionDosePreview(start?.format('YYYY-MM-DD'), end?.format('YYYY-MM-DD'),
+    (rows[field.name]?.gioUong || []).map(time => time?.format('HH:mm')), now);
 
   const updateTimesPerDay = (value) => {
     const count = Math.max(1, Math.min(24, Number(value) || 1));
@@ -147,6 +151,17 @@ const PrescriptionMedicationRow = ({ field, form, medications, onRemove, canRemo
           </Col>
         ))}
       </Row>
+      {preview && <Alert
+        showIcon
+        role="status"
+        type={preview.firstDose ? 'info' : 'warning'}
+        title={preview.firstDose
+          ? `Liều đầu tiên: ${dayjs(preview.firstDose).format('HH:mm DD/MM/YYYY')} (giờ Việt Nam)`
+          : 'Không còn giờ uống hợp lệ trong khoảng ngày đã chọn'}
+        description={preview.firstDose
+          ? `${preview.skippedToday ? `Bỏ qua ${preview.skippedToday} cữ đã qua hôm nay. ` : ''}Chỉ tạo các liều còn ở tương lai; hệ thống kiểm tra lại khi lưu.`
+          : 'Chọn giờ còn ở tương lai hoặc kéo dài ngày kết thúc. Đơn thuốc chưa được lưu.'}
+      />}
     </Card>
   );
 };
@@ -290,6 +305,19 @@ const MedicationSchedulePage = () => {
     });
     if (duplicateTimes) {
       message.error('Giờ uống trong cùng một thuốc không được trùng nhau');
+      return;
+    }
+
+    const now = new Date();
+    const unavailable = values.danhSachThuoc.findIndex(item => !prescriptionDosePreview(
+      values.ngayBatDau.format('YYYY-MM-DD'), values.ngayKetThuc?.format('YYYY-MM-DD'),
+      item.gioUong.map(time => time.format('HH:mm')), now,
+    )?.firstDose);
+    if (unavailable >= 0) {
+      const error = `Thuốc dòng ${unavailable + 1}: không còn giờ uống hợp lệ. Chọn giờ tương lai hoặc kéo dài ngày kết thúc.`;
+      prescriptionForm.setFields([{ name: ['danhSachThuoc', unavailable, 'gioUong', 0], errors: [error] }]);
+      prescriptionForm.scrollToField(['danhSachThuoc', unavailable, 'gioUong', 0], { focus: true });
+      message.error(error);
       return;
     }
 
@@ -741,6 +769,7 @@ const MedicationSchedulePage = () => {
                     medications={medications}
                     onRemove={() => remove(field.name)}
                     canRemove={fields.length > 1}
+                    now={displayNow}
                   />
                 ))}
                 <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ soLanMoiNgay: 1, gioUong: [null] })}>

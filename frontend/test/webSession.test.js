@@ -63,6 +63,15 @@ test('invalid public login does not clear a newer authenticated session', async 
   const config = h.request({ url: '/auth/login', headers: {} });
   await assert.rejects(h.fail({ config, response: { status: 401, data: {} } })); assert.equal(f.data.get('token'), 'current');
 });
+
+test('public registrations, including relative, never invalidate another authenticated session on rejection', async () => {
+  const f = fixture(); f.session.replace('current', { userId: 70 }); const h = interceptors(f);
+  for (const url of ['/auth/register', '/auth/register-caregiver', '/auth/register-relative']) {
+    const config = h.request({ url, headers: {} });
+    await assert.rejects(h.fail({ config, response: { status: 401, data: {} } }));
+    assert.equal(f.data.get('token'), 'current'); assert.equal(h.redirects.length, 0);
+  }
+});
 test('Google public token rejection preserves CareSenior session, link JWT expiry clears it', async () => {
   const f = fixture(); f.session.replace('current', { userId: 70 }); const h = interceptors(f);
   for (const url of ['/auth/google/web/login', '/auth/google/web/login/challenge']) {

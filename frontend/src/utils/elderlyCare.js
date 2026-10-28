@@ -53,6 +53,7 @@ export function createElderlyCareApi(client, captureSession = () => undefined) {
     medications: (owner, day, signal) => owned('/elderly/me/medication-schedule', owner, signal, { tuNgay: day, denNgay: day }),
     appointments: (owner, upcoming, signal) => owned(`/elderly/me/appointments${upcoming ? '/upcoming' : ''}`, owner, signal),
     caregivers: signal => list('/elderly/me/caregivers', signal),
+    relatives: (owner, signal) => owned('/elderly/me/relatives', owner, signal),
     addMetric: async (values, signal) => data(await client.post('/elderly/me/health-metrics', {
       loaiChiSoId: values.loaiChiSoId, giaTri: values.giaTri, ...(values.giaTriPhu != null ? { giaTriPhu: values.giaTriPhu } : {}), ghiChu: values.ghiChu,
     }, config(signal))),

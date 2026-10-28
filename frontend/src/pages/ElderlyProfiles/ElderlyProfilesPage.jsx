@@ -464,7 +464,7 @@ const ElderlyProfilesPage = () => {
                     <div><dt>Ngày sinh</dt><dd>{selected.ngaySinh ? `${dayjs(selected.ngaySinh).format('DD/MM/YYYY')} (${selected.tuoi ?? '—'} tuổi)` : 'Chưa cập nhật'}</dd></div>
                     <div><dt>Giới tính</dt><dd>{selected.gioiTinh || 'Chưa cập nhật'}</dd></div>
                     <div><dt>CCCD</dt><dd>{selected.cmnd || 'Chưa cập nhật'}</dd></div>
-                    <div><dt>Số điện thoại</dt><dd>{selected.soDienThoai || 'Chưa cập nhật'}</dd></div>
+                    <div><dt>Số điện thoại liên hệ</dt><dd>{selected.soDienThoai || 'Chưa cập nhật'}</dd></div>
                     <div><dt>Tài khoản Mobile</dt><dd>{selected.userId ? 'Đã có tài khoản' : 'Chưa có tài khoản'}</dd></div>
                     {selected.userId && <div><dt>Tên đăng nhập</dt><dd>{selected.tenDangNhap || 'Chưa cập nhật'}</dd></div>}
                     {selected.email && <div><dt>Email</dt><dd>{selected.email}</dd></div>}
@@ -556,7 +556,7 @@ const ElderlyProfilesPage = () => {
         loading={saving}
         form={form}
       >
-        <ElderlyPersonalFields showStatus />
+        <ElderlyPersonalFields showStatus preserve />
         {editing && canResetPassword && (
           <FormSection title="Tài khoản đăng nhập Mobile" description="Đặt lại mật khẩu là thao tác riêng, không cần lưu thay đổi hồ sơ.">
             {editing.userId ? (
@@ -569,7 +569,7 @@ const ElderlyProfilesPage = () => {
             ) : <p>Hồ sơ chưa có tài khoản Mobile nên chưa thể đặt lại mật khẩu.</p>}
           </FormSection>
         )}
-        <ElderlyHealthFields />
+        <ElderlyHealthFields preserve />
       </ModalForm>
 
       <ModalForm

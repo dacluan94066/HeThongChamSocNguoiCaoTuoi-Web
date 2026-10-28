@@ -1,3 +1,4 @@
+import '../../utils/metric_assessment.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/care_senior_theme.dart';
@@ -89,21 +90,21 @@ class HealthScreenHeader extends StatelessWidget {
 }
 
 class HealthMetricStatus extends StatelessWidget {
-  const HealthMetricStatus({super.key, required this.abnormal});
-  final bool abnormal;
+  const HealthMetricStatus({super.key, required this.abnormal, this.assessed = true});
+  final bool abnormal, assessed;
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     decoration: BoxDecoration(
-      color: abnormal ? CareSeniorColors.dangerSurface : CareSeniorColors.mint,
+      color: abnormal ? CareSeniorColors.dangerSurface : assessed ? CareSeniorColors.mint : const Color(0xffeef2ef),
       borderRadius: BorderRadius.circular(20),
     ),
     child: Text(
-      abnormal ? '● Bất thường' : '● Bình thường',
+      abnormal ? '● Bất thường' : assessed ? '● Trong ngưỡng theo dõi' : '● Chưa có ngưỡng đánh giá',
       style: TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w600,
-        color: abnormal ? CareSeniorColors.danger : HomeVisuals.deep,
+        color: abnormal ? CareSeniorColors.danger : assessed ? HomeVisuals.deep : HomeVisuals.sub,
       ),
     ),
   );
@@ -182,7 +183,8 @@ class HealthLatestCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: HealthMetricStatus(
-                abnormal: latest!['laBatThuong'] == true,
+                abnormal: MetricAssessment.abnormal(latest),
+                assessed: MetricAssessment.assessed(latest),
               ),
             ),
             const SizedBox(height: 12),
@@ -395,7 +397,7 @@ class HealthHistoryRow extends StatelessWidget {
                 color: HomeVisuals.ink,
               ),
             ),
-            HealthMetricStatus(abnormal: row['laBatThuong'] == true),
+            HealthMetricStatus(abnormal: MetricAssessment.abnormal(row), assessed: MetricAssessment.assessed(row)),
           ],
         ),
       ],

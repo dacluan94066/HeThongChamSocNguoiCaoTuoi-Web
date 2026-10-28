@@ -36,7 +36,7 @@ const MATERIALIZE_DUE_REMINDERS_SQL = `
       (N'2h',   2, DATEADD(HOUR,  -2, lk.ThoiGianKham))
     ) reminder(stage, hoursBefore, reminderAt)
     WHERE hs.UserID IS NOT NULL
-      AND hs.TrangThai=N'DangTheoDoi'
+      AND hs.TrangThai IN (N'DangTheoDoi',N'CanChamSocDacBiet')
       AND lk.TrangThai=N'ChuaDen'
       AND lk.ThoiGianKham > @now
       AND reminder.reminderAt <= @now

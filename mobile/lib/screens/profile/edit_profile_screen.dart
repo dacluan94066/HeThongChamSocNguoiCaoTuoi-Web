@@ -328,7 +328,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 20),
                 buildTextField(
-                  label: 'Họ và tên',
+                  label: 'Họ tên hồ sơ NCT',
                   controller: nameController,
                   icon: Icons.badge_outlined,
                   hint: 'Nhập họ và tên',
@@ -382,7 +382,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 18),
                 buildTextField(
-                  label: 'Số điện thoại',
+                  label: 'Số điện thoại liên hệ',
                   controller: phoneController,
                   icon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
@@ -487,7 +487,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 20),
                 buildTextField(
-                  label: 'Họ và tên',
+                  label: 'Tên tài khoản',
                   controller: nameController,
                   icon: Icons.badge_outlined,
                 ),
@@ -500,7 +500,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 18),
                 buildTextField(
-                  label: 'Số điện thoại',
+                  label: 'Số điện thoại tài khoản',
                   controller: phoneController,
                   icon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,

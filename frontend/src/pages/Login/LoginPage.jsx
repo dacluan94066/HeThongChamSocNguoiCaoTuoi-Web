@@ -77,7 +77,7 @@ const LoginIllustration = () => (
 );
 
 // --- Component form đăng nhập ---
-const LoginForm = ({ onSubmit, onForgotPassword, onRegisterCaregiver, onGoogleAuthenticated, onGoogleBusyChange, loading, errorMsg, alertType }) => {
+const LoginForm = ({ onSubmit, onForgotPassword, onRegister, onGoogleAuthenticated, onGoogleBusyChange, loading, errorMsg, alertType }) => {
   const [form] = Form.useForm();
 
   return (
@@ -184,9 +184,9 @@ const LoginForm = ({ onSubmit, onForgotPassword, onRegisterCaregiver, onGoogleAu
         <GoogleWebAuth onAuthenticated={onGoogleAuthenticated} onBusyChange={onGoogleBusyChange} disabled={loading} />
 
         <div className="login-register-row">
-          Bạn là người chăm sóc?{' '}
-          <button type="button" className="login-forgot-link" onClick={onRegisterCaregiver}>
-            Tạo tài khoản Web
+          Chưa có tài khoản?{' '}
+          <button type="button" className="login-forgot-link" onClick={onRegister}>
+            Đăng ký CareSenior
           </button>
         </div>
 
@@ -271,7 +271,7 @@ const LoginPage = () => {
       <LoginForm
         onSubmit={handleSubmit}
         onForgotPassword={() => setForgotPasswordOpen(true)}
-        onRegisterCaregiver={() => setCaregiverRegistrationOpen(true)}
+        onRegister={() => setCaregiverRegistrationOpen(true)}
         loading={loading || googleBusy}
         onGoogleAuthenticated={handleGoogleAuthenticated}
         onGoogleBusyChange={setGoogleBusy}

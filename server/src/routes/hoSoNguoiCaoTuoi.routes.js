@@ -14,6 +14,7 @@ const scope = require('../middlewares/mobile-scope.middleware');
 const careAssistant = require('../controllers/careAssistant.controller');
 const mobileProfile = require('../controllers/mobileProfile.controller');
 const mobileOnboarding = require('../controllers/mobileOnboarding.controller');
+const ownRelatives = require('../controllers/ownRelatives.controller');
 
 // Mobile roles are already restricted to their own/assigned elderly records by
 // guardResource. Web roles continue to use the normal permission matrix.
@@ -22,6 +23,7 @@ router.use(authMiddleware);
 router.use(scope.loadMobileScope);
 
 router.get('/me', checkPermission('QLHOSONCT','xem'), controller.getMe);
+router.get('/me/relatives', checkPermission('QLHOSONCT','xem'), ownRelatives.getMine);
 // Completing one's own profile is covered by the existing self-edit permission;
 // this never grants Mobile permission to create arbitrary elderly records.
 router.post('/me', checkPermission('QLHOSONCT','sua'), mobileOnboarding.createMine);

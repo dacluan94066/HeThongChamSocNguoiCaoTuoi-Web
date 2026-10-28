@@ -21,7 +21,7 @@ const today = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10
 const yesterday = () => new Date(Date.now() + 7 * 3600000 - 86400000).toISOString().slice(0, 10);
 const metricTypes = [{ id: 1, tenChiSo: 'Huyết áp', donVi: 'mmHg', giaTriMin2: 60, giaTriMax2: 90 },
   { id: 2, tenChiSo: 'Nhiệt độ cơ thể', donVi: '°C' }, { id: 3, tenChiSo: 'Nhịp tim', donVi: 'lần/phút' }];
-test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip: !existsSync(chrome), timeout: 420000 }, async t => {
+test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip: !existsSync(chrome), timeout: 900000 }, async t => {
   let report, fixture;
   const server = http.createServer();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -36,6 +36,10 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
   server.on('request', async (req, res) => {
     try {
       if (req.url.startsWith('/socket.io')) return;
+      if (req.url === '/__ownRelativesControl') {
+        let body = ''; for await (const chunk of req) body += chunk;
+        fixture.ownRelativesMode = JSON.parse(body).mode; return send(res, 200, null);
+      }
       if (req.url === '/__elderly_progress') { let body = ''; for await (const chunk of req) body += chunk; fixture.progress = body; return send(res, 200, null); }
       if (req.url === '/__elderly_result') { let body = ''; for await (const chunk of req) body += chunk; report = JSON.parse(body); return send(res, 200, null); }
       if (req.url === '/__safety_control') {
@@ -66,7 +70,7 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
         }
         const role = { admin: 'QuanTriVien', caregiver: 'NguoiChamSoc', relative: 'NguoiThan' }[fixture.scenario] || 'NguoiCaoTuoi';
         const owner = req.headers.authorization === 'Bearer fixture-switched' ? 71 : 70;
-        const user = { userId: owner, hoTen: `Tài khoản fixture ${owner}`, tenDangNhap: 'fixture.elder', tenVaiTro: role };
+        const user = { userId: owner, hoTen: `Tài khoản fixture ${owner}`, tenDangNhap: 'fixture.elder', soDienThoai: '0000000015', tenVaiTro: role };
         if (endpoint === '/auth/login' && req.method === 'POST') {
           let body = ''; for await (const chunk of req) body += chunk; const login = JSON.parse(body); fixture.logins.push(login);
           if (fixture.scenario === 'locked') return send(res, 403, null, 'Tài khoản đã bị khóa', 'ACCOUNT_LOCKED');
@@ -111,13 +115,23 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
             fixture.profileUpdate = JSON.parse(body); fixture.mutations.push({ endpoint, values: fixture.profileUpdate });
             assert.equal('cccd' in fixture.profileUpdate, false); assert.equal('userId' in fixture.profileUpdate, false);
           }
-          return send(res, 200, { id: owner + 100, userId: owner, hoTen: fixture.profileName || `NCT fixture ${owner}`, ngaySinh: '1950-01-01', gioiTinh: 'Nữ', email: 'elder-fixture@example.invalid', trangThai: 'DangTheoDoi', ngayTao: '2026-10-27T06:05:00Z', ...fixture.profileUpdate });
+          return send(res, 200, { id: owner + 100, userId: owner, hoTen: fixture.profileName || `NCT fixture ${owner}`, ngaySinh: '1950-01-01', gioiTinh: 'Nữ', soDienThoai: '0000000012', email: 'elder-fixture@example.invalid', trangThai: 'DangTheoDoi', ngayTao: '2026-10-27T06:05:00Z', ...fixture.profileUpdate });
         }
         if (endpoint === '/health-metric-types' && req.method === 'GET') {
           if (fixture.holdTypes) { (fixture.typeReplies ||= []).push(() => send(res, 200, metricTypes)); return; }
           return send(res, 200, metricTypes);
         }
         if (endpoint === '/elderly/me/caregivers' && req.method === 'GET') return send(res, 200, fixture.scenario === 'empty' ? [] : [{ id: 1, hoTen: 'Người chăm sóc fixture', laChinh: true }]);
+        if (endpoint === '/elderly/me/relatives' && req.method === 'GET') {
+          if (fixture.scenario !== 'own-relatives' || fixture.ownRelativesMode === 'empty') return send(res, 200, []);
+          if (fixture.ownRelativesMode === 'error') return send(res, 503, null, 'Không tải được Người thân fixture');
+          if (fixture.ownRelativesMode === 'denied') return send(res, 403, null, 'Đã mất quyền xem fixture');
+          const scope = { hoSoCoBan: true, chiSoSucKhoe: true, lichThuoc: true, lichKham: true, canhBao: true, benhNen: true, diUng: false, ketQuaKham: false };
+          return send(res, 200, [{ id: 71, nguoiCaoTuoiId: fixture.ownRelativesMode === 'foreign' ? 999 : owner + 100,
+            hoTen: `Người thân fixture ${owner} với họ và tên rất dài để kiểm tra xuống dòng`, moiQuanHe: 'Con gái', soDienThoai: '0000000001', phamViChiaSe: scope },
+          { id: 72, nguoiCaoTuoiId: owner + 100, hoTen: `Người thân chưa cập nhật SĐT ${owner}`, moiQuanHe: 'Cháu', soDienThoai: null,
+            phamViChiaSe: { ...scope, benhNen: false } }]);
+        }
         if (endpoint === '/elderly/me/health-metrics') {
           if (fixture.scenario === 'dataerror') return send(res, 503, null, 'Lỗi kết nối fixture sức khỏe');
           if (fixture.scenario === 'foreign') return send(res, 200, [{ id: 99, nguoiCaoTuoiId: 999, tenChiSo: 'KHÔNG ĐƯỢC HIỂN THỊ', giaTri: 777 }]);
@@ -186,15 +200,15 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
         // accepts it; exp exercises client cache erasure, not authentication.
         const roleToken = ['login', 'locked'].includes(fixture.scenario) || fixture.scenario.startsWith('google-') ? '' : fixture.scenario === 'ai-idle-expiry'
           ? `fixture-token.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 12 })).toString('base64url')}.fixture-signature` : 'fixture-elder';
-        const html = await vite.transformIndexHtml(req.url, `<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>window.__ELDERLY_FIXTURE__=${JSON.stringify(entry)};${fixture.scenario.startsWith('google-') ? `window.fixtureGoogleSdk={};window.google={accounts:{id:{initialize(config){window.fixtureGoogleSdk.config=config},renderButton(el){const b=document.createElement('button');b.type='button';b.textContent='Chọn Google fixture';b.className='fixture-google-choice';b.onclick=()=>window.fixtureGoogleSdk.fire();el.appendChild(b)},cancel(){},disableAutoSelect(){}}}};window.fixtureGoogleSdk.fire=()=>{const c=window.fixtureGoogleSdk.config;const credential='synthetic:'+btoa(JSON.stringify({nonce:${fixture.scenario === 'google-invalid' ? "'wrong-nonce'" : 'c.nonce'},sub:'fixture-google-70'})).replace(/=/g,'').replace(/\\+/g,'-').replace(/\\//g,'_');c.callback({credential});c.callback({credential})};` : ''}window.requestAnimationFrame=cb=>setTimeout(()=>cb(performance.now()),16);window.cancelAnimationFrame=clearTimeout;if(!sessionStorage.getItem('fixture-booted')){sessionStorage.setItem('fixture-booted','1');localStorage.clear();${roleToken ? `localStorage.setItem('token','${roleToken}');` : ''}history.replaceState(null,'','${roleToken ? '/ca-nhan' : '/login'}');}</script></head><body><div id="root"></div><script type="module" src="/test/fixtures/elderlyWorkspacePreview.jsx"></script></body></html>`);
+        const html = await vite.transformIndexHtml(req.url, `<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>window.__ELDERLY_FIXTURE__=${JSON.stringify(entry)};${fixture.scenario.startsWith('google-') ? `window.fixtureGoogleSdk={};window.google={accounts:{id:{initialize(config){window.fixtureGoogleSdk.config=config},renderButton(el){const b=document.createElement('button');b.type='button';b.textContent='Chọn Google fixture';b.className='fixture-google-choice';b.onclick=()=>window.fixtureGoogleSdk.fire();el.appendChild(b)},cancel(){},disableAutoSelect(){}}}};window.fixtureGoogleSdk.fire=()=>{const c=window.fixtureGoogleSdk.config;const credential='synthetic:'+btoa(JSON.stringify({nonce:${fixture.scenario === 'google-invalid' ? "'wrong-nonce'" : 'c.nonce'},sub:'fixture-google-70'})).replace(/=/g,'').replace(/\\+/g,'-').replace(/\\//g,'_');c.callback({credential});c.callback({credential})};` : ''}window.requestAnimationFrame=cb=>setTimeout(()=>cb(performance.now()),16);window.cancelAnimationFrame=clearTimeout;if(!sessionStorage.getItem('fixture-booted')){sessionStorage.setItem('fixture-booted','1');localStorage.clear();${roleToken ? `localStorage.setItem('token','${roleToken}');` : ''}history.replaceState(null,'','${roleToken ? (fixture.scenario === 'own-relatives' ? '/ca-nhan/nguoi-than' : '/ca-nhan') : '/login'}');}</script></head><body><div id="root"></div><script type="module" src="/test/fixtures/elderlyWorkspacePreview.jsx"></script></body></html>`);
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html); return;
       }
       vite.middlewares(req, res, () => { res.writeHead(404); res.end(); });
     } catch (error) { report = { error: error.message }; if (!res.headersSent) send(res, 500, null); }
   });
   t.after(async () => { await new Promise(resolve => io.close(resolve)); await vite.close(); if (server.listening) await new Promise(resolve => server.close(resolve)); });
-  const evidence = process.env.CARESENIOR_ELDERLY_EVIDENCE || await mkdtemp(path.join(os.tmpdir(), 'caresenior-elderly-web-'));
-  const cases = [[360, 'ready'], [768, 'ready'], [1024, 'ready'], [1440, 'ready'], [360, 'missing'], [1024, 'login'], [1024, 'locked'], [360, 'large-text'],
+  const evidence = process.env.CARESENIOR_ELDERLY_EVIDENCE || await mkdtemp(path.join(process.env.CARESENIOR_TEST_EVIDENCE_ROOT || os.tmpdir(), 'caresenior-elderly-web-'));
+  const cases = [[360, 'phase2'], [768, 'phase2'], [1024, 'phase2'], [1440, 'phase2'], [360, 'ready'], [768, 'ready'], [1024, 'ready'], [1440, 'ready'], [360, 'missing'], [1024, 'login'], [1024, 'locked'], [360, 'large-text'],
     ...['offline', 'server', 'forbidden', 'generic404', 'expired', 'admin', 'caregiver', 'relative', 'logout', 'tabs', 'refresh', 'empty', 'dataerror', 'foreign', 'readonly', 'actions', 'large-text',
       'sos-cancel', 'sos-denied', 'sos-uncertain', 'sos-pending', 'sos-account', 'safety-live', 'ai-error', 'ai-offline', 'ai-owner', 'ai-context', 'ai-unavailable', 'ai-pending', 'ai-session', 'ai-expired', 'ai-idle-expiry'].map(scenario => [1024, scenario]),
     ...[360, 768, 1024, 1440].map(width => [width, 'ai']), ...[360, 768, 1024, 1440].map(width => [width, 'google-onboarding']),
@@ -204,7 +218,7 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
     ...[360, 768, 1024, 1440, 1920].map(width => [width, 'design-home-six']),
     ...[360, 768, 1024, 1440].map(width => [width, 'design-home-six-large']),
     [1024, 'design-home-complete'], [360, 'design-home-empty'], [1024, 'design-home-med-error'],
-    ...['design-header-long', 'design-header-long-large'].flatMap(name => [360, 768, 1024, 1440].map(width => [width, name]))];
+    ...['design-header-long', 'design-header-long-large', 'own-relatives', 'nav-shortcuts'].flatMap(name => [360, 768, 1024, 1440].map(width => [width, name]))];
   const selectedCases = (process.env.CARESENIOR_ELDERLY_CASES || process.env.CARESENIOR_ELDERLY_CASE || '').split(',').filter(Boolean);
   for (const [width, scenario] of cases.filter(([, name]) => !selectedCases.length || selectedCases.includes(name))) await t.test(`${scenario} ${width}px`, { timeout: 45000 }, async () => {
     fixture = { scenario, width, calls: [], posts: [], logins: [], forbidden: [], mutations: [], passwordChanges: 0, connections: 0, sosPosts: [], sos: [], reads: [],
@@ -220,7 +234,7 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
         { id: 3, tenThuoc: 'Thuốc fixture ngày trước', lieuDung: 'Theo đơn fixture', thoiGianDuKien: `${yesterday()}T23:00:00`, trangThai: 'BoLo' },
       ] }; report = null;
     if (scenario.startsWith('design-home-six')) fixture.metrics.push(
-      { id: 4, loaiChiSoId: 3, tenChiSo: 'Nhịp tim', giaTri: 100, donVi: 'lần/phút', thoiGianDo: '2026-10-27T13:05:00', laBatThuong: true },
+      { id: 4, loaiChiSoId: 3, tenChiSo: 'Nhịp tim', giaTri: 100, donVi: 'lần/phút', thoiGianDo: '2026-10-27T13:05:00', laBatThuong: fixture.scenario !== 'phase2' },
       { id: 5, loaiChiSoId: 4, tenChiSo: 'Cân nặng', giaTri: 75, donVi: 'kg', thoiGianDo: '2026-10-27T13:05:00' },
       { id: 6, loaiChiSoId: 5, tenChiSo: 'SpO2', giaTri: 98, donVi: '%', thoiGianDo: '2026-10-27T13:05:00' },
       { id: 7, loaiChiSoId: 6, tenChiSo: 'Đường huyết', giaTri: 95, donVi: 'mg/dL', thoiGianDo: '2026-10-27T13:05:00' },
@@ -230,13 +244,29 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
     if (scenario === 'design-home-empty') fixture.doses = [];
     if (scenario.startsWith('google-')) fixture.google = await createGoogleFixture({ browser: true, linked: scenario !== 'google-onboarding' });
     const profile = await mkdtemp(path.join(os.tmpdir(), 'caresenior-elderly-chrome-'));
-    const child = spawn(chrome, ['--headless', '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--disable-background-mode', '--disable-background-networking', `--user-data-dir=${profile}`, `--window-size=${Math.max(width + 30, 800)},1100`,
+    let child, timer, errors = '';
+    try {
+      for (let startup = 0; startup < 2; startup++) {
+        errors = '';
+        child = spawn(chrome, ['--headless', '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--disable-background-mode', '--disable-background-networking', `--user-data-dir=${profile}`, `--window-size=${Math.max(width + 30, 800)},1100`,
       ...(scenario === 'design-reduced-motion' ? ['--force-prefers-reduced-motion'] : []),
       '--force-device-scale-factor=1', `--virtual-time-budget=${scenario.startsWith('sos-') || ['safety-live', 'ai-idle-expiry'].includes(scenario) ? 40000 : 18000}`, `--screenshot=${path.join(evidence, `${scenario}-${width}.png`)}`, '--dump-dom', `${origin}/preview`], { windowsHide: true });
-    let errors = ''; child.stderr.on('data', data => { errors += data; }); child.stdout.resume();
-    const timer = setTimeout(() => child.kill(), 40000);
-    try {
-      await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error(`Chrome ${code} at ${fixture.progress}; API calls=${JSON.stringify(fixture.calls)}: ${errors.slice(-300)}`))); });
+        child.stderr.on('data', data => { errors += data; }); child.stdout.resume();
+        timer = setTimeout(() => child.kill(), 40000);
+        let startupError;
+        try {
+          await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error(`Chrome ${code} at ${fixture.progress}; API calls=${JSON.stringify(fixture.calls)}: ${errors.slice(-300)}`))); });
+        } catch (error) { startupError = error; }
+        clearTimeout(timer);
+        // Retry only an empty browser startup. Never replay an application action,
+        // SOS, account linking or a failed assertion.
+        if (!report && fixture.calls.length === 0 && startup === 0) {
+          t.diagnostic(`${scenario} ${width}: retry empty Chrome startup (0 application API calls)`);
+          continue;
+        }
+        if (startupError) throw startupError;
+        break;
+      }
       await writeFile(path.join(evidence, `${scenario}-${width}.json`), JSON.stringify({ report, calls: fixture.calls }, null, 2));
       assert.ok(report, `No UI result: ${errors.slice(-500)}`); assert.equal(report.error, undefined, JSON.stringify(report));
       for (const check of report.checks) assert.equal(check.pass, true, check.name);

@@ -1,3 +1,4 @@
+import '../../utils/metric_assessment.dart';
 import 'package:flutter/material.dart';
 import 'care_notes_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -526,7 +527,7 @@ class _CaregiverElderlyDetailScreenState
                                       : Icons.favorite_outline_rounded,
                                   color: _truthy(item['laBatThuong'])
                                       ? Colors.red
-                                      : const Color(0xff07856d),
+                                      : MetricAssessment.assessed(item) ? const Color(0xff07856d) : Colors.grey,
                                 ),
                                 title: Text(_text(item['tenChiSo'])),
                                 subtitle: Text(_dateTime(item['thoiGianDo'])),

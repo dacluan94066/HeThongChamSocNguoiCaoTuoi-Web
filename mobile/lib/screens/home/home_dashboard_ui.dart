@@ -307,10 +307,11 @@ class HomeMetricTile extends StatelessWidget {
     required this.icon,
     required this.onTap,
     required this.hasData,
+    this.assessed = true,
   });
   final String name, value, unit, status, measuredAt;
   final double width;
-  final bool abnormal, hasData;
+  final bool abnormal, hasData, assessed;
   final IconData icon;
   final VoidCallback onTap;
 
@@ -413,7 +414,7 @@ class HomeMetricTile extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: !hasData
+                  color: !hasData || (!abnormal && !assessed)
                       ? const Color(0xffeef2ef)
                       : abnormal
                       ? const Color(0xfffbe3e3)
@@ -425,7 +426,7 @@ class HomeMetricTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: !hasData
+                    color: !hasData || (!abnormal && !assessed)
                         ? HomeVisuals.sub
                         : abnormal
                         ? HomeVisuals.danger

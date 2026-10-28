@@ -46,6 +46,22 @@ void main() {
     await settleProfileUi(tester);
   }
 
+  profileTest('AUD-12 profile contact and account identity are labelled separately', (tester) async {
+    api.profile['soDienThoai'] = '0000000012';
+    api.account['soDienThoai'] = '0000000013';
+    await start(tester);
+    expect(find.text('Số điện thoại liên hệ'), findsOneWidget);
+    expect(find.text('0000000012'), findsOneWidget);
+    expect(find.text('Số điện thoại tài khoản'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await start(tester, account: true);
+    expect(find.text('Số điện thoại tài khoản'), findsOneWidget);
+    expect(find.text('0000000013'), findsOneWidget);
+    expect(find.text('0000000012'), findsNothing);
+    expect(api.writes, isEmpty);
+  });
+
   Future<void> edit(WidgetTester tester, {bool account = false}) async {
     await start(tester, account: account);
     await tapProfileUi(tester, 'Chỉnh sửa hồ sơ');
@@ -214,7 +230,7 @@ void main() {
       await edit(tester);
       await enterProfileUi(
         tester,
-        profileField('Họ và tên'),
+        profileField('Họ tên hồ sơ NCT'),
         'ĐÃ SỬA BẰNG FIXTURE',
       );
       await tapProfileUi(tester, 'LƯU THAY ĐỔI', scroll: 'profile-edit-scroll');
@@ -240,10 +256,10 @@ void main() {
     },
   );
   for (final invalid in [
-    ('Họ và tên', '', 'Vui lòng nhập đầy đủ thông tin cá nhân.'),
+    ('Họ tên hồ sơ NCT', '', 'Vui lòng nhập đầy đủ thông tin cá nhân.'),
     ('Email dùng để khôi phục mật khẩu', 'not-email', 'Email không hợp lệ.'),
     (
-      'Số điện thoại',
+      'Số điện thoại liên hệ',
       '1234',
       'Số điện thoại phải gồm 10 số và bắt đầu bằng 0.',
     ),
@@ -263,13 +279,13 @@ void main() {
     api.putStatus = 403;
     await enterProfileUi(
       tester,
-      profileField('Họ và tên'),
+      profileField('Họ tên hồ sơ NCT'),
       'BẢN NHÁP CHƯA LƯU',
     );
     await tapProfileUi(tester, 'LƯU THAY ĐỔI', scroll: 'profile-edit-scroll');
     expect(find.text('LỖI LƯU KIỂM THỬ 403'), findsOneWidget);
     expect(
-      tester.widget<TextField>(profileField('Họ và tên')).controller!.text,
+      tester.widget<TextField>(profileField('Họ tên hồ sơ NCT')).controller!.text,
       'BẢN NHÁP CHƯA LƯU',
     );
     expect(find.byType(EditProfileScreen), findsOneWidget);
@@ -306,7 +322,7 @@ void main() {
     tester,
   ) async {
     await edit(tester, account: true);
-    await enterProfileUi(tester, profileField('Họ và tên'), 'TÀI KHOẢN ĐÃ SỬA');
+    await enterProfileUi(tester, profileField('Tên tài khoản'), 'TÀI KHOẢN ĐÃ SỬA');
     await tapProfileUi(tester, 'LƯU THAY ĐỔI', scroll: 'profile-edit-scroll');
     expect(api.writes.single.path, '/auth/me');
     expect(api.writes.single.data, {

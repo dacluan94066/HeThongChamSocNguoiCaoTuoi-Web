@@ -1,3 +1,4 @@
+import '../../utils/metric_assessment.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -25,36 +26,62 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
   String _selected = 'Huyết áp';
   final _systolic = TextEditingController();
   final _diastolic = TextEditingController();
-  final _pulse = TextEditingController();
   final _value = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   String? _error;
   bool _sheetOpen =
       false; // Presentation only; existing data state is unchanged.
+  PersistentBottomSheetController? _measurementSheet;
 
   @override
   void initState() {
     super.initState();
+    ApiClient.sessionChanges.addListener(_onSessionChanged);
     _load();
   }
 
   @override
   void dispose() {
+    ApiClient.sessionChanges.removeListener(_onSessionChanged);
     _systolic.dispose();
     _diastolic.dispose();
-    _pulse.dispose();
     _value.dispose();
     super.dispose();
   }
 
+  void _clearMeasurementInputs() {
+    _systolic.clear();
+    _diastolic.clear();
+    _value.clear();
+  }
+
+  void _onSessionChanged() {
+    _clearMeasurementInputs();
+    _measurementSheet?.close();
+    if (!mounted) return;
+    setState(() {
+      _types = const [];
+      _metrics = const [];
+      _loading = false;
+      _error = 'Phiên đăng nhập đã thay đổi. Vui lòng mở lại màn Sức khỏe.';
+    });
+  }
+
+  void _selectType(String name) {
+    if (_selected == name || _saving || _sheetOpen) return;
+    _clearMeasurementInputs();
+    setState(() => _selected = name);
+  }
+
   Future<void> _load({bool refresh = false}) async {
+    final version = ApiClient.sessionVersion;
     try {
       final result = await Future.wait([
         HealthMetricService.instance.getMetricTypes(refresh: refresh),
         HealthMetricService.instance.getMyHealthMetrics(refresh: refresh),
       ]);
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       setState(() {
         _types = result[0];
         _metrics = result[1];
@@ -66,7 +93,7 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
         }
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       setState(() {
         _loading = false;
         _error = error is ApiException
@@ -86,37 +113,26 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
   int? _id(Map<String, dynamic>? type) =>
       int.tryParse(type?['id']?.toString() ?? '');
 
-  Future<void> _save() async {
-    if (_saving) return;
-    final type = _type(_selected);
+  Future<void> _save(Map<String, dynamic> type, int version) async {
+    if (_saving || version != ApiClient.sessionVersion) return;
     final id = _id(type);
     if (id == null) return;
     setState(() => _saving = true);
     try {
       final service = HealthMetricService.instance;
       final results = <Map<String, dynamic>>[];
-      if (_selected == 'Huyết áp') {
+      if (type['tenChiSo'] == 'Huyết áp') {
         final systolic = int.tryParse(_systolic.text.trim());
         final diastolic = int.tryParse(_diastolic.text.trim());
-        final pulse = int.tryParse(_pulse.text.trim());
         if (systolic == null ||
-            systolic < 40 ||
-            systolic > 280 ||
+            systolic < 50 ||
+            systolic > 300 ||
             diastolic == null ||
             diastolic < 30 ||
             diastolic > 200 ||
-            systolic <= diastolic ||
-            pulse == null ||
-            pulse < 25 ||
-            pulse > 240) {
+            systolic <= diastolic) {
           throw const ApiException(
-            'Nhập huyết áp và nhịp tim hợp lệ trước khi lưu.',
-          );
-        }
-        final pulseId = _id(_type('Nhịp tim'));
-        if (pulseId == null) {
-          throw const ApiException(
-            'Chưa có loại chỉ số Nhịp tim trong hệ thống.',
+            'Nhập huyết áp tâm thu từ 50–300 và tâm trương từ 30–200 mmHg; tâm thu phải lớn hơn tâm trương.',
           );
         }
         results.add(
@@ -124,12 +140,6 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
             loaiChiSoId: id,
             giaTri: systolic.toDouble(),
             giaTriPhu: diastolic.toDouble(),
-          ),
-        );
-        results.add(
-          await service.addHealthMetric(
-            loaiChiSoId: pulseId,
-            giaTri: pulse.toDouble(),
           ),
         );
       } else {
@@ -141,8 +151,10 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
           await service.addHealthMetric(loaiChiSoId: id, giaTri: number),
         );
       }
+      if (!mounted || version != ApiClient.sessionVersion) return;
+      _clearMeasurementInputs();
       await _load(refresh: true);
-      if (!mounted) return;
+      if (!mounted || version != ApiClient.sessionVersion) return;
       if (results.any((item) => item['laBatThuong'] == true)) {
         await showDialog<void>(
           context: context,
@@ -166,13 +178,14 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
         );
       }
     } catch (error) {
+      if (!mounted || version != ApiClient.sessionVersion) return;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               error is ApiException
                   ? error.message
-                  : 'Không thể lưu đủ chỉ số. Kiểm tra lịch sử rồi thử lại.',
+                  : 'Chưa xác nhận được kết quả lưu. Kiểm tra lịch sử trước khi thử lại.',
             ),
             backgroundColor: red,
           ),
@@ -264,12 +277,10 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
   Widget _inputFields(Map<String, dynamic>? selectedType) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (_selected == 'Huyết áp') ...[
-        _stepper('Tâm thu', _systolic, 40, 280),
+      if (selectedType?['tenChiSo'] == 'Huyết áp') ...[
+        _stepper('Tâm thu', _systolic, 50, 300),
         const SizedBox(height: 10),
         _stepper('Tâm trương', _diastolic, 30, 200),
-        const SizedBox(height: 10),
-        _stepper('Nhịp tim (nhịp/phút)', _pulse, 25, 240),
       ] else
         TextField(
           key: const ValueKey('health-value-field'),
@@ -287,8 +298,11 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
   // Presentation-only sheet. Keeping it on this Scaffold also keeps the
   // original _save SnackBars above the sheet, including backend error text.
   void _openAddSheet(BuildContext sheetContext) {
-    if (_sheetOpen) return;
+    if (_sheetOpen || _saving) return;
     final selectedType = _type(_selected);
+    if (selectedType == null) return;
+    final version = ApiClient.sessionVersion;
+    _clearMeasurementInputs();
     late PersistentBottomSheetController controller;
     setState(() => _sheetOpen = true);
     controller = showBottomSheet(
@@ -304,15 +318,18 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
       ),
       clipBehavior: Clip.antiAlias,
       builder: (_) => HealthMeasurementSheet(
-        name: _selected,
+        name: selectedType['tenChiSo'].toString(),
         range: _range(selectedType),
         fields: _inputFields(selectedType),
-        onSave: _save,
+        onSave: () => _save(selectedType, version),
         onClose: () => controller.close(),
       ),
     );
+    _measurementSheet = controller;
     controller.closed.whenComplete(() {
-      if (mounted) setState(() => _sheetOpen = false);
+      if (!mounted || !identical(_measurementSheet, controller)) return;
+      _measurementSheet = null;
+      setState(() => _sheetOpen = false);
     });
   }
 
@@ -438,9 +455,8 @@ class _HealthDetailScreenState extends State<HealthDetailScreen> {
                                             backgroundColor: Colors.white,
                                             showCheckmark: false,
                                             selected: _selected == name,
-                                            onSelected: (_) => setState(
-                                              () => _selected = name,
-                                            ),
+                                            onSelected: (_) =>
+                                                _selectType(name),
                                           ),
                                         ),
                                       );
@@ -629,7 +645,7 @@ class _TrendPainter extends CustomPainter {
           Paint()
             ..color = rows[i]['laBatThuong'] == true
                 ? CareSeniorColors.danger
-                : color,
+                : MetricAssessment.assessed(rows[i]) ? color : Colors.grey,
         );
       }
     }

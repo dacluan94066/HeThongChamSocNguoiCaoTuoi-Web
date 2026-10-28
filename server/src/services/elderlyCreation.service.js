@@ -1,3 +1,4 @@
+const { AccountIdentityError, reserveAccountIdentifiers } = require('../utils/accountIdentity');
 const bcrypt = require('bcryptjs');
 const { validateElderlyProfile } = require('../utils/elderlyProfileValidation');
 const { validateElderlyAccount } = require('../utils/elderlyAccountValidation');
@@ -25,6 +26,7 @@ async function createElderlyProfile(body, creatorId, { poolPromise, sql }) {
       const hash = await bcrypt.hash(account.matKhau, 10);
       transaction = new sql.Transaction(pool);
       await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+      await reserveAccountIdentifiers(transaction, sql, { phone: profile.soDienThoai, username: account.tenDangNhap });
       const duplicates = await new sql.Request(transaction)
         .input('username', sql.VarChar(50), account.tenDangNhap)
         .input('email', sql.VarChar(100), account.email)
@@ -98,6 +100,7 @@ async function createElderlyProfile(body, creatorId, { poolPromise, sql }) {
       }
       throw new ElderlyCreationError('Tên đăng nhập, email hoặc số điện thoại đã được sử dụng', 'DUPLICATE_ACCOUNT', 409);
     }
+    if (error instanceof AccountIdentityError) throw new ElderlyCreationError(error.message, error.errorCode, error.statusCode);
     throw error;
   }
 }

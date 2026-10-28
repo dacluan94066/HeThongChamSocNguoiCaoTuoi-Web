@@ -5,6 +5,18 @@ const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
 const { scopedWhere, targetElderlyId, ownsElderlyId, isMobileRole } = require('../middlewares/mobile-scope.middleware');
 const { validatePhoneNumber } = require('../utils/phoneValidation');
+const { createLinkedRelativeContacts } = require('../services/emergencyContactRelatives.service');
+const { RelativeError } = require('../utils/relativeValidation');
+
+const linkedRelatives = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return ok(res, await createLinkedRelativeContacts({ poolPromise, sql })(req.user, req.query));
+  } catch (error) {
+    if (error instanceof RelativeError) return fail(res, error.message, error.code, error.status);
+    return fail(res, 'Không thể tải Người thân đã liên kết. Bạn vẫn có thể nhập liên hệ thủ công.', 'LINKED_CONTACTS_UNAVAILABLE', 503);
+  }
+};
 
 const phoneError = (primary, secondary) => {
   const primaryError = validatePhoneNumber(primary, { label: 'Số điện thoại chính' });
@@ -160,4 +172,4 @@ const remove = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAll, create, update, remove, reorder };
+module.exports = { getAll, create, update, remove, reorder, linkedRelatives };

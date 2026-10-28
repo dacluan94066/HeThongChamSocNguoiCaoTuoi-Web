@@ -7,6 +7,7 @@ const { checkPermission } = require('../middlewares/permission.middleware');
 router.use(auth);
 router.use(loadMobileScope);
 router.get('/', checkPermission('QLLIENHEKC', 'xem'), ctrl.getAll);
+router.get('/linked-relatives', checkPermission('QLLIENHEKC', 'xem'), checkPermission('QLLIENHEKC', 'them'), ctrl.linkedRelatives);
 router.post('/', caregiverOnlyWrite, checkPermission('QLLIENHEKC', 'them'), ctrl.create);
 router.patch('/priorities', caregiverOnlyWrite, checkPermission('QLLIENHEKC', 'sua'), ctrl.reorder);
 router.put('/:id', caregiverOnlyWrite, checkPermission('QLLIENHEKC', 'sua'), guardResource('LienHeKhanCap', 'LienHeID'), ctrl.update);

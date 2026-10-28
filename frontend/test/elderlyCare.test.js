@@ -10,6 +10,14 @@ function fixture(rows = []) {
   }]));
   return { calls, api: createElderlyCareApi(client) };
 }
+test('own relatives adapter uses only /me, preserves session scope, rejects another owner and never writes', async () => {
+  const f = fixture([{ id: 71, nguoiCaoTuoiId: 42, hoTen: 'Family fixture' }]);
+  const abort = new AbortController(); await f.api.relatives(42, abort.signal);
+  assert.equal(f.calls[0].method, 'get'); assert.equal(f.calls[0].args[0], '/elderly/me/relatives');
+  assert.equal(f.calls[0].args[1].params, undefined); assert.equal(f.calls[0].args[1].signal, abort.signal);
+  await assert.rejects(fixture([{ nguoiCaoTuoiId: 99 }]).api.relatives(42), /không khớp/);
+  await assert.rejects(fixture({}).api.relatives(42), /không hợp lệ/);
+});
 test('own care API only uses Mobile own endpoints; queries cannot inject a foreign elderly ID', async () => {
   const f = fixture([{ id: 2, nguoiCaoTuoiId: 42 }]), signal = new AbortController().signal;
   await f.api.metrics(42, { nguoiCaoTuoiId: 999, loaiChiSoId: 1, tuNgay: '2026-10-27', denNgay: '2026-10-28' }, signal);

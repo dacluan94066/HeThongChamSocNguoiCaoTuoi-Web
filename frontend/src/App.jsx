@@ -20,7 +20,7 @@ import { StaffWorkspaceRoute, RelativeWorkspaceRoute, ElderlyWorkspaceRoute, Web
 import RelativePortalPage from './pages/Relatives/RelativePortalPage';
 import ElderlyPortalPage from './pages/ElderlyPortal/ElderlyPortalPage';
 import { ElderlyHomePage, ElderlySchedulePage, ElderlyHealthPage, ElderlyProfilePage, ElderlySosPage,
-  ElderlyAlertsPage, ElderlyAssistantPage, ElderlyNotFoundPage } from './pages/ElderlyPortal/ElderlyWorkspaceScreens';
+  ElderlyAlertsPage, ElderlyAssistantPage, ElderlyRelativesPage, ElderlyNotFoundPage } from './pages/ElderlyPortal/ElderlyWorkspaceScreens';
 
 // Pages
 import LoginPage from './pages/Login/LoginPage';
@@ -59,6 +59,7 @@ const App = () => {
                 <Route path="sos" element={<ElderlySosPage />} />
                 <Route path="canh-bao" element={<ElderlyAlertsPage />} />
                 <Route path="ho-so" element={<ElderlyProfilePage />} />
+                <Route path="nguoi-than" element={<ElderlyRelativesPage />} />
                 <Route path="tro-ly" element={<ElderlyAssistantPage />} />
                 <Route path="*" element={<ElderlyNotFoundPage />} />
               </Route>

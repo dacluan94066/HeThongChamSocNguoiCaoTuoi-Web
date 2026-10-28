@@ -21,6 +21,7 @@ import { formatEntityCode } from '../../utils/displayUtils';
 import { todayVietnam } from '../../utils/vietnamDate';
 import RecordDetailModal from '../../components/RecordDetailModal';
 import { getSocket } from '../../services/socketClient';
+import { isFutureAppointment } from '../../utils/appointmentTime';
 
 const appointmentDateTime = (appointment) => {
   if (!appointment.ngayKham) return null;
@@ -227,6 +228,16 @@ const AppointmentsPage = () => {
   };
 
   const handleSave = async (values) => {
+    const day = values.ngayKham?.format('YYYY-MM-DD');
+    const time = values.gioKham?.format('HH:mm');
+    const changingTime = !editing || day !== editing.ngayKham || time !== editing.gioKham;
+    if (changingTime && !isFutureAppointment(day, time)) {
+      const error = 'Giờ khám mới phải ở tương lai. Vui lòng kiểm tra ngày và giờ khám.';
+      form.setFields([{ name: 'gioKham', errors: [error] }]);
+      form.scrollToField('gioKham', { focus: true });
+      message.error(error);
+      return;
+    }
     setSaving(true);
     try {
       const elder = elders.find((item) => item.id === values.nguoiCaoTuoiId);
@@ -248,6 +259,14 @@ const AppointmentsPage = () => {
       setModalOpen(false);
       form.resetFields();
       await load();
+    } catch (error) {
+      // The interceptor shows the conflict once. Never replay a stale edit.
+      if (error.response?.status === 409 && error.response?.data?.errorCode === 'APPOINTMENT_CHANGED') {
+        setModalOpen(false);
+        setEditing(null);
+        form.resetFields();
+        await load();
+      }
     } finally {
       setSaving(false);
     }

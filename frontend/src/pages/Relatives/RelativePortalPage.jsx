@@ -1,3 +1,4 @@
+import { metricAssessment } from '../../utils/metricAssessment';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Avatar, Button, Empty, Select, Skeleton, Space, Spin, Table, Tabs, Tag } from 'antd';
@@ -15,8 +16,7 @@ import './RelativePortal.css';
 
 const SECTIONS = { profile: 'Tổng quan', health: 'Chỉ số sức khỏe', medications: 'Lịch thuốc', appointments: 'Lịch khám', alerts: 'Cảnh báo & SOS' };
 const MetricValue = ({ row }) => <><strong>{row.giaTri ?? 'Chưa có dữ liệu'}{row.giaTriPhu != null ? `/${row.giaTriPhu}` : ''}</strong><span>{row.donVi}</span></>;
-const MetricStatus = ({ value }) => <Tag color={value == null ? 'default' : value ? 'orange' : 'green'}>
-  {value == null ? 'Chưa có đánh giá' : value ? 'Ngoài ngưỡng theo dõi' : 'Trong ngưỡng theo dõi'}</Tag>;
+const MetricStatus = ({ row }) => { const status = metricAssessment(row); return <Tag color={status.color}>{status.label}</Tag>; };
 const ScopeField = ({ allowed, value }) => <span>{allowed ? value || 'Chưa có dữ liệu' : 'Chưa được đồng ý chia sẻ'}</span>;
 const ProfileCard = ({ profile }) => <section className="relative-portal-card" aria-label="Hồ sơ cơ bản được chia sẻ">
   <h2>Hồ sơ cơ bản</h2><dl className="relative-portal-profile-grid">
@@ -43,7 +43,7 @@ const HealthSummary = ({ rows }) => <div className="relative-portal-metric-grid"
   const row = group.values[0];
   return <article className="relative-portal-metric" key={group.id}><h3>{row.tenChiSo || 'Chỉ số sức khỏe'}</h3>
     <div className="relative-portal-metric-value"><MetricValue row={row} /></div>
-    <MetricStatus value={row.laBatThuong} /><p>{formatPortalTime(row.thoiGianDo)}</p></article>;
+    <MetricStatus row={row} /><p>{formatPortalTime(row.thoiGianDo)}</p></article>;
 })}</div>;
 const HealthTrend = ({ rows }) => {
   const [chosen, setChosen] = useState('');
@@ -69,7 +69,7 @@ const HealthTrend = ({ rows }) => {
 const HealthHistory = ({ rows }) => <section className="relative-portal-card"><h2>Lịch sử đo đã tải</h2><Table dataSource={rows} rowKey="id" pagination={false} size="middle" scroll={{ x: 620 }} columns={[
   { title: 'Thời điểm đo', dataIndex: 'thoiGianDo', render: formatPortalTime, width: 185 },
   { title: 'Chỉ số', dataIndex: 'tenChiSo' }, { title: 'Số đo', key: 'value', render: (_, row) => <span className="relative-portal-inline-value"><MetricValue row={row} /></span> },
-  { title: 'Đánh giá từ hệ thống', dataIndex: 'laBatThuong', render: value => <MetricStatus value={value} /> },
+  { title: 'Đánh giá từ hệ thống', dataIndex: 'laBatThuong', render: (_, row) => <MetricStatus row={row} /> },
 ]} /></section>;
 const Medications = ({ rows }) => <div className="relative-portal-records">{rows.map(row => <article key={row.id} className="relative-portal-card">
   <div className="relative-portal-section-heading"><h3>{row.tenThuoc || 'Chưa có tên thuốc'}</h3><StatusTag {...getMedStatusMap(row.trangThai, row.thoiGianDuKien)} /></div>

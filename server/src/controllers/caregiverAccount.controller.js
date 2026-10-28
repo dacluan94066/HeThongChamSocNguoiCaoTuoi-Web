@@ -1,3 +1,4 @@
+const { AccountIdentityError, lockAccountIdentifiers, checkAccountIdentifiers } = require('../utils/accountIdentity');
 const bcrypt = require('bcryptjs');
 const { poolPromise, sql } = require('../config/db');
 const { ok, fail } = require('../utils/response');
@@ -23,6 +24,7 @@ const createWebAccount = async (req, res, next) => {
     const hash = await bcrypt.hash(password, 10);
     transaction = new sql.Transaction(pool);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    await lockAccountIdentifiers(transaction, sql);
     const caregiver = (await new sql.Request(transaction)
       .input('id', sql.Int, caregiverId)
       .query(`SELECT NguoiChamSocID AS id,UserID AS userId,HoTen AS name,
@@ -41,6 +43,7 @@ const createWebAccount = async (req, res, next) => {
       await transaction.rollback(); transaction = null;
       return fail(res, 'Hồ sơ phải có email trước khi tạo tài khoản Web', 'EMAIL_REQUIRED', 400);
     }
+    await checkAccountIdentifiers(transaction, sql, { phone: caregiver.phone, username });
     const duplicate = (await new sql.Request(transaction)
       .input('username', sql.VarChar(50), username)
       .input('email', sql.VarChar(100), email)
@@ -84,6 +87,7 @@ const createWebAccount = async (req, res, next) => {
     if ([2601, 2627].includes(error.number)) {
       return fail(res, 'Tên đăng nhập hoặc email đã được sử dụng', 'DUPLICATE_ACCOUNT', 409);
     }
+    if (error instanceof AccountIdentityError) return fail(res, error.message, error.errorCode, error.statusCode);
     return next(error);
   }
 };

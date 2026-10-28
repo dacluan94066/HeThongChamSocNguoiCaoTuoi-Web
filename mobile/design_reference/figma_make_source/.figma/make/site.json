@@ -1,0 +1,10 @@
+{
+  "description": "Enhance your mindfulness practice with guided breathing exercises and soothing nature sounds, perfect for anyone seeking relaxation and stress relief.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

@@ -1,3 +1,4 @@
+const { metricAssessmentSql } = require('../utils/metricAssessment');
 const { ACCESS_JOINS, ACCESS_WHERE } = require('./relativeAccess.service');
 const { requireRelativeSchema } = require('./relativeSchema');
 const { RelativeError, id, readOptions } = require('../utils/relativeValidation');
@@ -33,7 +34,7 @@ function createRelativeReadRepository(pool, sql) {
     profile: { feature:'QLHOSONCT', sql:`SELECT ${PROFILE} ${from}
       JOIN dbo.HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID=lk.NguoiCaoTuoiID WHERE ${scoped}` },
     health: {feature:'QLCHISOSK',sql:`SELECT c.ChiSoID AS id,c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
-      t.LoaiChiSoID AS loaiChiSoId,t.TenChiSo AS tenChiSo,t.DonVi AS donVi,c.GiaTri AS giaTri,c.GiaTriPhu AS giaTriPhu,
+      t.LoaiChiSoID AS loaiChiSoId,t.TenChiSo AS tenChiSo,t.DonVi AS donVi,${metricAssessmentSql('t','c')} AS trangThaiDanhGia,c.GiaTri AS giaTri,c.GiaTriPhu AS giaTriPhu,
       CONVERT(VARCHAR(19),c.ThoiGianDo,126) AS thoiGianDo,c.LaBatThuong AS laBatThuong
       ${from} ${joins.health} WHERE ${scoped} AND (@typeId IS NULL OR c.LoaiChiSoID=@typeId)
       ${DATE_FILTER('c.ThoiGianDo')} ORDER BY c.ThoiGianDo DESC,c.ChiSoID DESC ${PAGE}`},

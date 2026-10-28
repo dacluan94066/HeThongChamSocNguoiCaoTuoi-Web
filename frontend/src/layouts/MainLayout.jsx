@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Avatar, Badge, Button, Dropdown, Input, Layout, Menu, Space, Tooltip,
+  Avatar, Badge, Button, Dropdown, Input, Layout, Menu, Space,
 } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertOutlined,
   BarChartOutlined,
-  BellOutlined,
   BookOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
@@ -33,6 +32,7 @@ import AccountMenuModals from '../components/AccountMenuModals';
 import useRealtimeAlerts from '../hooks/useRealtimeAlerts';
 import SosAudioControls from '../components/SosAudioControls';
 import { getNameInitials } from '../utils/displayUtils';
+import NotificationCenter from '../components/NotificationCenter';
 
 const { Sider, Header, Content } = Layout;
 const { Search } = Input;
@@ -292,19 +292,7 @@ const MainLayout = () => {
               </Badge>
             )}
 
-            {canViewAlerts && (
-              <Tooltip title={`${unreadAlerts} cảnh báo chưa xử lý`}>
-                <Badge count={unreadAlerts} size="small" overflowCount={99}>
-                  <Button
-                    type="text"
-                    className="header-notification-button"
-                    aria-label="Xem cảnh báo"
-                    icon={<BellOutlined />}
-                    onClick={() => navigate('/canh-bao')}
-                  />
-                </Badge>
-              </Tooltip>
-            )}
+            <NotificationCenter />
 
             {currentUser && (
               <Dropdown

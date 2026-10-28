@@ -65,6 +65,7 @@ class HomeUiAdapter implements HttpClientAdapter {
               'giaTriPhu': 108,
               'donVi': 'mmHg',
               'laBatThuong': false,
+              'trangThaiDanhGia': 'BINH_THUONG',
               'thoiGianDo': now,
             },
             {
@@ -185,6 +186,7 @@ void main() {
             'giaTri': 37.2,
             'donVi': '°C',
             'laBatThuong': false,
+              'trangThaiDanhGia': 'BINH_THUONG',
             'thoiGianDo': measuredAt.toIso8601String(),
           },
         ];
@@ -197,7 +199,7 @@ void main() {
         expect(temperature.hasData, isTrue);
         expect(temperature.value, '37.2');
         expect(temperature.unit, '°C');
-        expect(temperature.status, 'Bình thường');
+        expect(temperature.status, 'Trong ngưỡng theo dõi');
         expect(
           temperature.measuredAt,
           '${two(measuredAt.hour)}:${two(measuredAt.minute)} · ${two(measuredAt.day)}/${two(measuredAt.month)}',
@@ -238,6 +240,7 @@ void main() {
         'giaTri': 37.2,
         'donVi': '°C',
         'laBatThuong': false,
+              'trangThaiDanhGia': 'BINH_THUONG',
         'thoiGianDo': now.toIso8601String(),
       },
       {
@@ -288,7 +291,7 @@ void main() {
           .toList();
       expect(cards.length, 6);
       expect(cards.first.value, '175/108');
-      expect(cards.first.status, 'Bình thường');
+      expect(cards.first.status, 'Trong ngưỡng theo dõi');
       expect(cards[1].status, 'Bất thường');
       expect(cards[1].unit, 'mg/dL');
       expect(find.text('Nguyễn Văn An'), findsNothing);

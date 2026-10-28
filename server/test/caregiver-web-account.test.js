@@ -34,6 +34,7 @@ test('Admin creates caregiver profile account; caregiver logs in on Web and sees
     constructor() { this.values = {}; }
     input(name, _type, value) { this.values[name] = value; return this; }
     async query(statement) {
+      if (statement.includes('sp_getapplock') || statement.includes('AS identityConflict')) return { recordset: [] };
       if (statement.includes('FROM NguoiChamSoc WITH(UPDLOCK,HOLDLOCK)')) {
         return { recordset: [{ ...state.caregiver }] };
       }
@@ -120,6 +121,7 @@ test('Mobile elderly registration reports duplicate email and phone clearly', as
     const pool = { request: () => ({
       input() { return this; },
       async query(statement) {
+      if (statement.includes('sp_getapplock') || statement.includes('AS identityConflict')) return { recordset: [] };
         if (statement.includes('WHERE TenDangNhap = @tenDangNhap')) return { recordset: [] };
         if (statement.includes('WHERE Email = @email')) {
           return { recordset: duplicate === 'email' ? [{ UserID: 1 }] : [] };

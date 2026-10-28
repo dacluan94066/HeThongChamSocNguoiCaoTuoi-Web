@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Alert, Avatar, Button, Form, Input, Modal } from 'antd';
 import { LockOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useOutletContext } from 'react-router-dom';
+import { Navigate, useLocation, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ElderlyHealthFields, ElderlyPersonalFields } from '../../components/ElderlyProfileFields';
 import { editableProfile } from '../../utils/elderlyCare';
@@ -14,15 +14,18 @@ import { Caregivers, CareSection, MutationNotice, PageIntro } from './ElderlyCar
 import GoogleWebAuth from '../../components/GoogleWebAuth';
 
 export function ElderlyProfilePage() {
+  const location = useLocation();
   const { profile, user, refreshProfile, openPassword } = useOutletContext(), { logout, hasPermission } = useAuth();
   const [editing, setEditing] = useState(false), [form] = Form.useForm();
   const mutation = useElderlyMutation();
   const caregivers = useElderlyResource(useCallback(signal => api.caregivers(signal), []), `profile-care:${profile.id}`);
   const startEdit = () => { mutation.clearNotice(); form.resetFields(); form.setFieldsValue({ ...editableProfile(profile), ngaySinh: profile.ngaySinh ? dayjs(profile.ngaySinh.slice(0, 10)) : null }); setEditing(true); };
   const close = () => { if (!mutation.busy) setEditing(false); };
-  const items = [['Họ và tên', profile.hoTen], ['Ngày sinh', profile.ngaySinh ? dayjs(profile.ngaySinh.slice(0, 10)).format('DD/MM/YYYY') : null],
-    ['Giới tính', profile.gioiTinh], ['Email', profile.email], ['Số điện thoại', profile.soDienThoai], ['Địa chỉ', profile.diaChi],
+  const items = [['Họ tên hồ sơ NCT', profile.hoTen], ['Ngày sinh', profile.ngaySinh ? dayjs(profile.ngaySinh.slice(0, 10)).format('DD/MM/YYYY') : null],
+    ['Giới tính', profile.gioiTinh], ['Email', profile.email], ['Số điện thoại liên hệ', profile.soDienThoai], ['Địa chỉ', profile.diaChi],
     ['Nhóm máu', profile.nhomMau], ['Bệnh nền', profile.benhNen], ['Dị ứng', profile.diUng], ['Ngày tạo hồ sơ', formatAlertTime(profile.ngayTao)]];
+  // Preserve links created before the family list became a separate page.
+  if (location.hash === '#nguoi-than') return <Navigate to="/ca-nhan/nguoi-than" replace />;
   return <>
     <PageIntro title="Hồ sơ của tôi" icon={<UserOutlined />} description="Thông tin được dùng chung trên Web và Mobile."
       action={<Avatar className="elderly-profile-avatar" aria-hidden="true">{getNameInitials(profile.hoTen || '')}</Avatar>} />
@@ -37,7 +40,7 @@ export function ElderlyProfilePage() {
     </CareSection>
     </div>
     <Caregivers resource={caregivers} />
-    <div className="elderly-profile-security"><CareSection title="Tài khoản và bảo mật"><span className="elderly-ui-icon" aria-hidden="true"><LockOutlined /></span><p>Tên đăng nhập: <strong>{user.tenDangNhap}</strong> · Người cao tuổi</p><div className="elderly-care-actions"><Button icon={<LockOutlined />} onClick={openPassword}>Đổi mật khẩu</Button><Button icon={<LogoutOutlined />} onClick={logout}>Đăng xuất</Button></div></CareSection>
+    <div className="elderly-profile-security"><CareSection title="Tài khoản và bảo mật"><span className="elderly-ui-icon" aria-hidden="true"><LockOutlined /></span><p>Tên đăng nhập: <strong>{user.tenDangNhap}</strong> · Người cao tuổi</p><p>Tên tài khoản: <strong>{user.hoTen || 'Chưa có dữ liệu'}</strong></p><p>Số điện thoại tài khoản: <strong>{user.soDienThoai || 'Chưa có dữ liệu'}</strong></p><p>Số điện thoại liên hệ và họ tên hồ sơ được quản lý riêng, không thay đổi thông tin đăng nhập.</p><div className="elderly-care-actions"><Button icon={<LockOutlined />} onClick={openPassword}>Đổi mật khẩu</Button><Button icon={<LogoutOutlined />} onClick={logout}>Đăng xuất</Button></div></CareSection>
     <GoogleWebAuth mode="link" />
     </div>
     <Modal className="elderly-care-modal" title="Cập nhật hồ sơ của tôi" open={editing} onCancel={close} footer={null} width={760} closable={!mutation.busy} maskClosable={!mutation.busy}>

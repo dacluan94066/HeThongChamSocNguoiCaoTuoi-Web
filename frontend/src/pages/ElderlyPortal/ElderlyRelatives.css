@@ -1,0 +1,11 @@
+.elderly-relatives-list { display: grid; gap: 16px; }
+.elderly-relative-card { display: grid; gap: 16px; padding: 20px; border: 1px solid var(--cs-border, #dce9e2); border-radius: 16px; min-width: 0; }
+.elderly-relative-identity { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.elderly-relative-identity .elderly-caregiver-avatar { flex: 0 0 48px; }
+.elderly-relative-identity > div { min-width: 0; overflow-wrap: anywhere; }
+.elderly-relative-identity h3, .elderly-relative-identity p { margin: 0 0 6px; }
+.elderly-relative-identity a { display: inline-flex; align-items: center; min-height: 44px; }
+.elderly-relative-scope { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.elderly-relative-scope .ant-tag { white-space: normal; margin: 0; font-size: inherit; line-height: 1.6; }
+.elderly-relative-private { margin: 0; color: var(--cs-muted, #526c60); overflow-wrap: anywhere; }
+@media (max-width: 575px) { .elderly-relative-card { padding: 16px; } }

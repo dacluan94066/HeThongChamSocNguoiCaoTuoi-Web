@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 export { ElderlyHomePage, ElderlyHealthPage } from './ElderlyHomeHealth';
 export { ElderlySchedulePage } from './ElderlySchedule';
 export { ElderlyProfilePage } from './ElderlyPersonalProfile';
+export { ElderlyRelativesPage } from './ElderlyRelatives';
 export { ElderlySosPage } from './ElderlySos';
 export { ElderlyAlertsPage } from './ElderlyAlerts';
 export { ElderlyAssistantPage } from './ElderlyAssistant';

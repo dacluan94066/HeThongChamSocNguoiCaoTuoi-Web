@@ -1,3 +1,4 @@
+const { AccountIdentityError, reserveAccountIdentifiers } = require('../utils/accountIdentity');
 // controllers/nguoiDung.controller.js - CRUD nguoi dung - dung dung schema
 // Bang NguoiDung: UserID, TenDangNhap, MatKhauHash, HoTen, Email,
 //   SoDienThoai, VaiTroID, TrangThai (HoatDong|KhoaTaiKhoan|ChoDuyet),
@@ -205,6 +206,7 @@ const create = async (req, res, next) => {
 
     transaction = new sql.Transaction(pool);
     await transaction.begin();
+    await reserveAccountIdentifiers(transaction, sql, { phone: normalizedPhone, username });
     const caregiverMatch = await new sql.Request(transaction)
       .input('email', sql.VarChar(100), normalizedEmail)
       .query(`SELECT NguoiChamSocID AS id, UserID AS userId
@@ -257,6 +259,7 @@ const create = async (req, res, next) => {
       try { await transaction.rollback(); } catch (_) { /* Transaction already closed. */ }
     }
     if (err instanceof ElderlyCreationError) return fail(res, err.message, err.errorCode, err.statusCode);
+    if (err instanceof AccountIdentityError) return fail(res, err.message, err.errorCode, err.statusCode);
     next(err);
   }
 };
@@ -294,6 +297,7 @@ const update = async (req, res, next) => {
 
     transaction = new sql.Transaction(pool);
     await transaction.begin();
+    await reserveAccountIdentifiers(transaction, sql, { userId: Number(req.params.id), phone: normalizedPhone });
     const emailTaken = await new sql.Request(transaction)
       .input('id', sql.Int, req.params.id)
       .input('email', sql.VarChar(100), normalizedEmail)
@@ -335,6 +339,7 @@ const update = async (req, res, next) => {
     if (transaction) {
       try { await transaction.rollback(); } catch (_) { /* Transaction already closed. */ }
     }
+    if (err instanceof AccountIdentityError) return fail(res, err.message, err.errorCode, err.statusCode);
     next(err);
   }
 };
@@ -349,6 +354,7 @@ const toggleStatus = async (req, res, next) => {
     const newStatus = check.recordset[0].TrangThai === 'HoatDong' ? 'KhoaTaiKhoan' : 'HoatDong';
     await pool.request().input('id', sql.Int, req.params.id).input('s', sql.NVarChar, newStatus)
       .query(`UPDATE NguoiDung SET TrangThai=@s WHERE UserID=@id`);
+    if (newStatus !== 'HoatDong') require('../socket').disconnectUser(Number(req.params.id));
     return ok(res, { id: parseInt(req.params.id), trangThai: newStatus === 'HoatDong' ? 'HOAT_DONG' : 'KHOA' });
   } catch (err) { next(err); }
 };

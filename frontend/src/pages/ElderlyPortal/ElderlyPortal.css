@@ -82,6 +82,13 @@
 .elderly-web-nav-note > .anticon { color: #d1e7dd; font-size: 22px; }
 .elderly-web-nav-note strong { font-size: 15px; line-height: 1.5; color: white; }
 .elderly-web-nav-note > span:last-child { color: #d1e7dd; font-size: 14px; }
+.elderly-web-secondary-nav { display: grid; gap: 8px; margin-top: 12px; padding-top: 20px; border-top: 1px solid #ffffff30; }
+.elderly-web-secondary-nav > .elderly-web-nav-heading { margin-bottom: 4px; }
+.elderly-web-secondary-nav .elderly-secondary-copy { display: grid; gap: 3px; overflow-wrap: anywhere; }
+.elderly-secondary-copy strong { font-size: 16px; font-weight: 650; line-height: 1.4; }
+.elderly-secondary-copy small { font-size: 13px; font-weight: 400; line-height: 1.5; color: #c4e4d5; }
+.elderly-web-secondary-nav a.is-active small { color: var(--cs-muted); }
+@media (min-width: 769px) { .elderly-web-nav { max-height: 100dvh; overflow-y: auto; scrollbar-width: thin; } }
 .elderly-web-main { min-width: 0; width: 100%; margin: 0; padding: 24px 32px 56px; background: var(--cs-bg); align-self: stretch; }
 .elderly-page-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 22px; }
 .elderly-breadcrumb { display: flex; flex-wrap: wrap; gap: 10px; color: var(--cs-muted); font-size: 14px; }
@@ -342,6 +349,7 @@
   .elderly-web-main { padding: 20px 20px calc(var(--elderly-nav-height, 110px) + 48px + env(safe-area-inset-bottom)); }
   .elderly-web-nav { position: fixed; top: auto; bottom: calc(12px + env(safe-area-inset-bottom)); left: 12px; right: 12px; margin: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch; gap: 2px; padding: 9px 7px; border-radius: 26px; border: 1px solid var(--cs-line); background: white; min-height: 0; box-shadow: 0 6px 28px #153f2b18; z-index: 30; }
   .elderly-web-nav-heading, .elderly-web-nav-note { display: none; }
+  .elderly-web-secondary-nav { display: none; }
   .elderly-web-nav a { display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; padding: 4px 0 7px; min-width: 0; min-height: 78px; text-align: center; font-size: 12.5px; line-height: 1.4; border-radius: 16px; font-weight: 600; color: var(--cs-muted); }
   .elderly-web-nav a > span:first-child { width: 42px; height: 42px; border-radius: 50%; font-size: 23px; }
   .elderly-web-nav a > span:last-child { overflow-wrap: normal; word-break: normal; }

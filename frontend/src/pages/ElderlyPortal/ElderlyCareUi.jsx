@@ -1,3 +1,4 @@
+import { metricAssessment } from '../../utils/metricAssessment';
 import React, { useId } from 'react';
 import { Alert, Button, Empty, Progress, Spin, Tag } from 'antd';
 import { CheckCircleOutlined, ClockCircleOutlined, HeartOutlined, MedicineBoxOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
@@ -46,9 +47,10 @@ export function DoseProgress({ rows, variant }) {
   return <div className="elderly-care-progress"><div className="elderly-progress-heading"><span className="elderly-ui-icon" aria-hidden="true"><MedicineBoxOutlined /></span><div><small>Tiến độ uống thuốc</small><strong>Đã uống {done}/{total} liều</strong></div></div><Progress percent={total ? Math.round(done / total * 100) : 0} strokeColor="#21966F" /><span>Tính theo từng liều trong ngày được chọn.</span></div>;
 }
 export function MetricCard({ row, title, unit, compact = false }) {
+  const assessment = metricAssessment(row);
   return <article className={`elderly-care-metric${compact ? ' is-compact' : ''}`}><div className="elderly-metric-heading"><span>{title || row?.tenChiSo}</span><span className="elderly-metric-symbol"><MetricSymbol label={title || row?.tenChiSo} /></span></div>
     <div className="elderly-care-value"><strong>{metricValue(row)}</strong><span>{unit || row?.donVi}</span></div>
-    {row && <><Tag icon={row.laBatThuong ? undefined : <CheckCircleOutlined aria-hidden="true" />} color={row.laBatThuong ? 'orange' : 'green'}>{row.laBatThuong ? 'Ngoài ngưỡng theo dõi' : 'Trong ngưỡng theo dõi'}</Tag>
+    {row && <><Tag icon={assessment.state === 'BINH_THUONG' ? <CheckCircleOutlined aria-hidden="true" /> : undefined} color={assessment.color}>{assessment.label}</Tag>
       <time><ClockCircleOutlined aria-hidden="true" /> {formatAlertTime(row.thoiGianDo)}</time></>}
   </article>;
 }

@@ -52,13 +52,13 @@ function fixture(options = {}) {
   return { run, statements, transactions };
 }
 
-test('Mobile completion creates only the JWT-owned profile and syncs account name/phone atomically, never credentials/assignment', async () => {
-  const f = fixture(); const { res, error } = await f.run();
+test('Mobile completion creates only the JWT-owned profile without overwriting account name/phone, never credentials/assignment', async () => {
+  const f = fixture(); const { res, error } = await f.run({ ...body(), soDienThoai: '0899999931' });
   assert.equal(error, undefined); assert.equal(res.status, 201); assert.equal(res.data.id, 42); assert.equal(res.data.userId, 31);
   const insert = f.statements.find(x => x.statement.includes('INSERT INTO HoSoNguoiCaoTuoi'));
-  assert.equal(insert.values.userId, 31); assert.equal(insert.values.phone, '0899999930');
+  assert.equal(insert.values.userId, 31); assert.equal(insert.values.phone, '0899999931');
   assert.equal(f.transactions[0].level, 4); assert.equal(f.transactions[0].committed, true);
-  assert.equal(f.statements.some(x => x.statement.includes('UPDATE NguoiDung SET HoTen=@hoTen,SoDienThoai=@phone')), true);
+  assert.equal(f.statements.some(x => /UPDATE\s+NguoiDung/.test(x.statement)), false);
   assert.doesNotMatch(f.statements.map(x => x.statement).join('\n'), /INSERT INTO NguoiDung|SET MatKhauHash|INSERT INTO NguoiCaoTuoi_NguoiChamSoc/);
 });
 
@@ -105,8 +105,8 @@ test('Conflicting existing phone/CCCD is refused, never automatically linked by 
   }
 });
 
-test('Insert/account-sync SQL failure rolls back both writes; unique conflict returns 409', async () => {
-  for (const options of [{ failInsert: true }, { failSync: true }, { failInsert: true, sqlNumber: 2601 }]) {
+test('Profile insert SQL failure rolls back; unique conflict returns 409', async () => {
+  for (const options of [{ failInsert: true }, { failInsert: true, sqlNumber: 2601 }]) {
     const f = fixture(options); const { res, error } = await f.run();
     assert.equal(f.transactions[0].rolledBack, true); assert.notEqual(f.transactions[0].committed, true);
     if (options.sqlNumber) assert.equal(res.status, 409);

@@ -1,6 +1,13 @@
 // emergencyService.js - Lien he khan cap - goi API that
 import axiosClient from './axiosClient';
 
+export const getLinkedRelativeContacts = async (nguoiCaoTuoiId, signal) => {
+  const res = await axiosClient.get('/emergency-contacts/linked-relatives', {
+    params: { nguoiCaoTuoiId }, signal,
+  });
+  return res.data?.data ?? [];
+};
+
 export const getEmergencyContacts = async (params = {}) => {
   const query = {};
   if (params.nguoiCaoTuoiId) query.nguoiCaoTuoiId = params.nguoiCaoTuoiId;

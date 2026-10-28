@@ -1,3 +1,4 @@
+import '../../utils/metric_assessment.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -243,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _metricCard(String name, IconData icon, {required double width}) {
     final metric = _latest(name);
-    final abnormal = metric?['laBatThuong'] == true;
+    final abnormal = MetricAssessment.abnormal(metric);
     final value = metric == null
         ? 'Chưa có dữ liệu'
         : '${_number(metric['giaTri'])}${metric['giaTriPhu'] == null ? '' : '/${_number(metric['giaTriPhu'])}'}';
@@ -258,11 +259,10 @@ class _HomeScreenState extends State<HomeScreen> {
           : _time(metric['thoiGianDo']),
       status: metric == null
           ? 'Chưa có dữ liệu'
-          : abnormal
-          ? 'Bất thường'
-          : 'Bình thường',
+          : MetricAssessment.label(metric),
       abnormal: abnormal,
       hasData: metric != null,
+      assessed: MetricAssessment.assessed(metric),
       onTap: _openHealth,
     );
   }

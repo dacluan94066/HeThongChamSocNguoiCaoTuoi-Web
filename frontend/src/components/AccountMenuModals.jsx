@@ -102,13 +102,13 @@ const AccountMenuModals = ({ activeModal, onClose, user, onUserUpdated }) => {
         width={620}
       >
         <Descriptions bordered column={1} size="middle" style={{ marginTop: 20 }}>
-          <Descriptions.Item label="Họ và tên">{user?.hoTen || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Tên tài khoản">{user?.hoTen || '—'}</Descriptions.Item>
           <Descriptions.Item label="Tên đăng nhập">{user?.tenDangNhap || '—'}</Descriptions.Item>
           <Descriptions.Item label="Vai trò">
             {roleLabels[user?.tenVaiTro] || user?.tenVaiTro || '—'}
           </Descriptions.Item>
           <Descriptions.Item label="Email">{user?.email || 'Chưa cập nhật'}</Descriptions.Item>
-          <Descriptions.Item label="Số điện thoại">{user?.soDienThoai || 'Chưa cập nhật'}</Descriptions.Item>
+          <Descriptions.Item label="Số điện thoại tài khoản">{user?.soDienThoai || 'Chưa cập nhật'}</Descriptions.Item>
         </Descriptions>
       </Modal>
 
@@ -200,7 +200,7 @@ const AccountMenuModals = ({ activeModal, onClose, user, onUserUpdated }) => {
         >
           <Form.Item
             name="hoTen"
-            label="Họ và tên"
+            label="Tên tài khoản"
             rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }]}
           >
             <Input />
@@ -214,7 +214,7 @@ const AccountMenuModals = ({ activeModal, onClose, user, onUserUpdated }) => {
           </Form.Item>
           <Form.Item
             name="soDienThoai"
-            label="Số điện thoại"
+            label="Số điện thoại tài khoản"
             rules={[{ pattern: /^[0-9]{10,11}$/, message: 'Số điện thoại phải gồm 10–11 chữ số' }]}
           >
             <Input />

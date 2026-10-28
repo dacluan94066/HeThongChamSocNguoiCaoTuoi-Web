@@ -1,0 +1,15 @@
+.linked-contact-picker { display: grid; gap: 12px; padding: 18px; margin-bottom: 24px; border: 1px solid #cce8dc; border-radius: 14px; background: #f3faf6; color: #155e4b; }
+.linked-contact-picker > .ant-radio-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.linked-contact-picker .ant-radio-button-wrapper { height: auto; min-height: 44px; padding: 10px 14px; line-height: 1.5; white-space: normal; border: 1px solid #cce0d7; border-radius: 8px; }
+.linked-contact-picker .ant-radio-button-wrapper::before { display: none; }
+.linked-contact-picker .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) { color: #155e4b; background: #e8f6ef; border-color: #21966f; box-shadow: 0 0 0 1px #21966f; }
+.linked-contact-picker .ant-radio-button-wrapper:focus-within { outline: 2px solid #155e4b; outline-offset: 3px; }
+.linked-contact-picker-content { display: grid; gap: 12px; min-width: 0; }
+.linked-contact-picker-content .ant-select { width: 100%; min-width: 0; }
+.linked-contact-picker-content .ant-select-selection-item { overflow: hidden; text-overflow: ellipsis; }
+.linked-contact-picker-content p { margin: 0; }
+.linked-contact-priority { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: #f3faf6; color: #155e4b; line-height: 1.6; }
+@media (max-width: 575px) {
+  .linked-contact-picker { padding: 14px; }
+  .linked-contact-picker .ant-radio-button-wrapper { flex: 1 1 100%; border-radius: 8px; }
+}

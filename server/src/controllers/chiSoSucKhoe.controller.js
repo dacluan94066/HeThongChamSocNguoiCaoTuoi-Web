@@ -1,3 +1,4 @@
+const { metricAssessmentSql, metricAssessment } = require('../utils/metricAssessment');
 // controllers/chiSoSucKhoe.controller.js - Chi so suc khoe - dung schema that
 // Bang ChiSoSucKhoe: ChiSoID, NguoiCaoTuoiID, LoaiChiSoID (FK), GiaTri,
 //   GiaTriPhu, ThoiGianDo, NguoiDoID, LaBatThuong BIT, GhiChu
@@ -74,6 +75,7 @@ const mapMetric = (row) => {
     nguoiDoTen:      row.nguoiDoTen,
     laBatThuong:     Boolean(row.laBatThuong),
     binhThuong:      !row.laBatThuong,
+    trangThaiDanhGia: metricAssessment(row),
     ghiChu:          row.ghiChu,
   };
 };
@@ -116,6 +118,7 @@ const mapMobileMetric = (row) => ({
   giaTriPhu: row.giaTriPhu == null ? null : Number(row.giaTriPhu),
   thoiGianDo: row.thoiGianDo instanceof Date ? row.thoiGianDo.toISOString().slice(0,19) : row.thoiGianDo,
   laBatThuong: Boolean(row.laBatThuong),
+  trangThaiDanhGia: metricAssessment(row),
   ghiChu: row.ghiChu,
 });
 
@@ -164,7 +167,7 @@ const getMine = async (req, res, next) => {
 
     let query = `
       SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
-        c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
+        c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo, l.DonVi AS donVi, ${metricAssessmentSql('l', 'c')} AS trangThaiDanhGia,
         c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
         CONVERT(VARCHAR(19),c.ThoiGianDo,126) AS thoiGianDo, c.LaBatThuong AS laBatThuong,
         c.GhiChu AS ghiChu
@@ -214,7 +217,7 @@ const getByElderly = async (req, res, next) => {
 
     let query = `
       SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
-        c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
+        c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo, l.DonVi AS donVi, ${metricAssessmentSql('l', 'c')} AS trangThaiDanhGia,
         c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
         c.ThoiGianDo AS thoiGianDo, c.LaBatThuong AS laBatThuong,
         c.GhiChu AS ghiChu
@@ -337,12 +340,14 @@ const createMine = async (req, res, next) => {
 
           SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
             c.LoaiChiSoID AS loaiChiSoId, l.TenChiSo AS tenChiSo,
-            l.DonVi AS donVi, c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
+            l.DonVi AS donVi, ${metricAssessmentSql('l', 'c')} AS trangThaiDanhGia, c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
             c.ThoiGianDo AS thoiGianDo, c.LaBatThuong AS laBatThuong,
             ${vietnamTimestampSql('c.ThoiGianDo')} AS thoiGianDoUtc,
-            c.GhiChu AS ghiChu, @alertId AS alertId
+            c.GhiChu AS ghiChu, @alertId AS alertId,
+            ${vietnamTimestampSql('cb.NgayTao')} AS alertCreatedAt
           FROM ChiSoSucKhoe c
           JOIN LoaiChiSoSucKhoe l ON l.LoaiChiSoID = c.LoaiChiSoID
+          LEFT JOIN CanhBao cb ON cb.CanhBaoID=@alertId
           WHERE c.ChiSoID = @metricId;
         END TRY
         BEGIN CATCH
@@ -361,6 +366,7 @@ const createMine = async (req, res, next) => {
       giaTri: Number(row.giaTri),
       giaTriPhu: row.giaTriPhu == null ? null : Number(row.giaTriPhu),
       laBatThuong: Boolean(row.laBatThuong),
+  trangThaiDanhGia: metricAssessment(row),
       thoiGianDo: row.thoiGianDoUtc,
     });
     if (row.alertId != null) {
@@ -374,7 +380,8 @@ const createMine = async (req, res, next) => {
         mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
         mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
         moTa: assessment.description,
-        thoiGianPhatHien: row.thoiGianDoUtc,
+        thoiGianPhatHien: row.alertCreatedAt,
+        thoiGianDo: row.thoiGianDoUtc,
         trangThai: 'CHUA_XU_LY',
         trangThaiLabel: 'Chưa xử lý',
         nguonBang: 'ChiSoSucKhoe',
@@ -401,7 +408,7 @@ const getAll = async (req, res, next) => {
     let query = `
       SELECT c.ChiSoID AS id, c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         nct.HoTen AS nguoiCaoTuoiTen, c.LoaiChiSoID AS loaiChiSoId,
-        l.TenChiSo AS tenChiSo, l.DonVi AS donVi,
+        l.TenChiSo AS tenChiSo, l.DonVi AS donVi, ${metricAssessmentSql('l', 'c')} AS trangThaiDanhGia,
         c.GiaTri AS giaTri, c.GiaTriPhu AS giaTriPhu,
         ${vietnamTimestampSql('c.ThoiGianDo')} AS thoiGianDo,
         CONVERT(VARCHAR(19),c.ThoiGianDo,126) AS thoiGianDoDiaPhuong,
@@ -511,8 +518,11 @@ const create = async (req, res, next) => {
         END;
 
         SELECT c.ChiSoID AS id, @canhBaoId AS alertId,
-          ${vietnamTimestampSql('c.ThoiGianDo')} AS thoiGianDoUtc
-        FROM ChiSoSucKhoe c WHERE c.ChiSoID=@chiSoId;
+          ${vietnamTimestampSql('c.ThoiGianDo')} AS thoiGianDoUtc,
+          ${vietnamTimestampSql('cb.NgayTao')} AS alertCreatedAt
+        FROM ChiSoSucKhoe c
+        LEFT JOIN CanhBao cb ON cb.CanhBaoID=@canhBaoId
+        WHERE c.ChiSoID=@chiSoId;
       `);
     emitToAdmin('chisuckhoe:new', {
       id: r.recordset[0].id,
@@ -536,7 +546,8 @@ const create = async (req, res, next) => {
         mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
         mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
         moTa: assessment.description,
-        thoiGianPhatHien: r.recordset[0].thoiGianDoUtc,
+        thoiGianPhatHien: r.recordset[0].alertCreatedAt,
+        thoiGianDo: r.recordset[0].thoiGianDoUtc,
         trangThai: 'CHUA_XU_LY',
         trangThaiLabel: 'Chưa xử lý',
         nguonBang: 'ChiSoSucKhoe',
