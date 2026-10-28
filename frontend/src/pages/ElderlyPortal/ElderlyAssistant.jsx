@@ -5,6 +5,7 @@ import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import AssistantMarkdown from './AssistantMarkdown';
 import './ElderlyAssistant.css';
 import { useAuth } from '../../context/AuthContext';
+import { PageIntro } from './ElderlyCareUi';
 
 export function ElderlyAssistantPage() {
   const { assistantStore: store, profile, assistantReturnTo } = useOutletContext();
@@ -19,11 +20,12 @@ export function ElderlyAssistantPage() {
   const close = () => { navigate(assistantReturnTo?.() || '/ca-nhan'); requestAnimationFrame(() => document.getElementById('elderly-assistant-entry')?.focus()); };
   const send = event => { event.preventDefault(); store.send(); };
   return <section className="elderly-assistant" aria-label="Trợ lý CareSenior">
-    <div className="elderly-assistant-heading"><div><span className="elderly-web-eyebrow"><MessageOutlined /> CareSenior Assistant</span><h1>Trợ lý CareSenior</h1><p>Hỏi về sức khỏe và cách sử dụng CareSenior.</p></div>
-      <Button icon={<CloseOutlined />} onClick={close} aria-label="Đóng trò chuyện">Đóng</Button></div>
+    <PageIntro className="elderly-assistant-heading" title="Trợ lý CareSenior" eyebrow="CARESENIOR ASSISTANT" icon={<MessageOutlined />} description="Một nơi để hỏi về sức khỏe và cách sử dụng CareSenior."
+      action={<Button icon={<CloseOutlined />} onClick={close} aria-label="Đóng trò chuyện">Đóng</Button>} />
     <div className="elderly-assistant-layout">
       <aside className="elderly-assistant-conversations" aria-label="Hội thoại trong phiên">
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setDeleting(false); store.create(); }}>Trò chuyện mới</Button>
+        <span className="elderly-assistant-session-label">{state.conversations.length} hội thoại trong phiên</span>
         <label htmlFor="assistant-conversation">Cuộc trò chuyện trong phiên</label>
         <select id="assistant-conversation" value={item.id} onChange={event => { setDeleting(false); store.select(Number(event.target.value)); }}>
           {state.conversations.map(conversation => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}
@@ -35,7 +37,7 @@ export function ElderlyAssistantPage() {
           : <div className="elderly-assistant-delete" role="group" aria-label="Xác nhận xóa hội thoại"><p>Xóa nội dung hội thoại này khỏi phiên?</p><Button danger onClick={() => { store.remove(item.id); setDeleting(false); }}>Đồng ý xóa</Button><Button onClick={() => setDeleting(false)}>Hủy</Button></div>}
       </aside>
       <div className="elderly-assistant-chat">
-        <div className="elderly-assistant-profile"><span className="elderly-assistant-online" aria-hidden="true" /><div><strong>{profile.hoTen}</strong><small>Chỉ sử dụng hồ sơ của bạn · Trợ lý không tự thay đổi dữ liệu</small></div></div>
+        <div className="elderly-assistant-profile"><span className="elderly-assistant-avatar" aria-hidden="true"><MessageOutlined /></span><div><strong>CareSenior Assistant</strong><small>Hồ sơ: {profile.hoTen} · Trợ lý không tự thay đổi dữ liệu</small></div></div>
         {state.contextPhase === 'loading' && <p role="status">Đang kiểm tra kết nối trợ lý…</p>}
         {state.contextPhase === 'error' && <Alert type="error" showIcon title="Chưa mở được trợ lý" description={state.contextError} action={<Button onClick={() => store.loadContext()}>Thử kết nối lại</Button>} />}
         {state.contextPhase === 'expired' && <Alert type="warning" showIcon title="Phiên trò chuyện đã hết hạn" description={state.contextError} action={<Button onClick={logout}>Đăng xuất</Button>} />}

@@ -1,23 +1,23 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, Button, Checkbox, Form, Input, Modal, Select, Tabs, Tag } from 'antd';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
-import { CheckOutlined, MedicineBoxOutlined } from '@ant-design/icons';
+import { CalendarOutlined, CheckOutlined, ClockCircleOutlined, MedicineBoxOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/elderlyCareService';
 import { useElderlyMutation, useElderlyResource } from '../../hooks/useElderlyResource';
 import { canRecordPastDose, dayOf, inDays, instant, ownDay } from '../../utils/elderlyCare';
 import { formatAlertTime } from '../../utils/alertTime';
-import { DoseProgress, MutationNotice, Refresh, ResourceState } from './ElderlyCareUi';
+import { DoseProgress, MutationNotice, PageIntro, Refresh, ResourceState } from './ElderlyCareUi';
 
 const doseLabels = { ChuaDenGio: 'Chưa xác nhận uống', DaUong: 'Đã uống', BoLo: 'Bỏ lỡ', TuChoi: 'Từ chối' };
 const visitLabels = { ChuaDen: 'Chưa đến', DaKham: 'Đã khám', DaHuy: 'Đã hủy', KhongDen: 'Không đến' };
 export function ElderlySchedulePage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'kham' ? 'kham' : 'thuoc';
-  return <><div className="elderly-web-welcome"><h1>Lịch trình của tôi</h1><p>Lịch thuốc và lịch khám cùng dữ liệu với Mobile.</p></div>
-    <section className="elderly-web-card"><Tabs activeKey={tab} onChange={key => setParams(previous => { previous.set('tab', key); return previous; })} items={[
-      { key: 'thuoc', label: 'Lịch thuốc', children: <MedicationPage /> },
-      { key: 'kham', label: 'Lịch khám', children: <AppointmentPage /> },
+  return <><PageIntro title="Lịch trình của tôi" icon={<CalendarOutlined />} description="Một nơi để theo dõi lịch thuốc và lịch khám. Dữ liệu dùng chung với Mobile." />
+    <section className="elderly-web-card elderly-schedule-shell"><Tabs className="elderly-segmented-tabs" activeKey={tab} onChange={key => setParams(previous => { previous.set('tab', key); return previous; })} items={[
+      { key: 'thuoc', label: <><MedicineBoxOutlined aria-hidden="true" />Lịch thuốc</>, children: <MedicationPage /> },
+      { key: 'kham', label: <><CalendarOutlined aria-hidden="true" />Lịch khám</>, children: <AppointmentPage /> },
     ]} /></section></>;
 }
 
@@ -40,8 +40,8 @@ function MedicationPage() {
     <ResourceState resource={doses} isEmpty={!rows.length} empty="Không có lịch uống thuốc trong ngày đã chọn">
       <DoseProgress rows={rows} />
       <div className="elderly-care-list">{rows.map(row => <article className={`elderly-care-dose dose-${row.trangThai}`} key={row.id}>
-        <div className="elderly-care-title"><MedicineBoxOutlined aria-hidden="true" /><h3>{row.tenThuoc}</h3><Tag color={row.trangThai === 'DaUong' ? 'green' : row.trangThai === 'BoLo' || row.trangThai === 'TuChoi' ? 'red' : 'orange'}>{doseLabels[row.trangThai] || row.trangThai}</Tag></div>
-        <p><strong>Liều dùng:</strong> {row.lieuDung || 'Chưa có dữ liệu'}</p><p><strong>Giờ uống:</strong> {formatAlertTime(row.thoiGianDuKien)}</p>
+        <div className="elderly-care-title"><span className="elderly-ui-icon" aria-hidden="true"><MedicineBoxOutlined /></span><h3>{row.tenThuoc}</h3><Tag color={row.trangThai === 'DaUong' ? 'green' : row.trangThai === 'BoLo' || row.trangThai === 'TuChoi' ? 'red' : 'orange'}>{doseLabels[row.trangThai] || row.trangThai}</Tag></div>
+        <div className="elderly-dose-facts"><p><strong>Liều dùng:</strong> {row.lieuDung || 'Chưa có dữ liệu'}</p><p><ClockCircleOutlined aria-hidden="true" /> <strong>Giờ uống:</strong> {formatAlertTime(row.thoiGianDuKien)}</p></div>
         {row.cachDung && <p><strong>Hướng dẫn:</strong> {row.cachDung}</p>}{row.ghiChu && <p>{row.ghiChu}</p>}
         {row.thoiGianThucTe && <p>Đã ghi nhận uống: {formatAlertTime(row.thoiGianThucTe)}</p>}
         {row.ghiNhanBoSung && <Tag>Đã ghi nhận bổ sung</Tag>}
@@ -88,8 +88,8 @@ function AppointmentPage() {
     </div>
     {invalidRange && <Alert type="warning" title="Ngày bắt đầu không được sau ngày kết thúc" />}
     <ResourceState resource={visits} isEmpty={!rows.length} empty="Không có lịch khám phù hợp">
-      <div className="elderly-care-list">{rows.map(row => <article className="elderly-care-row" key={row.id}>
-        <div className="elderly-care-title"><h3>{row.tenBenhVien || 'Lịch khám'}</h3><Tag>{visitLabels[row.trangThai] || row.trangThai}</Tag></div>
+      <div className="elderly-care-list">{rows.map(row => <article className="elderly-care-row elderly-appointment-row" key={row.id}>
+        <div className="elderly-care-title"><span className="elderly-ui-icon" aria-hidden="true"><CalendarOutlined /></span><h3>{row.tenBenhVien || 'Lịch khám'}</h3><Tag>{visitLabels[row.trangThai] || row.trangThai}</Tag></div>
         <time>{formatAlertTime(row.thoiGianKham)}</time><span>{[row.chuyenKhoa, row.bacSiPhuTrach].filter(Boolean).join(' · ')}</span>
         <Button onClick={() => setDetailId(row.id)}>Xem chi tiết lịch khám</Button>
       </article>)}</div>

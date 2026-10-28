@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Avatar, Button, Dropdown, Result, Spin } from 'antd';
+import { Avatar, Button, ConfigProvider, Dropdown, Result, Spin } from 'antd';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BellOutlined, CalendarOutlined, DownOutlined, HeartFilled, HomeOutlined, LockOutlined, LogoutOutlined, MessageOutlined, SafetyOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
@@ -23,6 +23,15 @@ const navigation = [
   { to: '/ca-nhan/canh-bao', label: 'Cảnh báo', icon: <BellOutlined /> },
   { to: '/ca-nhan/ho-so', label: 'Hồ sơ', icon: <UserOutlined /> },
 ];
+
+// This provider only themes the personal workspace, including its portalled UI.
+const elderlyTheme = { token: {
+  colorPrimary: '#155E4B', colorLink: '#155E4B', colorSuccess: '#197452',
+  colorWarning: '#86520C', colorError: '#B4233F', colorInfo: '#1B6786',
+  colorText: '#203D35', colorTextSecondary: '#5D7066', colorBorder: '#789487',
+  fontFamily: '"Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
+  fontSize: 16, fontSizeSM: 14, fontSizeLG: 18, controlHeight: 48, borderRadius: 12,
+} };
 
 export default function ElderlyPortalPage() {
   const { user, logout, hasPermission } = useAuth();
@@ -69,14 +78,20 @@ export default function ElderlyPortalPage() {
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [ready]);
   const displayName = state.profile?.hoTen || user.hoTen || user.tenDangNhap;
-  return <ElderlyLiveContext.Provider value={live}><div ref={rootRef} className={`elderly-web${ready ? ' is-ready' : ''}`}>
+  const pageLabel = ({ '/ca-nhan/suc-khoe': 'Sức khỏe', '/ca-nhan/tro-ly': 'Trợ lý AI' })[location.pathname]
+    || navigation.find(item => item.end ? item.to === location.pathname : location.pathname.startsWith(item.to))?.label || 'Không gian cá nhân';
+  return <ConfigProvider theme={elderlyTheme} modal={{ className: 'elderly-care-modal' }}><ElderlyLiveContext.Provider value={live}><div ref={rootRef} className={`elderly-web${ready ? ' is-ready' : ''}`}>
+    <a className="elderly-skip-link" href="#elderly-web-content">Đến nội dung chính</a>
     <header className="elderly-web-header">
       <NavLink to="/ca-nhan" className="elderly-web-brand" aria-label="CareSenior — Trang chủ của tôi">
-        <span aria-hidden="true"><HeartFilled /></span><div><strong>CareSenior</strong><small>Sức khỏe của bạn, mỗi ngày</small></div>
+        <span aria-hidden="true"><HeartFilled /></span><div><strong>CareSenior</strong><small>Sức khỏe mỗi ngày</small></div>
       </NavLink>
+      {ready && <div className={`elderly-web-header-context${isSosRoute ? ' is-emergency' : ''}`} role="group" aria-label="Trang đang mở"><span>Không gian cá nhân</span><strong>{pageLabel}</strong></div>}
       <div className="elderly-web-account">
-        {ready && !isSosRoute && <NavLink id="elderly-assistant-entry" className="elderly-web-assistant" to="/ca-nhan/tro-ly"><MessageOutlined /> Hỏi AI</NavLink>}
-        <Dropdown trigger={['click']} placement="bottomRight" autoFocus open={accountOpen} onOpenChange={setAccountOpen} menu={{ items: [
+        {ready && !isSosRoute && <NavLink id="elderly-assistant-entry" className="elderly-web-assistant" to="/ca-nhan/tro-ly"><MessageOutlined aria-hidden="true" /> Hỏi AI</NavLink>}
+        <Dropdown trigger={['click']} placement="bottomRight" classNames={{ root: 'elderly-web-account-dropdown' }} autoFocus open={accountOpen} onOpenChange={setAccountOpen} menu={{ items: [
+          { key: 'identity', disabled: true, label: <div className="elderly-web-account-identity"><strong>{displayName}</strong><span>Người cao tuổi</span></div> },
+          { type: 'divider' },
           { key: 'profile', icon: <UserOutlined />, label: 'Hồ sơ của tôi' },
           { key: 'password', icon: <LockOutlined />, label: 'Đổi mật khẩu' },
           { type: 'divider' }, { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', danger: true },
@@ -86,8 +101,8 @@ export default function ElderlyPortalPage() {
           else if (key === 'profile' || isSosRoute) navigate('/ca-nhan/ho-so');
           else setAccountModal('change-password');
         } }}>
-          <Button className="elderly-web-account-trigger" aria-label="Menu tài khoản" aria-haspopup="menu" aria-expanded={accountOpen}><Avatar aria-hidden="true">{getNameInitials(displayName || '')}</Avatar>
-            <span className="elderly-web-account-name" title={displayName}><strong>{displayName}</strong><small>Người cao tuổi</small></span><DownOutlined />
+          <Button className="elderly-web-account-trigger" aria-label="Menu tài khoản" aria-describedby="elderly-current-account" aria-haspopup="menu" aria-expanded={accountOpen}><Avatar aria-hidden="true">{getNameInitials(displayName || '')}</Avatar>
+            <span id="elderly-current-account" className="elderly-web-account-name" title={displayName}><strong>{displayName}</strong><small>Người cao tuổi</small></span><DownOutlined />
           </Button>
         </Dropdown>
       </div>
@@ -98,12 +113,14 @@ export default function ElderlyPortalPage() {
         className={({ isActive }) => `${isActive ? 'is-active ' : ''}${item.emergency ? 'is-sos' : ''}`}>
         <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>
       </NavLink>)}
+      <div className="elderly-web-nav-note"><HeartFilled aria-hidden="true" /><strong>Chăm sóc từ những điều nhỏ</strong><span>Theo dõi sức khỏe, mỗi ngày một chút.</span></div>
     </nav>}
-    <main id="elderly-web-content" className="elderly-web-main">
-      {ready && <div className="elderly-live-status" role="status"><span className={`elderly-live-dot live-${live.connection}`} aria-hidden="true" />
+    <main id="elderly-web-content" className="elderly-web-main" tabIndex={-1}>
+      {ready && <div className="elderly-page-meta"><div className="elderly-breadcrumb"><span>Không gian cá nhân</span><span aria-hidden="true">/</span><strong>{pageLabel}</strong></div>
+        <div className="elderly-live-status" role="status"><span className={`elderly-live-dot live-${live.connection}`} aria-hidden="true" />
         <span>{({ connected: 'Đã kết nối realtime', connecting: 'Đang kết nối realtime…', disconnected: 'Mất kết nối realtime', offline: 'Thiết bị đang mất mạng', error: 'Chưa kết nối được realtime' })[live.connection]}</span>
         <Button onClick={live.refreshLive}>Đồng bộ lại</Button>
-      </div>}
+      </div></div>}
       {!hasPermission('QLHOSONCT', 'xem') ? <Result status="403" title="Bạn chưa có quyền xem hồ sơ" subTitle="Vui lòng liên hệ quản trị viên." />
         : state.phase === 'checking' ? <div className="elderly-web-loading" role="status"><Spin /><p>Đang kiểm tra hồ sơ của bạn…</p></div>
           : ['missing', 'saving'].includes(state.phase) ? <ElderlyProfileCompletion user={user} state={state} store={store} canComplete={hasPermission('QLHOSONCT', 'sua')} onLogout={logout} />
@@ -112,5 +129,5 @@ export default function ElderlyPortalPage() {
                 extra={[<Button key="retry" type="primary" onClick={() => store.check()}>Thử lại</Button>, <Button key="logout" onClick={logout}>Đăng xuất</Button>]} />}
     </main>
     {!isSosRoute && <AccountMenuModals activeModal={accountModal} onClose={() => setAccountModal(null)} user={user} />}
-  </div></ElderlyLiveContext.Provider>;
+  </div></ElderlyLiveContext.Provider></ConfigProvider>;
 }

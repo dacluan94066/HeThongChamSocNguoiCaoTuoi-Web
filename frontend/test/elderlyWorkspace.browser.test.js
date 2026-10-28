@@ -111,7 +111,7 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
             fixture.profileUpdate = JSON.parse(body); fixture.mutations.push({ endpoint, values: fixture.profileUpdate });
             assert.equal('cccd' in fixture.profileUpdate, false); assert.equal('userId' in fixture.profileUpdate, false);
           }
-          return send(res, 200, { id: owner + 100, userId: owner, hoTen: `NCT fixture ${owner}`, ngaySinh: '1950-01-01', gioiTinh: 'Nữ', email: 'elder-fixture@example.invalid', trangThai: 'DangTheoDoi', ngayTao: '2026-10-27T06:05:00Z', ...fixture.profileUpdate });
+          return send(res, 200, { id: owner + 100, userId: owner, hoTen: fixture.profileName || `NCT fixture ${owner}`, ngaySinh: '1950-01-01', gioiTinh: 'Nữ', email: 'elder-fixture@example.invalid', trangThai: 'DangTheoDoi', ngayTao: '2026-10-27T06:05:00Z', ...fixture.profileUpdate });
         }
         if (endpoint === '/health-metric-types' && req.method === 'GET') {
           if (fixture.holdTypes) { (fixture.typeReplies ||= []).push(() => send(res, 200, metricTypes)); return; }
@@ -134,6 +134,7 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
           return send(res, 200, (fixture.scenario === 'empty' ? [] : fixture.metrics).filter(row => (!params.get('loaiChiSoId') || row.loaiChiSoId === +params.get('loaiChiSoId')) && (!params.get('tuNgay') || row.thoiGianDo.slice(0, 10) >= params.get('tuNgay')) && (!params.get('denNgay') || row.thoiGianDo.slice(0, 10) <= params.get('denNgay'))).map(row => ({ ...row, nguoiCaoTuoiId: owner + 100 })));
         }
         if (endpoint === '/elderly/me/medication-schedule' && req.method === 'GET') {
+          if (fixture.scenario === 'design-home-med-error') return send(res, 503, null, 'Lịch thuốc fixture chưa khả dụng');
           const day = new URL(req.url, origin).searchParams.get('tuNgay');
           return send(res, 200, (fixture.scenario === 'empty' ? [] : fixture.doses).filter(row => row.thoiGianDuKien.slice(0, 10) === day).map(row => ({ ...row, nguoiCaoTuoiId: owner + 100 })));
         }
@@ -197,8 +198,15 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
     ...['offline', 'server', 'forbidden', 'generic404', 'expired', 'admin', 'caregiver', 'relative', 'logout', 'tabs', 'refresh', 'empty', 'dataerror', 'foreign', 'readonly', 'actions', 'large-text',
       'sos-cancel', 'sos-denied', 'sos-uncertain', 'sos-pending', 'sos-account', 'safety-live', 'ai-error', 'ai-offline', 'ai-owner', 'ai-context', 'ai-unavailable', 'ai-pending', 'ai-session', 'ai-expired', 'ai-idle-expiry'].map(scenario => [1024, scenario]),
     ...[360, 768, 1024, 1440].map(width => [width, 'ai']), ...[360, 768, 1024, 1440].map(width => [width, 'google-onboarding']),
-    [1024, 'google-cancel'], [1024, 'google-invalid'], [1024, 'google-stale'], [360, 'sos-send'], [768, 'sos-gps']];
-  for (const [width, scenario] of cases.filter(([, name]) => !process.env.CARESENIOR_ELDERLY_CASE || name === process.env.CARESENIOR_ELDERLY_CASE)) await t.test(`${scenario} ${width}px`, { timeout: 45000 }, async () => {
+    [1024, 'google-cancel'], [1024, 'google-invalid'], [1024, 'google-stale'], [360, 'sos-send'], [768, 'sos-gps'],
+    ...['design-home', 'design-health', 'design-schedule', 'design-visits', 'design-sos', 'design-alerts', 'design-notifications', 'design-profile', 'design-ai', 'design-metric-form', 'design-large-text', 'design-metric-form-large', 'design-profile-form-large', 'design-dose-form-large'].flatMap(name => [360, 768, 1024, 1440].map(width => [width, name])),
+    [1024, 'design-reduced-motion'],
+    ...[360, 768, 1024, 1440, 1920].map(width => [width, 'design-home-six']),
+    ...[360, 768, 1024, 1440].map(width => [width, 'design-home-six-large']),
+    [1024, 'design-home-complete'], [360, 'design-home-empty'], [1024, 'design-home-med-error'],
+    ...['design-header-long', 'design-header-long-large'].flatMap(name => [360, 768, 1024, 1440].map(width => [width, name]))];
+  const selectedCases = (process.env.CARESENIOR_ELDERLY_CASES || process.env.CARESENIOR_ELDERLY_CASE || '').split(',').filter(Boolean);
+  for (const [width, scenario] of cases.filter(([, name]) => !selectedCases.length || selectedCases.includes(name))) await t.test(`${scenario} ${width}px`, { timeout: 45000 }, async () => {
     fixture = { scenario, width, calls: [], posts: [], logins: [], forbidden: [], mutations: [], passwordChanges: 0, connections: 0, sosPosts: [], sos: [], reads: [],
       alerts: [{ id: 1, nguoiCaoTuoiId: 170, loaiCanhBao: 'ChiSoBatThuong', mucDo: 'TrungBinh', trangThai: 'ChuaXuLy', noiDung: 'Cảnh báo sức khỏe fixture của tôi', ngayTao: '2026-10-27T13:05:00', ghiChuXuLy: 'INTERNAL SECRET' }],
       notices: [{ id: 1, tieuDe: 'Thông báo fixture của tôi', noiDung: 'Nhắc lịch thuốc fixture', lienKetBang: 'LichUongThuoc', lienKetId: 1, ngayTao: '2026-10-27T23:55:00', daDoc: false }],
@@ -211,9 +219,19 @@ test('NCT Web workspace in isolated Chrome (RAM API only, no SQL/.env)', { skip:
         { id: 2, tenThuoc: 'Thuốc fixture đã bỏ lỡ', lieuDung: 'Theo đơn fixture', thoiGianDuKien: `${today()}T09:00:00`, trangThai: 'BoLo' },
         { id: 3, tenThuoc: 'Thuốc fixture ngày trước', lieuDung: 'Theo đơn fixture', thoiGianDuKien: `${yesterday()}T23:00:00`, trangThai: 'BoLo' },
       ] }; report = null;
+    if (scenario.startsWith('design-home-six')) fixture.metrics.push(
+      { id: 4, loaiChiSoId: 3, tenChiSo: 'Nhịp tim', giaTri: 100, donVi: 'lần/phút', thoiGianDo: '2026-10-27T13:05:00', laBatThuong: true },
+      { id: 5, loaiChiSoId: 4, tenChiSo: 'Cân nặng', giaTri: 75, donVi: 'kg', thoiGianDo: '2026-10-27T13:05:00' },
+      { id: 6, loaiChiSoId: 5, tenChiSo: 'SpO2', giaTri: 98, donVi: '%', thoiGianDo: '2026-10-27T13:05:00' },
+      { id: 7, loaiChiSoId: 6, tenChiSo: 'Đường huyết', giaTri: 95, donVi: 'mg/dL', thoiGianDo: '2026-10-27T13:05:00' },
+    );
+    if (scenario.startsWith('design-header-long')) fixture.profileName = 'NCT fixture 70 Nguyễn Thị Minh An tên tài khoản dài để kiểm tra khả năng hiển thị';
+    if (scenario === 'design-home-complete') fixture.doses.forEach(row => { row.trangThai = 'DaUong'; row.thoiGianThucTe = row.thoiGianDuKien; });
+    if (scenario === 'design-home-empty') fixture.doses = [];
     if (scenario.startsWith('google-')) fixture.google = await createGoogleFixture({ browser: true, linked: scenario !== 'google-onboarding' });
     const profile = await mkdtemp(path.join(os.tmpdir(), 'caresenior-elderly-chrome-'));
     const child = spawn(chrome, ['--headless', '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--disable-background-mode', '--disable-background-networking', `--user-data-dir=${profile}`, `--window-size=${Math.max(width + 30, 800)},1100`,
+      ...(scenario === 'design-reduced-motion' ? ['--force-prefers-reduced-motion'] : []),
       '--force-device-scale-factor=1', `--virtual-time-budget=${scenario.startsWith('sos-') || ['safety-live', 'ai-idle-expiry'].includes(scenario) ? 40000 : 18000}`, `--screenshot=${path.join(evidence, `${scenario}-${width}.png`)}`, '--dump-dom', `${origin}/preview`], { windowsHide: true });
     let errors = ''; child.stderr.on('data', data => { errors += data; }); child.stdout.resume();
     const timer = setTimeout(() => child.kill(), 40000);

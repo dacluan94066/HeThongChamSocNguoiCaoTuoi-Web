@@ -102,7 +102,11 @@ async function run() {
     clickButton('Về trang của tôi');
     await wait(() => scenario === 'relative' ? text().includes('Người thân của tôi') : text().includes('Trung tâm Giám sát'));
     check('old role retains its own workspace', location.pathname === (scenario === 'relative' ? '/nguoi-than-cua-toi' : '/dashboard'));
-    return { checks };
+    const styleEvidence = [...document.querySelectorAll('header,aside,nav,main,.app-header,.app-sidebar')].map(el => {
+      const s = getComputedStyle(el), r = el.getBoundingClientRect();
+      return { tag: el.tagName, class: String(el.className), color: s.color, background: s.backgroundColor, font: s.fontFamily, fontSize: s.fontSize, width: r.width };
+    });
+    return { checks, styleEvidence };
   }
   if (scenario === 'expired') {
     await wait(() => document.querySelector('.login-page'));
@@ -144,6 +148,131 @@ async function run() {
     const rect = el.getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth + 1 && rect.height >= 44;
   }));
   check('personal profile is not persisted', ![...Array(localStorage.length)].map((_, i) => localStorage.key(i)).some(key => !['token', 'user'].includes(key)));
+  if (scenario.startsWith('design-')) {
+    const ratio = (fg, bg) => {
+      const light = color => color.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255)
+        .map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
+        .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+      const a = light(fg), b = light(bg); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+    };
+    const screens = {
+      home: ['/ca-nhan', () => text().includes('Lịch uống thuốc hôm nay') && document.querySelector('.elderly-care-metric')],
+      health: ['/ca-nhan/suc-khoe', () => document.querySelector('.elderly-care-chart svg')],
+      schedule: ['/ca-nhan/lich-trinh', () => document.querySelector('.elderly-care-dose')],
+      visits: ['/ca-nhan/lich-trinh?tab=kham', () => text().includes('Xem chi tiết lịch khám')],
+      sos: ['/ca-nhan/sos', () => sosButton()],
+      alerts: ['/ca-nhan/canh-bao', () => text().includes('Cảnh báo sức khỏe fixture của tôi')],
+      notifications: ['/ca-nhan/canh-bao?tab=notifications', () => text().includes('Thông báo fixture của tôi')],
+      profile: ['/ca-nhan/ho-so', () => document.getElementById('google-current-password')],
+      ai: ['/ca-nhan/tro-ly', () => document.getElementById('assistant-question')],
+    };
+    const large = scenario === 'design-large-text', homeSix = scenario.startsWith('design-home-six');
+    const formKind = scenario.includes('metric-form') ? 'metric' : scenario.includes('profile-form') ? 'profile' : scenario.includes('dose-form') ? 'dose' : null;
+    const largeForm = scenario.endsWith('form-large');
+    const names = large ? Object.keys(screens) : [scenario.startsWith('design-home') || scenario.startsWith('design-header') ? 'home' : formKind === 'metric' ? 'health' : formKind === 'profile' ? 'profile' : formKind === 'dose' ? 'schedule' : scenario === 'design-reduced-motion' ? 'home' : scenario.slice(7)];
+    let scaled = [];
+    for (const name of names) {
+      scaled.forEach(([el, value]) => { el.style.fontSize = value; });
+      const [path, loaded] = screens[name]; route(path); await wait(loaded); await delay(100);
+      if (formKind) {
+        clickButton(formKind === 'metric' ? 'Thêm số đo' : formKind === 'profile' ? 'Chỉnh sửa hồ sơ' : 'Xác nhận đã uống');
+        await wait(() => document.querySelector('[role="dialog"] input'));
+        check('owned modal retains the accessible NCT action palette', getComputedStyle(document.querySelector('[role="dialog"] button[type="submit"]')).backgroundColor === 'rgb(21, 94, 75)');
+      }
+      if (large || largeForm || scenario === 'design-home-six-large' || scenario === 'design-header-long-large') {
+        const nodes = [...document.querySelectorAll('.elderly-web *,.elderly-care-modal *')].filter(el => !['svg', 'path', 'circle', 'line', 'polyline'].includes(el.tagName.toLowerCase()));
+        const sizes = nodes.map(el => parseFloat(getComputedStyle(el).fontSize));
+        scaled = nodes.map(el => [el, el.style.fontSize]); nodes.forEach((el, i) => { el.style.fontSize = `${sizes[i] * 1.8}px`; });
+        dispatchEvent(new Event('resize')); await delay(80);
+      }
+      if (largeForm) {
+        const submit = document.querySelector('[role="dialog"] button[type="submit"]');
+        submit.scrollIntoView({ block: 'center', behavior: 'instant' }); await delay(50);
+        const rect = submit.getBoundingClientRect();
+        check('180% modal submit fits width and is reachable without a write', rect.left >= 0 && rect.right <= width + 1 && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest('button') === submit);
+      }
+      check(`${name} ${large ? '180% ' : ''}fits viewport`, document.documentElement.scrollWidth <= width + 1);
+      check(`${name} retains exactly five destinations`, document.querySelectorAll('.elderly-web-nav a').length === 5);
+      if (homeSix) {
+        const grid = document.querySelector('.elderly-home-metrics'), cards = [...grid.children];
+        const expectedColumns = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+        check('all six actual metric types are retained', cards.length === 6);
+        check('six metrics form balanced rows with at most three readable columns', [1, 2, 3].includes(expectedColumns) && cards.length % expectedColumns === 0);
+        const boxes = cards.slice(0, expectedColumns).map(el => el.getBoundingClientRect());
+        check('metric cards align with consistent width and height', boxes.every(box => Math.abs(box.width - boxes[0].width) < 1 && Math.abs(box.height - boxes[0].height) < 1));
+        const main = document.querySelector('.elderly-web-main').getBoundingClientRect(), nav = document.querySelector('.elderly-web-nav').getBoundingClientRect();
+        if (width > 768) check('content starts next to navigation without an oversized empty gutter', main.left - nav.right <= 26);
+        check('daily concept puts medication ahead of health and retains appointments/AI', Boolean(document.querySelector('.elderly-home-spotlight + .elderly-home-dose-details + .elderly-home-health') && document.querySelector('.elderly-home-lower [aria-label="Lịch khám sắp tới"]') && document.querySelector('.elderly-home-assistant a[href="/ca-nhan/tro-ly"]')));
+        check('spotlight uses actual per-dose counts rather than mockup numbers', document.querySelector('.elderly-home-dose-progress').textContent.includes('Đã uống 0/2 liều'));
+        const details = document.querySelector('.elderly-home-dose-details'); details.querySelector('summary').click();
+        check('all actual home medication rows remain reachable', details.open && details.querySelectorAll('.elderly-home-dose').length === 2 && [...details.querySelectorAll('.elderly-home-dose')].every(el => el.getBoundingClientRect().height > 0));
+        details.querySelector('summary').click();
+        const bp = cards.find(el => el.textContent.includes('Huyết áp')).querySelector('.elderly-care-value strong');
+        const range = document.createRange(); range.selectNodeContents(bp);
+        check('blood pressure value stays on one line at the selected text scale', range.getClientRects().length === 1);
+      }
+      if (scenario === 'design-home-complete') {
+        check('completed day keeps the actual full dose progress', document.querySelector('.elderly-home-dose-progress').textContent.includes('Đã uống 2/2 liều'));
+        check('completed doses are not invented as another pending dose', !document.querySelector('.elderly-home-featured-summary') && document.querySelectorAll('.elderly-home-dose').length === 2);
+      }
+      if (scenario === 'design-home-empty') check('empty schedule is explicit without a fabricated dose or progress', document.querySelector('.elderly-home-spotlight').textContent.includes('Hôm nay chưa có lịch uống thuốc') && !document.querySelector('.elderly-home-featured-summary,.elderly-home-dose-progress,.elderly-home-dose-details'));
+      if (scenario === 'design-home-med-error') check('schedule error is distinct from an empty day and offers retry', document.querySelector('.elderly-home-spotlight [role="alert"]') && document.querySelector('.elderly-home-spotlight').textContent.includes('Thử lại') && !document.querySelector('.elderly-home-featured-summary'));
+      if (scenario.startsWith('design-header')) {
+        const header = document.querySelector('.elderly-web-header'), account = header.querySelector('[aria-label="Menu tài khoản"]');
+        check('topbar groups fit without clipping at the current text scale', [...header.children].filter(el => getComputedStyle(el).display !== 'none').every(el => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= width + 1; }));
+        check('long account name is the real loaded fixture identity', header.querySelector('.elderly-web-account-name').textContent.includes('Nguyễn Thị Minh An'));
+        check('account button describes the full identity accessibly', account.getAttribute('aria-describedby') === 'elderly-current-account');
+        if (width > 1180) check('desktop topbar names the active screen', header.querySelector('.elderly-web-header-context strong').textContent === 'Trang chủ' && getComputedStyle(header.querySelector('.elderly-web-header-context')).display !== 'none');
+        account.scrollIntoView({ block: 'center' }); account.click();
+        await wait(() => document.querySelector('.elderly-web-account-dropdown [role="menu"]')); await delay(180);
+        const menu = document.querySelector('.elderly-web-account-dropdown [role="menu"]');
+        if (scenario.endsWith('-large')) {
+          const nodes = [menu, ...menu.querySelectorAll('*')].filter(el => !['svg','path'].includes(el.tagName.toLowerCase()));
+          const sizes = nodes.map(el => parseFloat(getComputedStyle(el).fontSize));
+          nodes.forEach((el, i) => { el.style.fontSize = `${sizes[i] * 1.8}px`; }); dispatchEvent(new Event('resize')); await delay(120);
+        }
+        const bounds = menu.getBoundingClientRect();
+        check('account popup remains within the viewport', bounds.left >= 0 && bounds.right <= width + 1 && menu.scrollWidth <= menu.clientWidth + 1);
+        check('opening the menu exposes the full name for pointer/keyboard/touch', document.querySelector('.elderly-web-account-identity strong').textContent === header.querySelector('.elderly-web-account-name strong').textContent);
+        check('existing profile/password/logout actions remain present', ['profile','password','logout'].every(key => menu.querySelector(`[data-menu-id$="${key}"]`)));
+        check('account menu receives keyboard focus', Boolean(document.activeElement.closest('[role="menu"]')));
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', keyCode:27, bubbles:true }));
+        await wait(() => account.getAttribute('aria-expanded') === 'false');
+        check('Escape closes the account popup', true);
+      }
+      if (width > 768) {
+        const nav = document.querySelector('.elderly-web-nav'), link = nav.querySelector('a:not(.is-active):not(.is-sos)');
+        check('dark sidebar navigation text remains readable', ratio(getComputedStyle(link).color, getComputedStyle(nav).backgroundColor) >= 4.5);
+      }
+      for (const tag of document.querySelectorAll('.elderly-web .ant-tag-green,.elderly-web .ant-tag-red,.elderly-web .ant-tag-orange')) {
+        const s = getComputedStyle(tag); check(`${name} rendered status contrast >=4.5`, ratio(s.color, s.backgroundColor) >= 4.5);
+      }
+      if (name === 'sos') {
+        check('emergency screen has no AI overlay', !document.querySelector('.elderly-web-assistant'));
+        sosButton().scrollIntoView({ block: 'center', behavior: 'instant' }); await delay(50);
+        const box = sosButton().getBoundingClientRect();
+        check('SOS center is unobstructed', document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest('button') === sosButton());
+      } else if (width <= 768) {
+        const ai = document.querySelector('.elderly-web-assistant')?.getBoundingClientRect();
+        const nav = document.querySelector('.elderly-web-nav').getBoundingClientRect();
+        check('AI shortcut stays above bottom navigation', ai && ai.bottom <= nav.top - 8);
+      }
+      const focusTarget = formKind ? document.querySelector('[role="dialog"] .ant-modal-close')
+        : name === 'sos' ? sosButton() : document.querySelector('.elderly-web-nav a');
+      if (formKind) focusTarget.scrollIntoView({ block: 'center', behavior: 'instant' });
+      focusTarget.focus({ preventScroll: true });
+      check(`${name} has a visible keyboard focus indicator`, document.activeElement === focusTarget && getComputedStyle(focusTarget).outlineStyle !== 'none');
+      focusTarget.blur();
+    }
+    if (scenario === 'design-reduced-motion') {
+      check('Chrome prefers reduced motion is active', matchMedia('(prefers-reduced-motion: reduce)').matches);
+      const style = getComputedStyle(document.querySelector('.elderly-web-nav a'));
+      check('navigation respects reduced motion', style.transitionDuration.split(',').every(value => parseFloat(value) <= 0.01));
+    }
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    return { checks, visualEvidence: { font: getComputedStyle(document.querySelector('.elderly-web')).fontFamily,
+      tags: [...document.querySelectorAll('.elderly-web .ant-tag')].slice(0, 8).map(el => ({ class: el.className, color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor })) } };
+  }
   if (scenario === 'refresh' && !sessionStorage.getItem('did-refresh')) { sessionStorage.setItem('did-refresh', '1'); location.reload(); return null; }
   if (scenario === 'tabs') {
     // A second same-origin browsing context writes storage; Chrome generates
@@ -236,7 +365,7 @@ async function run() {
     }
   } else if (scenario.startsWith('ai')) {
     route('/ca-nhan/tro-ly'); await wait(() => document.getElementById('assistant-question'));
-    check('AI primary action uses CareSenior green', getComputedStyle(document.querySelector('.elderly-assistant-conversations .ant-btn-primary')).backgroundColor === 'rgb(33, 150, 111)');
+    check('AI primary action uses accessible CareSenior deep green', getComputedStyle(document.querySelector('.elderly-assistant-conversations .ant-btn-primary')).backgroundColor === 'rgb(21, 94, 75)');
     if (scenario === 'ai-context') {
       await wait(() => text().includes('Chưa mở được trợ lý'));
       check('foreign profile context fails closed', [...document.querySelectorAll('button')].find(button => button.textContent === 'Gửi câu hỏi').disabled);

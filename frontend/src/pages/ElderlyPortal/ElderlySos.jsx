@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { Alert, Button, Checkbox, Modal, Tag } from 'antd';
-import { EnvironmentOutlined } from '@ant-design/icons';
+import { EnvironmentOutlined, SafetyOutlined } from '@ant-design/icons';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useElderlyResource } from '../../hooks/useElderlyResource';
 import { formatAlertTime } from '../../utils/alertTime';
 import { statusLabel } from '../../utils/elderlySafety';
-import { CareSection, Refresh, ResourceState } from './ElderlyCareUi';
+import { CareSection, PageIntro, Refresh, ResourceState } from './ElderlyCareUi';
 
 export function ElderlySosPage() {
   const { profile, safetyApi, sosController: controller } = useOutletContext(), { hasPermission } = useAuth();
@@ -35,7 +35,8 @@ export function ElderlySosPage() {
   const reset = () => { if (controller.reset()) setAcknowledged(false); };
   const count = state.result?.soNguoiChamSocDaThongBao ?? state.result?.soNguoiChamSocNhan;
   return <>
-    <div className="elderly-web-welcome"><h1>Hỗ trợ khẩn cấp SOS</h1><p>Gửi yêu cầu hỗ trợ đến hệ thống CareSenior. Không tự gọi điện.</p></div>
+    <PageIntro title="Hỗ trợ khẩn cấp SOS" icon={<SafetyOutlined />} eyebrow="KHI BẠN CẦN ĐƯỢC TRỢ GIÚP" description="Gửi yêu cầu hỗ trợ đến hệ thống CareSenior. Không tự gọi điện." className="elderly-sos-intro" />
+    <div className="elderly-sos-workspace">
     <section className="elderly-web-card elderly-sos-panel" aria-label="Gửi SOS">
       <h2>Khi cần trợ giúp, nhấn giữ SOS</h2>
       <p>Giữ liên tục đủ 3 giây. Nhả sớm, rời nút, mất focus hoặc rời màn sẽ hủy thao tác giữ.</p>
@@ -80,12 +81,14 @@ export function ElderlySosPage() {
       {['confirmed', 'error'].includes(state.phase) && <Button onClick={reset}>Chuẩn bị thao tác SOS mới</Button>}
     </section>
     <CareSection title="Vị trí khi gửi SOS">
+      <div className="elderly-location-icon" aria-hidden="true"><EnvironmentOutlined /></div>
       <p>Chỉ lấy vị trí khi bạn đồng ý bằng nút bên dưới. Không cấp quyền vẫn gửi SOS được.</p>
       <p role="status">{state.locationNote}</p>
       {state.location && <p>Vị trí đã được trình duyệt cấp: {state.location.latitude.toFixed(6)}, {state.location.longitude.toFixed(6)}</p>}
       <div className="elderly-care-actions"><Button icon={<EnvironmentOutlined />} disabled={['holding', 'sending'].includes(state.phase)} loading={state.locationPhase === 'loading'} onClick={() => controller.locate(navigator.geolocation)}>Lấy vị trí cho SOS</Button>
         <Button disabled={['holding', 'sending'].includes(state.phase)} onClick={() => controller.clearLocation()}>Không chia sẻ vị trí</Button></div>
     </CareSection>
+    </div>
     <CareSection title="Lịch sử SOS của tôi" action={<Refresh onClick={history.refresh} loading={history.loading} />}>
       {!canRead ? <Alert type="warning" title="Tài khoản chưa có quyền xem lịch sử SOS." /> : <ResourceState resource={history} empty="Chưa có SOS nào được ghi nhận">
         <div className="elderly-care-list">{history.data?.map(row => <article className="elderly-care-row elderly-sos-history" key={row.id}>

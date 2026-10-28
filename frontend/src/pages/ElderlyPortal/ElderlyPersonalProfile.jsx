@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, Button, Form, Input, Modal } from 'antd';
+import { Alert, Avatar, Button, Form, Input, Modal } from 'antd';
+import { LockOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -8,7 +9,8 @@ import { editableProfile } from '../../utils/elderlyCare';
 import { formatAlertTime } from '../../utils/alertTime';
 import api from '../../services/elderlyCareService';
 import { useElderlyMutation, useElderlyResource } from '../../hooks/useElderlyResource';
-import { Caregivers, CareSection, MutationNotice } from './ElderlyCareUi';
+import { getNameInitials } from '../../utils/displayUtils';
+import { Caregivers, CareSection, MutationNotice, PageIntro } from './ElderlyCareUi';
 import GoogleWebAuth from '../../components/GoogleWebAuth';
 
 export function ElderlyProfilePage() {
@@ -22,15 +24,22 @@ export function ElderlyProfilePage() {
     ['Giới tính', profile.gioiTinh], ['Email', profile.email], ['Số điện thoại', profile.soDienThoai], ['Địa chỉ', profile.diaChi],
     ['Nhóm máu', profile.nhomMau], ['Bệnh nền', profile.benhNen], ['Dị ứng', profile.diUng], ['Ngày tạo hồ sơ', formatAlertTime(profile.ngayTao)]];
   return <>
-    <div className="elderly-web-welcome"><h1>Hồ sơ của tôi</h1><p>Thông tin được dùng chung trên Web và Mobile.</p></div>
+    <PageIntro title="Hồ sơ của tôi" icon={<UserOutlined />} description="Thông tin được dùng chung trên Web và Mobile."
+      action={<Avatar className="elderly-profile-avatar" aria-hidden="true">{getNameInitials(profile.hoTen || '')}</Avatar>} />
     <MutationNotice mutation={mutation} />
+    <div className="elderly-profile-layout">
     <CareSection title="Thông tin cá nhân" action={hasPermission('QLHOSONCT', 'sua') && <Button type="primary" onClick={startEdit}>Chỉnh sửa hồ sơ</Button>}>
-      <dl className="elderly-care-details">{items.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{Array.isArray(value) ? value.join(', ') || 'Chưa có dữ liệu' : value || 'Chưa có dữ liệu'}</dd></div>)}</dl>
+      <dl className="elderly-care-details">{items.slice(0, 6).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{Array.isArray(value) ? value.join(', ') || 'Chưa có dữ liệu' : value || 'Chưa có dữ liệu'}</dd></div>)}</dl>
       <Button onClick={refreshProfile}>Tải lại hồ sơ</Button>
     </CareSection>
+    <CareSection title="Thông tin sức khỏe">
+      <dl className="elderly-care-details elderly-profile-health">{items.slice(6).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{Array.isArray(value) ? value.join(', ') || 'Chưa có dữ liệu' : value || 'Chưa có dữ liệu'}</dd></div>)}</dl>
+    </CareSection>
+    </div>
     <Caregivers resource={caregivers} />
-    <CareSection title="Tài khoản và bảo mật"><p>Tên đăng nhập: <strong>{user.tenDangNhap}</strong> · Người cao tuổi</p><div className="elderly-care-actions"><Button onClick={openPassword}>Đổi mật khẩu</Button><Button onClick={logout}>Đăng xuất</Button></div></CareSection>
+    <div className="elderly-profile-security"><CareSection title="Tài khoản và bảo mật"><span className="elderly-ui-icon" aria-hidden="true"><LockOutlined /></span><p>Tên đăng nhập: <strong>{user.tenDangNhap}</strong> · Người cao tuổi</p><div className="elderly-care-actions"><Button icon={<LockOutlined />} onClick={openPassword}>Đổi mật khẩu</Button><Button icon={<LogoutOutlined />} onClick={logout}>Đăng xuất</Button></div></CareSection>
     <GoogleWebAuth mode="link" />
+    </div>
     <Modal className="elderly-care-modal" title="Cập nhật hồ sơ của tôi" open={editing} onCancel={close} footer={null} width={760} closable={!mutation.busy} maskClosable={!mutation.busy}>
       <Alert type="info" showIcon title="Chỉ cập nhật thông tin hồ sơ của chính bạn" description="CCCD và thông tin quản lý không được chỉnh sửa tại đây." />
       <MutationNotice mutation={mutation} />

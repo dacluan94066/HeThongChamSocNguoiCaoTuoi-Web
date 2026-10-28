@@ -1,18 +1,19 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, Button, Modal, Select, Tabs, Tag } from 'antd';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
+import { BellOutlined, SafetyOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import { useElderlyMutation, useElderlyResource } from '../../hooks/useElderlyResource';
 import { formatAlertTime } from '../../utils/alertTime';
 import { isRead, isSos, levelLabel, notificationRoute, statusLabel } from '../../utils/elderlySafety';
-import { MutationNotice, Refresh, ResourceState } from './ElderlyCareUi';
+import { MutationNotice, PageIntro, Refresh, ResourceState } from './ElderlyCareUi';
 
 export function ElderlyAlertsPage() {
   const { hasPermission } = useAuth(), [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'notifications' ? 'notifications' : 'alerts';
-  return <><div className="elderly-web-welcome"><h1>Cảnh báo và thông báo</h1><p>Thông tin dành cho chính tài khoản của bạn.</p></div>
+  return <><PageIntro title="Cảnh báo và thông báo" icon={<BellOutlined />} description="Theo dõi những điều cần lưu ý, để chăm sóc bản thân kịp thời. Thông tin dành cho chính tài khoản của bạn." />
     {!hasPermission('QLCANHBAO', 'xem') ? <Alert type="warning" title="Tài khoản chưa có quyền xem cảnh báo và thông báo." /> : <section className="elderly-web-card">
-      <Tabs activeKey={tab} destroyOnHidden onChange={key => setParams({ tab: key })} items={[
+      <Tabs className="elderly-segmented-tabs" activeKey={tab} destroyOnHidden onChange={key => setParams({ tab: key })} items={[
         { key: 'alerts', label: 'Cảnh báo', children: <OwnAlerts /> },
         { key: 'notifications', label: 'Thông báo', children: <OwnNotifications /> },
       ]} />
@@ -29,8 +30,8 @@ function OwnAlerts() {
   return <>
     <div className="elderly-care-title"><h2>Cảnh báo của tôi</h2><Refresh onClick={alerts.refresh} loading={alerts.loading} /></div>
     <div className="elderly-care-filters"><label>Loại cảnh báo<Select aria-label="Loại cảnh báo" value={kind} onChange={setKind} options={[{ value: 'all', label: 'Tất cả cảnh báo' }, { value: 'health', label: 'Sức khỏe và nhắc lịch' }, { value: 'sos', label: 'SOS khẩn cấp' }]} /></label></div>
-    <ResourceState resource={alerts} isEmpty={!rows.length} empty="Chưa có cảnh báo phù hợp"><div className="elderly-care-list">{rows.map(row => <article className={`elderly-care-row ${isSos(row) ? 'elderly-sos-history' : ''}`} key={key(row)}>
-      <div className="elderly-care-title"><h3>{isSos(row) ? 'SOS khẩn cấp' : ({ ChiSoBatThuong: 'Chỉ số sức khỏe', NhacUongThuoc: 'Nhắc uống thuốc', NhacLichKham: 'Nhắc lịch khám' })[row.loaiCanhBao] || 'Cảnh báo'}</h3><Tag color={isSos(row) || ['KhanCap', 'Cao'].includes(row.mucDo) ? 'red' : 'orange'}>{levelLabel(row.mucDo)}</Tag></div>
+    <ResourceState resource={alerts} isEmpty={!rows.length} empty="Chưa có cảnh báo phù hợp"><div className="elderly-care-list">{rows.map(row => <article className={`elderly-care-row elderly-alert-row ${isSos(row) ? 'elderly-sos-history' : ''}`} key={key(row)}>
+      <div className="elderly-care-title"><span className="elderly-ui-icon" aria-hidden="true">{isSos(row) ? <SafetyOutlined /> : <BellOutlined />}</span><h3>{isSos(row) ? 'SOS khẩn cấp' : ({ ChiSoBatThuong: 'Chỉ số sức khỏe', NhacUongThuoc: 'Nhắc uống thuốc', NhacLichKham: 'Nhắc lịch khám' })[row.loaiCanhBao] || 'Cảnh báo'}</h3><Tag color={isSos(row) || ['KhanCap', 'Cao'].includes(row.mucDo) ? 'red' : 'orange'}>{levelLabel(row.mucDo)}</Tag></div>
       <time>{formatAlertTime(row.ngayTao)}</time><p>{row.noiDung}</p><Tag>{statusLabel(row.trangThai)}</Tag><Button onClick={() => setDetailId(key(row))}>Xem chi tiết cảnh báo</Button>
     </article>)}</div></ResourceState>
     <Modal className="elderly-care-modal" title="Chi tiết cảnh báo của tôi" open={Boolean(detail)} onCancel={() => setDetailId(null)} footer={<Button onClick={() => setDetailId(null)}>Đóng</Button>}>
@@ -49,7 +50,7 @@ function OwnNotifications() {
     <div className="elderly-care-filters"><label>Trạng thái đọc<Select aria-label="Trạng thái đọc thông báo" value={filter} onChange={setFilter} options={[{ value: 'all', label: 'Tất cả thông báo' }, { value: 'unread', label: 'Chưa đọc' }, { value: 'read', label: 'Đã đọc' }]} /></label></div>
     <ResourceState resource={notices} isEmpty={!rows.length} empty="Chưa có thông báo phù hợp">
       <p>{notices.data?.filter(row => !isRead(row.daDoc)).length} thông báo chưa đọc trong danh sách đã tải.</p>
-      <div className="elderly-care-list">{rows.map(row => <article key={row.id} className="elderly-care-row">
+      <div className="elderly-care-list">{rows.map(row => <article key={row.id} className={`elderly-care-row elderly-notification-row ${isRead(row.daDoc) ? 'is-read' : 'is-unread'}`}>
         <div className="elderly-care-title"><h3>{row.tieuDe || 'Thông báo'}</h3><Tag color={isRead(row.daDoc) ? 'default' : 'green'}>{isRead(row.daDoc) ? 'Đã đọc' : 'Chưa đọc'}</Tag></div>
         <time>{formatAlertTime(row.ngayTao)}</time><p>{row.noiDung}</p><div className="elderly-care-actions">
           {!isRead(row.daDoc) && <Button disabled={mutation.busy} onClick={() => mutation.run(signal => safetyApi.markRead(row.id, signal), () => notices.refresh())}>Đánh dấu đã đọc</Button>}
