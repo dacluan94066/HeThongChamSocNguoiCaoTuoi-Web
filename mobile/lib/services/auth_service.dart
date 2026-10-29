@@ -13,6 +13,7 @@ import 'google_sign_in_service.dart';
 import 'local_notification_service.dart';
 import 'medication_schedule_service.dart';
 import 'mobile_realtime_service.dart';
+import 'relative_service.dart';
 
 class AuthService {
   AuthService._();
@@ -32,6 +33,7 @@ class AuthService {
     CaregiverDashboardService.instance.clearCache();
     HealthMetricService.instance.clearCache();
     MedicationScheduleService.instance.clearCache();
+    RelativeService.instance.clearCache();
     await ApiClient.clearSession();
     final loginVersion = ApiClient.sessionVersion;
     await LocalNotificationService.cancelMedicationReminders();
@@ -54,7 +56,7 @@ class AuthService {
       }
 
       final userMap = Map<String, dynamic>.from(user);
-      if (userMap['tenVaiTro'] != 'NguoiCaoTuoi') {
+      if (!['NguoiCaoTuoi', 'NguoiThan'].contains(userMap['tenVaiTro'])) {
         throw const ApiException(
           'Tài khoản này không hỗ trợ trên Mobile. Vui lòng dùng hệ thống Web.',
           statusCode: 403,
@@ -66,13 +68,17 @@ class AuthService {
         expectedVersion: loginVersion,
       );
 
-      ElderlyService.instance.beginSession(userMap['userId']);
-      AlertService.instance.beginSession();
-      AppointmentService.instance.beginSession();
-      CaregiverService.instance.beginSession();
-      CaregiverDashboardService.instance.beginSession();
-      HealthMetricService.instance.beginSession();
-      MedicationScheduleService.instance.beginSession();
+      if (userMap['tenVaiTro'] == 'NguoiCaoTuoi') {
+        ElderlyService.instance.beginSession(userMap['userId']);
+        AlertService.instance.beginSession();
+        AppointmentService.instance.beginSession();
+        CaregiverService.instance.beginSession();
+        CaregiverDashboardService.instance.beginSession();
+        HealthMetricService.instance.beginSession();
+        MedicationScheduleService.instance.beginSession();
+      } else if (userMap['tenVaiTro'] == 'NguoiThan') {
+        RelativeService.instance.beginSession();
+      }
       // Tải hồ sơ ở màn hình trang chủ; không biến lỗi hồ sơ thành lỗi đăng nhập.
 
       return userMap;
@@ -149,6 +155,7 @@ class AuthService {
     CaregiverDashboardService.instance.clearCache();
     HealthMetricService.instance.clearCache();
     MedicationScheduleService.instance.clearCache();
+    RelativeService.instance.clearCache();
     await ApiClient.clearSession();
     await LocalNotificationService.cancelMedicationReminders();
     return ApiClient.sessionVersion;
@@ -164,7 +171,7 @@ class AuthService {
       throw const ApiException('Phản hồi đăng nhập Google không hợp lệ.');
     }
     final userMap = Map<String, dynamic>.from(user);
-    if (userMap['tenVaiTro'] != 'NguoiCaoTuoi') {
+    if (!['NguoiCaoTuoi', 'NguoiThan'].contains(userMap['tenVaiTro'])) {
       throw const ApiException(
         'Tài khoản này không hỗ trợ trên Mobile. Vui lòng dùng hệ thống Web.',
         statusCode: 403,
@@ -175,13 +182,17 @@ class AuthService {
       encodedUser: jsonEncode(userMap),
       expectedVersion: loginVersion,
     );
-    ElderlyService.instance.beginSession(userMap['userId']);
-    AlertService.instance.beginSession();
-    AppointmentService.instance.beginSession();
-    CaregiverService.instance.beginSession();
-    CaregiverDashboardService.instance.beginSession();
-    HealthMetricService.instance.beginSession();
-    MedicationScheduleService.instance.beginSession();
+    if (userMap['tenVaiTro'] == 'NguoiCaoTuoi') {
+      ElderlyService.instance.beginSession(userMap['userId']);
+      AlertService.instance.beginSession();
+      AppointmentService.instance.beginSession();
+      CaregiverService.instance.beginSession();
+      CaregiverDashboardService.instance.beginSession();
+      HealthMetricService.instance.beginSession();
+      MedicationScheduleService.instance.beginSession();
+    } else if (userMap['tenVaiTro'] == 'NguoiThan') {
+      RelativeService.instance.beginSession();
+    }
     return userMap;
   }
 
@@ -284,6 +295,7 @@ class AuthService {
     CaregiverDashboardService.instance.clearCache();
     HealthMetricService.instance.clearCache();
     MedicationScheduleService.instance.clearCache();
+    RelativeService.instance.clearCache();
     try {
       await ApiClient.clearSession();
     } finally {
@@ -314,13 +326,17 @@ class AuthService {
       encodedUser: jsonEncode(user),
       expectedVersion: version,
     );
-    ElderlyService.instance.beginSession(user['userId']);
-    AlertService.instance.beginSession();
-    AppointmentService.instance.beginSession();
-    CaregiverService.instance.beginSession();
-    CaregiverDashboardService.instance.beginSession();
-    HealthMetricService.instance.beginSession();
-    MedicationScheduleService.instance.beginSession();
+    if (user['tenVaiTro'] == 'NguoiCaoTuoi') {
+      ElderlyService.instance.beginSession(user['userId']);
+      AlertService.instance.beginSession();
+      AppointmentService.instance.beginSession();
+      CaregiverService.instance.beginSession();
+      CaregiverDashboardService.instance.beginSession();
+      HealthMetricService.instance.beginSession();
+      MedicationScheduleService.instance.beginSession();
+    } else if (user['tenVaiTro'] == 'NguoiThan') {
+      RelativeService.instance.beginSession();
+    }
 
     return user;
   }

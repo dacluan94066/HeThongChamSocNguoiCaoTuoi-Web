@@ -137,7 +137,7 @@ test('actual public auth router: three registrations preserve NCT profile, careg
   const relative = await post('register-relative', body()); assert.equal(relative.code, 201);
   const logged = await post('login', { tenDangNhap: 'fixture.relative', matKhau: 'Fixture-123', platform: 'web' });
   assert.equal(logged.code, 200); assert.equal(jwt.verify(logged.body.data.token, 'registration-fixture-secret').tenVaiTro, 'NguoiThan');
-  const mobile = await post('login', { tenDangNhap: 'fixture.relative', matKhau: 'Fixture-123', platform: 'mobile' }); assert.equal(mobile.code, 403);
+  const mobile = await post('login', { tenDangNhap: 'fixture.relative', matKhau: 'Fixture-123', platform: 'mobile' }); assert.equal(mobile.code, 200);
   const elderly = await post('register', body({ tenDangNhap: 'fixture.elderly', email: 'elderly@example.invalid', loaiTaiKhoan: 'NguoiCaoTuoi', ngaySinh: '1950-05-28', gioiTinh: 'Nam' }));
   assert.equal(elderly.code, 201); assert.equal(elderly.body.data.nguoiCaoTuoiId, 801); assert.equal(f.state.profiles.length, 1);
   const caregiver = await post('register-caregiver', body({ tenDangNhap: 'fixture.caregiver', email: 'caregiver@example.invalid', loaiTaiKhoan: 'QuanTriVien' }));

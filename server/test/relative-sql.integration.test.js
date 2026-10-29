@@ -179,9 +179,9 @@ test('isolated SQL Server: relatives schema, access, consent, audit, revocation,
       assert.ok(permissions.every(p=>!p.them&&!p.sua&&!p.xoa));
       await query('UPDATE dbo.PhanQuyen SET ChoPhepSua=0,ChoPhepThem=0,ChoPhepXoa=0 WHERE VaiTroID=@role',{role:relativeRole});
     });
-    await t.test('family Web login and own-password work without granting profile write; Mobile is denied',async()=>{
+    await t.test('family Web and Mobile login and own-password work without granting profile write',async()=>{
       await must('POST','/auth/login',null,{tenDangNhap:'fixture.family1',matKhau:'fixture-password',platform:'web'});
-      await must('POST','/auth/login',null,{tenDangNhap:'fixture.family1',matKhau:'fixture-password',platform:'mobile'},403);
+      await must('POST','/auth/login',null,{tenDangNhap:'fixture.family1',matKhau:'fixture-password',platform:'mobile'});
       await must('POST','/auth/change-password',r1Token,{matKhauHienTai:'fixture-password',matKhauMoi:'fixture-new',userId:r2},422);
       await must('POST','/auth/change-password',r1Token,{matKhauHienTai:'fixture-password',matKhauMoi:'fixture-new'});
       await must('PUT','/users/me/password',r1Token,{matKhauCu:'fixture-new',matKhauMoi:'fixture-password'});

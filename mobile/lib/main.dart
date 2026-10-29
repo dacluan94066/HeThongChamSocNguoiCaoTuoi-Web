@@ -15,6 +15,7 @@ import 'screens/appointments/appointment_screen.dart';
 import 'screens/medication/medication_screen.dart';
 import 'widgets/appointment_reminder_scope.dart';
 import 'widgets/elderly_profile_gate.dart';
+import 'screens/relative/relative_main_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,6 +52,7 @@ Widget homeForRole(String? role) => switch (role) {
   'NguoiCaoTuoi' => const ElderlyProfileGate(
     child: AppointmentReminderScope(child: HomeScreen()),
   ),
+  'NguoiThan' => const RelativeMainScreen(),
   _ => const LoginScreen(),
 };
 
@@ -133,7 +135,7 @@ class _SplashScreenState extends State<SplashScreen> {
       final user = await authService.getMe();
       if (!mounted) return;
       final role = user['tenVaiTro']?.toString();
-      if (role == 'NguoiCaoTuoi') {
+      if (role == 'NguoiCaoTuoi' || role == 'NguoiThan') {
         Navigator.pushReplacementNamed(context, '/home');
       } else {
         await authService.logout();
@@ -419,7 +421,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await AuthService.instance.login(username, password);
       if (!mounted) return;
       final role = user['tenVaiTro']?.toString();
-      if (role == 'NguoiCaoTuoi') {
+      if (role == 'NguoiCaoTuoi' || role == 'NguoiThan') {
         await _saveRememberedUsername(username);
         if (!mounted) return;
         Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);

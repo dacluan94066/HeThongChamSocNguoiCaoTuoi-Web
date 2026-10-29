@@ -62,7 +62,8 @@ const writeLoginLog = async (pool, req, userId, ketQua, platform) => {
   }
 };
 
-const PUBLIC_MOBILE_ROLES = new Set(['NguoiCaoTuoi']);
+const PUBLIC_MOBILE_ROLES = new Set(['NguoiCaoTuoi', 'NguoiThan']);
+const PUBLIC_MOBILE_REGISTER_ROLES = new Set(['NguoiCaoTuoi']);
 
 const googleUsername = (subject) => `google_${crypto
   .createHash('sha256')
@@ -119,7 +120,7 @@ const register = async (req, res, next) => {
     // Chi nguoi cao tuoi duoc tu dang ky tren Mobile. Khong suy dien
     // VaiTroID tu gia tri bat ky do client gui.
     if (typeof accountType !== 'string'
-      || !PUBLIC_MOBILE_ROLES.has(accountType)) {
+      || !PUBLIC_MOBILE_REGISTER_ROLES.has(accountType)) {
       return fail(
         res,
         'Chi nguoi cao tuoi duoc tu dang ky tren Mobile',
@@ -660,7 +661,7 @@ const googleLogin = async (req, res, next) => {
         },
       }, 'Vui long bo sung thong tin de tao tai khoan');
     }
-    if (typeof accountType !== 'string' || !PUBLIC_MOBILE_ROLES.has(accountType)) {
+    if (typeof accountType !== 'string' || !PUBLIC_MOBILE_REGISTER_ROLES.has(accountType)) {
       return fail(
         res,
         'Chi nguoi cao tuoi duoc tao tai khoan qua Mobile',

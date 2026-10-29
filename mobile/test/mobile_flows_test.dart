@@ -19,6 +19,7 @@ import 'package:elderly_care_app/screens/notifications/notification_screen.dart'
 import 'package:elderly_care_app/screens/profile/profile_screen.dart';
 import 'package:elderly_care_app/theme/care_senior_theme.dart';
 import 'package:elderly_care_app/screens/caregiver/caregiver_elderly_detail_screen.dart';
+import 'package:elderly_care_app/screens/relative/relative_main_screen.dart';
 
 class FlowAdapter implements HttpClientAdapter {
   final paths = <String>[];
@@ -67,6 +68,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('Authenticated role chooses its actual home screen', () {
     expect(homeForRole('NguoiChamSoc'), isA<LoginScreen>());
+    expect(homeForRole('NguoiThan'), isA<RelativeMainScreen>());
     expect(
       homeForRole('NguoiCaoTuoi'),
       isA<ElderlyProfileGate>().having(
