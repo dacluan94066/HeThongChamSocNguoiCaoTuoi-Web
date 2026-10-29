@@ -123,6 +123,9 @@ test('Stage6 appointment mutations: independent SQL connections, no workers/exte
     });
     t.diagnostic(JSON.stringify({ instance, database, fixtureId, marker, guardCount, externalDeliveries: 0, existingAppointments: before.length }));
   } finally {
+    if (fixtureId && pools[1]) {
+      await pools[1].request().input('id', sql.Int, fixtureId).query('DELETE FROM LichKhamBenh WHERE LichKhamID=@id').catch(() => {});
+    }
     barrier?.release(); for (const pool of pools) await pool.close();
   }
 });

@@ -60,3 +60,33 @@ test('AUD-11 reminder SQL includes both actively monitored profile statuses, nev
   assert.doesNotMatch(statement, /N'NgungTheoDoi'/);
   assert.match(statement, /lk\.TrangThai=N'ChuaDen'/); assert.match(statement, /lk\.ThoiGianKham > @now/);
 });
+
+test('Appointment creation and update serialize checks with UPDLOCK, HOLDLOCK and detect same-minute conflicts', async () => {
+  const queries = [];
+  const pool = { request: () => ({ input() { return this; }, async query(statement) {
+    queries.push(statement);
+    if (statement.includes('IF EXISTS') && statement.includes('SELECT -1 AS id, \'CONFLICT\'')) {
+      return { recordset: [{ id: -1, reason: 'CONFLICT' }] };
+    }
+    return { recordset: [{ id: 99 }] };
+  } }) };
+
+  const filename = path.resolve(__dirname, '../src/controllers/lichKhamBenh.controller.js'), module = { exports: {} }, local = createRequire(filename);
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports,
+    require: name => ({ '../config/db': { poolPromise: Promise.resolve(pool), sql: { Int: 'Int', NVarChar: 'String', DateTime2: 'DateTime2', Bit: 'Bit', VarChar: 'VarChar' } },
+      '../utils/vietnamDate': { todayVietnam: () => '2026-10-28' },
+      '../socket': { emitToAdmin() {}, emitToUser() {} },
+      '../middlewares/mobile-scope.middleware': { targetElderlyId: () => 1, scopedWhere: () => '' },
+    }[name] || local(name)),
+  }, { filename });
+
+  const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  await module.exports.create({ user: { userId: 1 }, body: { nguoiCaoTuoiId: 1, ngayKham: '2026-10-30', gioKham: '09:00', noiKham: 'BV Chợ Rẫy' } }, res, error => { throw error; });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.errorCode, 'APPOINTMENT_CONFLICT');
+  assert.match(queries[0], /WITH \(UPDLOCK, HOLDLOCK\)/);
+  assert.match(queries[0], /TrangThai<>N'Huy'/);
+  assert.match(queries[0], /@minuteStart/);
+  assert.match(queries[0], /@minuteEnd/);
+});

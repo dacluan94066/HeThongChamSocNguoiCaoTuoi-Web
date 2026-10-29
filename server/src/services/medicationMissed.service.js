@@ -28,7 +28,9 @@ const MATERIALIZE_MISSED_MEDICATIONS_SQL = `
     OUTPUT INSERTED.LichUongThuocID,INSERTED.NguoiCaoTuoiID,INSERTED.ThoiGianDuKien
       INTO @missed(scheduleId,elderlyId,scheduledAt)
   FROM LichUongThuoc lut
+  JOIN HoSoNguoiCaoTuoi hs ON hs.NguoiCaoTuoiID=lut.NguoiCaoTuoiID
   WHERE lut.TrangThai=N'ChuaDenGio'
+    AND hs.TrangThai IN (N'DangTheoDoi', N'CanChamSocDacBiet')
     AND lut.ThoiGianDuKien < DATEADD(MINUTE,-@minutes,@now);
 
   INSERT INTO CanhBao(NguoiCaoTuoiID,LoaiCanhBao,NoiDung,MucDo,NguonBang,NguonID)

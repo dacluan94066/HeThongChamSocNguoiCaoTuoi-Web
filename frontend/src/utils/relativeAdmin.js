@@ -1,10 +1,11 @@
-export const RELATIVE_READ_FEATURES = ['QLHOSONCT', 'QLCHISOSK', 'QLLICHUONGTHUOC', 'QLLICHKHAM', 'QLCANHBAO'];
+export const RELATIVE_READ_FEATURES = ['QLHOSONCT', 'QLCHISOSK', 'QLLICHUONGTHUOC', 'QLLICHKHAM', 'QLCANHBAO', 'QLNHATKY'];
 export const canViewRelativeAdmin = (user, hasPermission) => user?.tenVaiTro === 'QuanTriVien'
   && Boolean(hasPermission('QLNGUOIDUNG', 'xem'));
 export const isFamilyAccount = account => account?.vaiTro === 'NGUOI_THAN' || account?.tenVaiTro === 'NguoiThan';
 export const isActiveAccount = account => ['HOAT_DONG', 'HoatDong'].includes(account?.trangThai);
 export const canEditRelativePermission = (role, feature, action) => role !== 'NguoiThan'
-  || (action === 'xem' && RELATIVE_READ_FEATURES.includes(feature));
+  || (action === 'xem' && RELATIVE_READ_FEATURES.includes(feature))
+  || (action === 'them' && feature === 'QLCHISOSK');
 export const hasActiveRelativeLink = (links, elderlyId, userId) => links.some(link => !link.thuHoiLuc
   && Number(link.nguoiCaoTuoiId) === Number(elderlyId) && Number(link.nguoiThanUserId) === Number(userId));
 const invalid = (message, field) => { const error = new Error(message); error.field = field; throw error; };

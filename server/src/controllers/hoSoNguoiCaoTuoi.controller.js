@@ -11,6 +11,103 @@ const { createElderlyProfile, ElderlyCreationError } = require('../services/elde
 const { alertTimestampSql: vietnamTimestampSql } = require('../utils/alertTime');
 const bcrypt = require('bcryptjs');
 
+const getSocket = () => {
+  try {
+    return require('../socket');
+  } catch {
+    return { emitToAdmin() {}, emitToUser() {}, disconnectUser() {} };
+  }
+};
+
+const teardownStoppedElderlySql = `
+  -- Dong phan cong nguoi cham soc
+  UPDATE NguoiCaoTuoi_NguoiChamSoc
+  SET NgayKetThuc = CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+  WHERE NguoiCaoTuoiID = @id
+    AND (NgayKetThuc IS NULL OR NgayKetThuc > CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE));
+
+  -- Thu hoi lien ket nguoi than dang hoat dong
+  DECLARE @activeLinks TABLE (
+    lienKetId INT,
+    nguoiThanUserId INT,
+    moiQuanHe NVARCHAR(50),
+    xemBenhNen BIT,
+    xemDiUng BIT,
+    xemKetQuaKham BIT
+  );
+
+  INSERT INTO @activeLinks (lienKetId, nguoiThanUserId, moiQuanHe, xemBenhNen, xemDiUng, xemKetQuaKham)
+  SELECT LienKetID, NguoiThanUserID, MoiQuanHe, XemBenhNen, XemDiUng, XemKetQuaKham
+  FROM NguoiCaoTuoi_NguoiThan
+  WHERE NguoiCaoTuoiID = @id AND ThuHoiLuc IS NULL;
+
+  UPDATE NguoiCaoTuoi_NguoiThan
+  SET ThuHoiLuc = DATEADD(HOUR, 7, SYSUTCDATETIME()),
+      NguoiThuHoiID = @actorId,
+      LyDoThuHoi = N'Hồ sơ người cao tuổi chuyển sang trạng thái Ngừng theo dõi',
+      CapNhatLuc = DATEADD(HOUR, 7, SYSUTCDATETIME())
+  WHERE NguoiCaoTuoiID = @id AND ThuHoiLuc IS NULL;
+
+  -- Ghi audit dung constraint CK_NT_AuditAction va CK_NT_AuditJson neu bang ton tai
+  IF OBJECT_ID(N'dbo.LichSuLienKetNguoiThan', N'U') IS NOT NULL
+  BEGIN
+    INSERT INTO LichSuLienKetNguoiThan
+      (LienKetID, HanhDong, NguoiThucHienID, ThoiGian, LyDo, DuLieuCu, DuLieuMoi)
+    SELECT
+      al.lienKetId,
+      N'THU_HOI',
+      @actorId,
+      DATEADD(HOUR, 7, SYSUTCDATETIME()),
+      N'Hồ sơ người cao tuổi chuyển sang trạng thái Ngừng theo dõi',
+      (
+        SELECT al.lienKetId AS lienKetId, al.nguoiThanUserId AS nguoiThanUserId,
+               al.moiQuanHe AS moiQuanHe, al.xemBenhNen AS xemBenhNen,
+               al.xemDiUng AS xemDiUng, al.xemKetQuaKham AS xemKetQuaKham,
+               1 AS dongYChiaSe
+        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+      ),
+      (
+        SELECT al.lienKetId AS lienKetId,
+               N'Hồ sơ người cao tuổi chuyển sang trạng thái Ngừng theo dõi' AS lyDoThuHoi,
+               0 AS dongYChiaSe
+        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+      )
+    FROM @activeLinks al;
+  END;
+
+  -- Huy lich kham tuong lai va xoa thong bao nhac lich kham chua doc
+  UPDATE LichKhamBenh
+  SET TrangThai = N'Huy'
+  WHERE NguoiCaoTuoiID = @id
+    AND TrangThai = N'ChuaDen'
+    AND ThoiGianKham > DATEADD(HOUR, 7, SYSUTCDATETIME());
+
+  DELETE FROM ThongBao
+  WHERE LoaiThongBao = N'NhacLichKham'
+    AND LienKetBang LIKE N'LichKhamBenh:%'
+    AND DaDoc = 0
+    AND LienKetID IN (
+      SELECT LichKhamID FROM LichKhamBenh WHERE NguoiCaoTuoiID = @id AND TrangThai = N'Huy'
+    );
+
+  -- Khoa tai khoan nguoi dung NCT neu co
+  IF @linkedUserId IS NOT NULL
+  BEGIN
+    UPDATE NguoiDung
+    SET TrangThai = N'KhoaTaiKhoan'
+    WHERE UserID = @linkedUserId AND TrangThai = N'HoatDong';
+  END;
+
+  -- Xoa thong bao nhac thuoc chua doc cua cac lieu chua den gio
+  DELETE FROM ThongBao
+  WHERE LoaiThongBao = N'NhacThuoc'
+    AND LienKetBang LIKE N'LichUongThuoc:%'
+    AND DaDoc = 0
+    AND LienKetID IN (
+      SELECT LichUongThuocID FROM LichUongThuoc WHERE NguoiCaoTuoiID = @id AND TrangThai = N'ChuaDenGio'
+    );
+`;
+
 // GET /api/elderly/me - chi tai khoan NguoiCaoTuoi co ho so lien ket.
 const getMe = async (req, res, next) => {
   try {
@@ -273,17 +370,19 @@ const update = async (req, res, next) => {
     // Kiem tra ho so ton tai
     const checkExist = await pool.request()
       .input('id', sql.Int, id)
-      .query(`SELECT NguoiCaoTuoiID FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID = @id`);
+      .query(`SELECT NguoiCaoTuoiID, UserID FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID = @id`);
 
     if (checkExist.recordset.length === 0) {
       return fail(res, 'Khong tim thay ho so nguoi cao tuoi', 'NOT_FOUND', 404);
     }
 
+    const linkedUserId = checkExist.recordset[0].UserID || null;
+    const isStopping = trangThai === 'NgungTheoDoi';
+
     const benhNenStr = validation.value.benhNen;
     const diUngStr = validation.value.diUng;
 
-    // Cap nhat toan bo cac truong
-    await pool.request()
+    const reqUpdate = pool.request()
       .input('id', sql.Int, id)
       .input('hoTen', sql.NVarChar, validation.value.hoTen)
       .input('ngaySinh', sql.Date, ngaySinh)
@@ -295,7 +394,36 @@ const update = async (req, res, next) => {
       .input('benhNen', sql.NVarChar, benhNenStr || null)
       .input('diUng', sql.NVarChar, diUngStr || null)
       .input('trangThai', sql.NVarChar, trangThai || 'DangTheoDoi')
-      .query(`
+      .input('actorId', sql.Int, req.user?.userId || 1)
+      .input('linkedUserId', sql.Int, linkedUserId);
+
+    if (isStopping) {
+      await reqUpdate.query(`
+        SET XACT_ABORT ON;
+        BEGIN TRANSACTION;
+
+        UPDATE HoSoNguoiCaoTuoi SET
+          HoTen       = @hoTen,
+          NgaySinh    = @ngaySinh,
+          GioiTinh    = @gioiTinh,
+          CCCD        = @cccd,
+          DiaChi      = @diaChi,
+          SoDienThoai = @soDienThoai,
+          NhomMau     = @nhomMau,
+          BenhNen     = @benhNen,
+          DiUng       = @diUng,
+          TrangThai   = N'NgungTheoDoi'
+        WHERE NguoiCaoTuoiID = @id;
+
+        ${teardownStoppedElderlySql}
+
+        COMMIT TRANSACTION;
+      `);
+      if (linkedUserId) {
+        getSocket().disconnectUser(linkedUserId);
+      }
+    } else {
+      await reqUpdate.query(`
         UPDATE HoSoNguoiCaoTuoi SET
           HoTen       = @hoTen,
           NgaySinh    = @ngaySinh,
@@ -307,9 +435,11 @@ const update = async (req, res, next) => {
           BenhNen     = @benhNen,
           DiUng       = @diUng,
           TrangThai   = @trangThai
-        WHERE NguoiCaoTuoiID = @id
+        WHERE NguoiCaoTuoiID = @id;
       `);
+    }
 
+    getSocket().emitToAdmin('elderly:updated', { id: parseInt(id), trangThai: trangThai || 'DangTheoDoi' });
     return ok(res, { id: parseInt(id) }, 'Cap nhat ho so thanh cong');
   } catch (err) {
     next(err);
@@ -327,16 +457,33 @@ const remove = async (req, res, next) => {
     // Kiem tra ho so ton tai
     const checkExist = await pool.request()
       .input('id', sql.Int, id)
-      .query(`SELECT NguoiCaoTuoiID FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID = @id`);
+      .query(`SELECT NguoiCaoTuoiID, UserID FROM HoSoNguoiCaoTuoi WHERE NguoiCaoTuoiID = @id`);
 
     if (checkExist.recordset.length === 0) {
       return fail(res, 'Khong tim thay ho so nguoi cao tuoi', 'NOT_FOUND', 404);
     }
 
-    // Xoa mem: chi doi TrangThai thanh NgungTheoDoi
+    const linkedUserId = checkExist.recordset[0].UserID || null;
+
     await pool.request()
       .input('id', sql.Int, id)
-      .query(`UPDATE HoSoNguoiCaoTuoi SET TrangThai = N'NgungTheoDoi' WHERE NguoiCaoTuoiID = @id`);
+      .input('actorId', sql.Int, req.user?.userId || 1)
+      .input('linkedUserId', sql.Int, linkedUserId)
+      .query(`
+        SET XACT_ABORT ON;
+        BEGIN TRANSACTION;
+
+        UPDATE HoSoNguoiCaoTuoi SET TrangThai = N'NgungTheoDoi' WHERE NguoiCaoTuoiID = @id;
+
+        ${teardownStoppedElderlySql}
+
+        COMMIT TRANSACTION;
+      `);
+
+    if (linkedUserId) {
+      getSocket().disconnectUser(linkedUserId);
+    }
+    getSocket().emitToAdmin('elderly:updated', { id: parseInt(id), trangThai: 'NgungTheoDoi' });
 
     return ok(res, { id: parseInt(id) }, 'Da ngung theo doi ho so nguoi cao tuoi');
   } catch (err) {

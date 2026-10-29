@@ -302,21 +302,51 @@ const create = async (req, res, next) => {
       .input('lyDo', sql.NVarChar, lyDoKham?.trim() || null)
       .input('nguoiTaoId', sql.Int, req.user.userId)
       .query(`
+        SET XACT_ABORT ON;
+        BEGIN TRANSACTION;
+
+        DECLARE @minuteStart DATETIME2(7) = DATEADD(SECOND, -DATEPART(SECOND, @thoiGian), DATEADD(MILLISECOND, -DATEPART(MILLISECOND, @thoiGian), @thoiGian));
+        DECLARE @minuteEnd DATETIME2(7) = DATEADD(MINUTE, 1, @minuteStart);
+
+        IF EXISTS (
+          SELECT 1 FROM LichKhamBenh WITH (UPDLOCK, HOLDLOCK)
+          WHERE NguoiCaoTuoiID=@nctId
+            AND TrangThai<>N'Huy'
+            AND ThoiGianKham >= @minuteStart
+            AND ThoiGianKham < @minuteEnd
+        )
+        BEGIN
+          ROLLBACK TRANSACTION;
+          SELECT -1 AS id, 'CONFLICT' AS reason;
+          RETURN;
+        END;
+
+        IF @thoiGian <= DATEADD(HOUR, 7, SYSUTCDATETIME())
+        BEGIN
+          ROLLBACK TRANSACTION;
+          SELECT -2 AS id, 'PAST_TIME' AS reason;
+          RETURN;
+        END;
+
         INSERT INTO LichKhamBenh
           (NguoiCaoTuoiID, TenBenhVien, BacSiPhuTrach, ChuyenKhoa,
            ThoiGianKham, LyDoKham, TrangThai, NguoiTaoID)
         OUTPUT INSERTED.LichKhamID AS id
-        SELECT
-          @nctId, @tenBenhVien, @bacSi, @chuyenKhoa,
-           @thoiGian,
-           @lyDo, N'ChuaDen', @nguoiTaoId
-        WHERE @thoiGian>DATEADD(HOUR,7,SYSUTCDATETIME())`);
-    if (!result.recordset.length) {
+        VALUES
+          (@nctId, @tenBenhVien, @bacSi, @chuyenKhoa,
+           @thoiGian, @lyDo, N'ChuaDen', @nguoiTaoId);
+
+        COMMIT TRANSACTION;`);
+    const row = result.recordset?.[0];
+    if (!row || row.id === -2 || row.reason === 'PAST_TIME') {
       return fail(res, 'Giờ khám đã qua trong lúc lưu. Vui lòng chọn giờ ở tương lai.', 'PAST_APPOINTMENT_TIME', 422);
     }
-    const eventData = { id: result.recordset[0].id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'created' };
+    if (row.id === -1 || row.reason === 'CONFLICT') {
+      return fail(res, 'Người cao tuổi đã có lịch khám vào thời điểm này. Vui lòng chọn thời gian khác.', 'APPOINTMENT_CONFLICT', 409);
+    }
+    const eventData = { id: row.id, nguoiCaoTuoiId: Number(nguoiCaoTuoiId), action: 'created' };
     await emitAppointmentUpdate(pool, [Number(nguoiCaoTuoiId)], eventData);
-    return ok(res, { id: result.recordset[0].id }, 'Thêm lịch khám thành công', 201);
+    return ok(res, { id: row.id }, 'Thêm lịch khám thành công', 201);
   } catch (error) { next(error); }
 };
 
@@ -368,6 +398,24 @@ const update = async (req, res, next) => {
       .query(`
         SET XACT_ABORT ON;
         BEGIN TRANSACTION;
+
+        DECLARE @minuteStart DATETIME2(7) = DATEADD(SECOND, -DATEPART(SECOND, @thoiGian), DATEADD(MILLISECOND, -DATEPART(MILLISECOND, @thoiGian), @thoiGian));
+        DECLARE @minuteEnd DATETIME2(7) = DATEADD(MINUTE, 1, @minuteStart);
+
+        IF EXISTS (
+          SELECT 1 FROM LichKhamBenh WITH (UPDLOCK, HOLDLOCK)
+          WHERE NguoiCaoTuoiID=@nctId
+            AND LichKhamID<>@id
+            AND TrangThai<>N'Huy'
+            AND ThoiGianKham >= @minuteStart
+            AND ThoiGianKham < @minuteEnd
+        )
+        BEGIN
+          ROLLBACK TRANSACTION;
+          SELECT -1 AS affectedRows, 'CONFLICT' AS reason;
+          RETURN;
+        END;
+
         DECLARE @notifications TABLE (id INT, userId INT);
         UPDATE LichKhamBenh SET
           NguoiCaoTuoiID=@nctId, TenBenhVien=@tenBenhVien,
@@ -415,6 +463,9 @@ const update = async (req, res, next) => {
         COMMIT TRANSACTION;
         SELECT @affectedRows AS affectedRows;
         SELECT id,userId FROM @notifications;`);
+    if (result.recordset[0]?.reason === 'CONFLICT' || result.recordset[0]?.affectedRows === -1) {
+      return fail(res, 'Người cao tuổi đã có lịch khám vào thời điểm này. Vui lòng chọn thời gian khác.', 'APPOINTMENT_CONFLICT', 409);
+    }
     if (!result.recordset[0]?.affectedRows) return fail(res,
       'Lịch khám đã được cập nhật từ phiên hoặc thiết bị khác. Vui lòng tải lại trước khi sửa.',
       'APPOINTMENT_CHANGED', 409);

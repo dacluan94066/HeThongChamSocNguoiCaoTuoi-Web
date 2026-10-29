@@ -33,7 +33,7 @@ const getMyPermissions = async (req, res, next) => {
       maChucNang: row.MaChucNang,
       tenChucNang: row.TenChucNang,
       xem: Boolean(row.ChoPhepXem) && (req.user.tenVaiTro!=='NguoiThan' || READ_FEATURES.includes(row.MaChucNang)),
-      them: req.user.tenVaiTro!=='NguoiThan' && Boolean(row.ChoPhepThem),
+      them: (req.user.tenVaiTro !== 'NguoiThan' || row.MaChucNang === 'QLCHISOSK') && Boolean(row.ChoPhepThem),
       sua: req.user.tenVaiTro!=='NguoiThan' && Boolean(row.ChoPhepSua),
       xoa: req.user.tenVaiTro!=='NguoiThan' && Boolean(row.ChoPhepXoa),
     }));
@@ -126,7 +126,7 @@ const updatePermissionMatrix = async (req, res, next) => {
       !roleIds.has(entry.vaiTroId) || !functionIds.has(entry.chucNangId)
     ));
     const unsafeRelative=normalized.some(entry=>entry.vaiTroId===Number(relativeId)
-      && (entry.them || entry.sua || entry.xoa || (entry.xem && !READ_FEATURES.includes(featureNames.get(entry.chucNangId)))));
+      && (((entry.them && featureNames.get(entry.chucNangId) !== 'QLCHISOSK')) || entry.sua || entry.xoa || (entry.xem && !READ_FEATURES.includes(featureNames.get(entry.chucNangId)))));
     if (![3,4].includes(roleIds.size) || unsafeRelative || !expectedCount || normalized.length !== expectedCount
       || uniqueKeys.size !== expectedCount || invalid) {
       return fail(res, 'Ma tran phan quyen khong day du hoac khong hop le', 'INVALID_PERMISSION_MATRIX', 400);

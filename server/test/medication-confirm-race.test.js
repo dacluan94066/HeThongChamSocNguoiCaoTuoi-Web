@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 // Actual controller with RAM SQL double; no database/network/environment loaded.
-function fixture({ status = 'ChuaDenGio', scheduleDate = '2026-10-27', concurrent = false } = {}) {
+function fixture({ status = 'ChuaDenGio', scheduleDate = '2026-10-27', scheduledTime, concurrent = false } = {}) {
   let reads = 0, writes = 0, release;
   const barrier = new Promise(resolve => { release = resolve; });
   const dose = { id: 1, nguoiCaoTuoiId: 42, trangThai: status, thoiGianThucTe: status === 'DaUong' ? '2026-10-27T12:00:00' : null };
@@ -13,7 +13,7 @@ function fixture({ status = 'ChuaDenGio', scheduleDate = '2026-10-27', concurren
     if (query.includes('AS ownerUserId')) {
       const previousStatus = dose.trangThai;
       if (++reads === 2) release(); if (concurrent) await barrier;
-      return { recordset: [{ ownerUserId: 7, scheduleDate, previousStatus }] };
+      return { recordset: [{ ownerUserId: 7, scheduleDate, scheduledTime, previousStatus }] };
     }
     assert.match(query, /UPDATE LichUongThuoc/);
     const where = query.slice(query.indexOf('WHERE LichUongThuocID=@id'), query.indexOf('DECLARE @affectedRows'));
@@ -61,4 +61,12 @@ test('past-day, foreign owner and invalid status blocked before mutation', async
   assert.equal((await fixture({ scheduleDate: '2026-10-26' }).confirm()).status, 422);
   const f = fixture(); assert.equal((await f.confirm('DaUong', 8)).status, 403);
   assert.equal((await f.confirm('Bogus')).status, 422); assert.equal(f.writes(), 0);
+});
+test('confirm earlier than 30 minutes before scheduled time is blocked with 422 TOO_EARLY', async () => {
+  const futureTime = new Date(Date.now() + 2 * 3600000 + 7 * 3600000).toISOString().slice(0, 19);
+  const f = fixture({ scheduleDate: '2026-10-27', scheduledTime: futureTime });
+  const res = await f.confirm('DaUong');
+  assert.equal(res.status, 422);
+  assert.equal(res.errorCode, 'TOO_EARLY');
+  assert.equal(f.writes(), 0);
 });

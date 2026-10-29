@@ -180,7 +180,8 @@ const confirmMine = async (req, res, next) => {
       .input('id', sql.Int, id)
       .query(`SELECT l.LichUongThuocID AS id, nct.UserID AS ownerUserId,
                 l.TrangThai AS previousStatus,
-                CONVERT(VARCHAR(10),l.ThoiGianDuKien,23) AS scheduleDate
+                CONVERT(VARCHAR(10),l.ThoiGianDuKien,23) AS scheduleDate,
+                CONVERT(VARCHAR(19),l.ThoiGianDuKien,126) AS scheduledTime
               FROM LichUongThuoc l
               JOIN HoSoNguoiCaoTuoi nct ON nct.NguoiCaoTuoiID=l.NguoiCaoTuoiID
               WHERE l.LichUongThuocID=@id AND nct.TrangThai IN (N'DangTheoDoi',N'CanChamSocDacBiet')`);
@@ -192,6 +193,13 @@ const confirmMine = async (req, res, next) => {
     }
     if (ownership.recordset[0].scheduleDate !== todayVietnam()) {
       return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
+    }
+    const scheduledTime = ownership.recordset[0].scheduledTime;
+    if (scheduledTime) {
+      const scheduledMs = Date.parse(`${scheduledTime}+07:00`);
+      if (!Number.isNaN(scheduledMs) && Date.now() < scheduledMs - 30 * 60 * 1000) {
+        return fail(res, 'Chưa đến giờ uống thuốc. Bạn chỉ có thể xác nhận trước tối đa 30 phút.', 'TOO_EARLY', 422);
+      }
     }
 
     const updated = await pool.request()
@@ -291,10 +299,20 @@ const updateStatus = async (req, res, next) => {
 
     const pool = await poolPromise;
     const dose = await pool.request().input('id', sql.Int, req.params.id)
-      .query('SELECT CONVERT(VARCHAR(10),ThoiGianDuKien,23) AS scheduleDate, TrangThai AS previousStatus FROM LichUongThuoc WHERE LichUongThuocID=@id');
+      .query(`SELECT CONVERT(VARCHAR(10),ThoiGianDuKien,23) AS scheduleDate,
+                     CONVERT(VARCHAR(19),ThoiGianDuKien,126) AS scheduledTime,
+                     TrangThai AS previousStatus
+              FROM LichUongThuoc WHERE LichUongThuocID=@id`);
     if (!dose.recordset.length) return fail(res, 'Không tìm thấy lịch uống thuốc', 'MEDICATION_SCHEDULE_NOT_FOUND', 404);
     if (dose.recordset[0].scheduleDate !== todayVietnam()) {
       return fail(res, 'Chỉ được xác nhận liều thuốc của ngày hôm nay', 'NOT_TODAY', 422);
+    }
+    const scheduledTime = dose.recordset[0].scheduledTime;
+    if (scheduledTime) {
+      const scheduledMs = Date.parse(`${scheduledTime}+07:00`);
+      if (!Number.isNaN(scheduledMs) && Date.now() < scheduledMs - 30 * 60 * 1000) {
+        return fail(res, 'Chưa đến giờ uống thuốc. Bạn chỉ có thể xác nhận trước tối đa 30 phút.', 'TOO_EARLY', 422);
+      }
     }
     const updated = await pool.request()
       .input('id', sql.Int, req.params.id)

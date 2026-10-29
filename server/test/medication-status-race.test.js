@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 // Fixed clock + RAM SQL double. Real SQL concurrency is covered separately by
 // medication-status-stage6.integration.test.js (explicit opt-in, existing DB).
-function fixture({ status = 'ChuaDenGio', date = '2026-10-28', concurrent = false, exists = true } = {}) {
+function fixture({ status = 'ChuaDenGio', date = '2026-10-28', scheduledTime, concurrent = false, exists = true } = {}) {
   const dose = { id: 1, nguoiCaoTuoiId: 42, trangThai: status,
     actual: status === 'DaUong' ? '2026-10-28T08:00:00' : null, actor: status === 'DaUong' ? 7 : null };
   const events = [];
@@ -17,7 +17,7 @@ function fixture({ status = 'ChuaDenGio', date = '2026-10-28', concurrent = fals
     input(key, _type, value) { p[key] = value; return this; },
     async query(text) {
       if (text.startsWith('SELECT CONVERT')) {
-        const snapshot = { scheduleDate: date, previousStatus: dose.trangThai };
+        const snapshot = { scheduleDate: date, scheduledTime, previousStatus: dose.trangThai };
         if (++reads === 2) release();
         if (concurrent) await gate;
         return { recordset: exists ? [snapshot] : [] };
@@ -106,4 +106,12 @@ test('legacy status keeps invalid-state/date/not-found validation before write',
     assert.equal(response.status, 422); assert.equal(response.errorCode, 'NOT_TODAY'); assert.equal(old.writes(), 0);
   }
   const missing = fixture({ exists: false }); assert.equal((await missing.call('DaUong')).status, 404);
+});
+
+test('updateStatus earlier than 30 minutes before scheduled time is blocked with 422 TOO_EARLY', async () => {
+  const f = fixture({ scheduledTime: '2026-10-28T14:00:00' });
+  const response = await f.call('DaUong');
+  assert.equal(response.status, 422);
+  assert.equal(response.errorCode, 'TOO_EARLY');
+  assert.equal(f.writes(), 0);
 });

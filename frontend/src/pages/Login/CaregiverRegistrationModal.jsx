@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import { Alert, Button, Col, DatePicker, Form, Input, Modal, Radio, Row, Select } from 'antd';
 import { HeartOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { registerWebAccount } from '../../services/authService';
 import { PUBLIC_REGISTRATION_ROLES } from '../../utils/publicRegistration';
 import { mobilePasswordRules } from '../../utils/accountFormRules';
-import { vietnamAlertParts } from '../../utils/alertTime';
 import './Registration.css';
 
 const CaregiverRegistrationModal = ({ open, onClose }) => {
@@ -113,10 +113,17 @@ const CaregiverRegistrationModal = ({ open, onClose }) => {
               <p>Hồ sơ được tạo cùng tài khoản, dùng chung trên Web và Mobile. Bạn có thể bổ sung thông tin khác sau khi đăng nhập.</p>
               <Row gutter={18}><Col xs={24} sm={12}>
                 <Form.Item name="ngaySinh" preserve={false} label="Ngày sinh" rules={[{ required: true, message: 'Vui lòng chọn ngày sinh' },
-                  { validator: (_, value) => !value || value.isValid() && value.format('YYYY-MM-DD') <= vietnamAlertParts(new Date().toISOString()).dayKey
-                    ? Promise.resolve() : Promise.reject(new Error('Ngày sinh không hợp lệ hoặc ở tương lai')) }]}>
+                  { validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    if (!value.isValid()) return Promise.reject(new Error('Ngày sinh không hợp lệ'));
+                    const formatted = value.format('YYYY-MM-DD');
+                    if (formatted < '1900-01-01') return Promise.reject(new Error('Năm sinh không được trước năm 1900'));
+                    const maxDate = dayjs().subtract(60, 'year');
+                    if (value.isAfter(maxDate, 'day')) return Promise.reject(new Error('Người cao tuổi phải đủ từ 60 tuổi trở lên'));
+                    return Promise.resolve();
+                  } }]}>
                   <DatePicker format="DD/MM/YYYY" placeholder="Chọn ngày sinh" style={{ width: '100%' }}
-                    disabledDate={value => value && value.format('YYYY-MM-DD') > vietnamAlertParts(new Date().toISOString()).dayKey} />
+                    disabledDate={value => !value || value.isBefore(dayjs('1900-01-01'), 'day') || value.isAfter(dayjs().subtract(60, 'year'), 'day')} />
                 </Form.Item>
               </Col><Col xs={24} sm={12}>
                 <Form.Item name="gioiTinh" preserve={false} label="Giới tính" rules={[{ required: true, message: 'Vui lòng chọn giới tính' }]}>

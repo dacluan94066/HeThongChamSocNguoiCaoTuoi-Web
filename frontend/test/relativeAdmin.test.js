@@ -59,7 +59,11 @@ test('schema unavailable, conflicts and forbidden errors remain distinguishable'
 test('family matrix can edit only supported reads, with no write checkbox accidentally enabled', () => {
   assert.equal(canEditRelativePermission('NguoiThan', 'QLHOSONCT', 'xem'), true);
   for (const action of ['them', 'sua', 'xoa']) assert.equal(canEditRelativePermission('NguoiThan', 'QLHOSONCT', action), false);
-  assert.equal(canEditRelativePermission('NguoiThan', 'QLNHATKY', 'xem'), false);
+  assert.equal(canEditRelativePermission('NguoiThan', 'QLNHATKY', 'xem'), true);
+  for (const action of ['them', 'sua', 'xoa']) assert.equal(canEditRelativePermission('NguoiThan', 'QLNHATKY', action), false);
+  assert.equal(canEditRelativePermission('NguoiThan', 'QLCHISOSK', 'them'), true);
+  for (const action of ['sua', 'xoa']) assert.equal(canEditRelativePermission('NguoiThan', 'QLCHISOSK', action), false);
+  assert.equal(canEditRelativePermission('NguoiThan', 'QLNGUOIDUNG', 'xem'), false);
   assert.equal(canEditRelativePermission('NguoiChamSoc', 'QLHOSONCT', 'sua'), true);
 });
 test('history shows whitelisted changes, ignores raw private fields and tolerates malformed snapshots', () => {

@@ -15,20 +15,24 @@ for(const path of ['/api/elderly/1','/api/health-metrics','/api/medication-sched
     for(const method of ['GET','POST','PUT','PATCH','DELETE']) assert.equal(allowedRelativeRequest({method,originalUrl:path}),false);
   });
 }
-test('family allowlist includes read API and own-password only',()=>{
+test('family allowlist includes read API, metric type lookup, health metric creation and own-password only',()=>{
   for(const method of ['GET','HEAD']) assert.equal(allowedRelativeRequest({method,originalUrl:'/api/relatives/me/elderly/1?limit=5'}),true);
   for(const method of ['POST','PUT','PATCH','DELETE']) assert.equal(allowedRelativeRequest({method,originalUrl:'/api/relatives/links'}),false);
+  assert.equal(allowedRelativeRequest({method:'GET',originalUrl:'/api/health-metric-types'}),true);
+  assert.equal(allowedRelativeRequest({method:'POST',originalUrl:'/api/relatives/me/elderly/1/health-metrics'}),true);
   assert.equal(allowedRelativeRequest({method:'POST',originalUrl:'/api/auth/change-password'}),true);
   assert.equal(allowedRelativeRequest({method:'PUT',originalUrl:'/api/users/me/password'}),true);
   assert.equal(allowedRelativeRequest({method:'PUT',originalUrl:'/api/auth/me'}),false);
   assert.equal(allowedRelativeRequest({method:'POST',originalUrl:'/api/auth/change-password/other'}),false);
 });
-test('family permissions have a hard read-only ceiling',()=>{
+test('family permissions allow health metric entry and bounded reads only',()=>{
   for(const feature of READ_FEATURES) {
     assert.equal(relativePermission(feature,'xem'),true);
-    for(const action of ['them','sua','xoa']) assert.equal(relativePermission(feature,action),false);
+    for(const action of ['sua','xoa']) assert.equal(relativePermission(feature,action),false);
+    if (feature !== 'QLCHISOSK') assert.equal(relativePermission(feature,'them'),false);
   }
-  for(const feature of ['QLNGUOIDUNG','QLNHATKY','QLNGUOICHAMSOC','QLLIENHEKC','QLBAOCAO']) assert.equal(relativePermission(feature,'xem'),false);
+  assert.equal(relativePermission('QLCHISOSK','them'),true);
+  for(const feature of ['QLNGUOIDUNG','QLNGUOICHAMSOC','QLLIENHEKC','QLBAOCAO']) assert.equal(relativePermission(feature,'xem'),false);
 });
 test('personal-password guard preserves legacy permissions and limits relatives to their own password fields',async()=>{
   const filename=path.resolve(__dirname,'../src/middlewares/permission.middleware.js');
@@ -94,7 +98,7 @@ test('reads repeat SQL link and consent checks; forbidden IDs never query clinic
 test('permission seed only installs missing defaults, preserving customized and unknown-role permissions',async()=>{
   const filename=path.resolve(__dirname,'../seed_phanquyen.js');
   const roles=['QuanTriVien','NguoiChamSoc','NguoiCaoTuoi','NguoiThan','FutureRole'];
-  const features=[...READ_FEATURES,'QLNHATKY'];
+  const features=[...READ_FEATURES,'QLNGUOIDUNG'];
   const saved=new Map([['2:1',[0,0,0,0]],['5:1',[1,1,1,1]]]);
   class Transaction {async begin(){}async commit(){}async rollback(){}}
   class Request {
@@ -116,5 +120,5 @@ test('permission seed only installs missing defaults, preserving customized and 
   },{filename});
   assert.deepEqual(saved.get('2:1'),[0,0,0,0]);assert.deepEqual(saved.get('5:1'),[1,1,1,1]);
   for(let i=1;i<=READ_FEATURES.length;i++) assert.deepEqual(saved.get(`4:${i}`),[1,0,0,0]);
-  assert.deepEqual(saved.get('4:6'),[0,0,0,0]);assert.equal(saved.size,25);
+  assert.deepEqual(saved.get(`4:${READ_FEATURES.length+1}`),[0,0,0,0]);assert.equal(saved.size,29);
 });

@@ -43,7 +43,7 @@ async function seedPhanQuyen() {
     transaction = new sql.Transaction(pool);
     await transaction.begin();
     // Install missing defaults only; preserve configured permissions and unknown roles.
-    const relativeFeatures=new Set(['QLHOSONCT','QLCHISOSK','QLLICHUONGTHUOC','QLLICHKHAM','QLCANHBAO']);
+    const relativeFeatures=new Set(['QLHOSONCT','QLCHISOSK','QLLICHUONGTHUOC','QLLICHKHAM','QLCANHBAO','QLNHATKY']);
     for (const feature of functions) {
       for (const [roleName, permissions] of [
         ['QuanTriVien', actions(1, 1, 1, 1)],

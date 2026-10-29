@@ -328,12 +328,37 @@ const createMine = async (req, res, next) => {
 
           IF @isAbnormal = 1
           BEGIN
-            INSERT INTO CanhBao
-              (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID)
-            VALUES
-              (@elderlyId, N'ChiSoBatThuong', @alertContent, @alertLevel,
-               N'ChiSoSucKhoe', @metricId);
-            SET @alertId = SCOPE_IDENTITY();
+            DECLARE @existingAlertId INT = NULL;
+            DECLARE @existingMucDo NVARCHAR(20) = NULL;
+
+            SELECT TOP 1
+              @existingAlertId = cb.CanhBaoID,
+              @existingMucDo = cb.MucDo
+            FROM CanhBao cb WITH (UPDLOCK, HOLDLOCK)
+            JOIN ChiSoSucKhoe prev ON prev.ChiSoID = cb.NguonID
+            WHERE cb.NguoiCaoTuoiID = @elderlyId
+              AND cb.LoaiCanhBao = N'ChiSoBatThuong'
+              AND cb.NguonBang = N'ChiSoSucKhoe'
+              AND prev.LoaiChiSoID = @typeId
+              AND cb.TrangThai = N'ChuaXuLy'
+              AND cb.NgayTao >= DATEADD(MINUTE, -10, DATEADD(HOUR, 7, SYSUTCDATETIME()))
+            ORDER BY cb.CanhBaoID DESC;
+
+            IF @existingAlertId IS NOT NULL
+               AND @alertLevel <> N'KhanCap'
+               AND NOT (@alertLevel = N'Cao' AND @existingMucDo = N'TrungBinh')
+            BEGIN
+              SET @alertId = NULL;
+            END
+            ELSE
+            BEGIN
+              INSERT INTO CanhBao
+                (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID)
+              VALUES
+                (@elderlyId, N'ChiSoBatThuong', @alertContent, @alertLevel,
+                 N'ChiSoSucKhoe', @metricId);
+              SET @alertId = SCOPE_IDENTITY();
+            END;
           END;
 
           COMMIT TRANSACTION;
@@ -497,6 +522,8 @@ const create = async (req, res, next) => {
       .input('noiDungCanhBao', sql.NVarChar(500), assessment.description)
       .input('mucDoCanhBao', sql.NVarChar(20), assessment.level)
       .query(`
+        SET XACT_ABORT ON;
+        BEGIN TRANSACTION;
         DECLARE @ChiSoMoi TABLE (ChiSoID INT);
         DECLARE @chiSoId INT;
         DECLARE @canhBaoId INT = NULL;
@@ -510,12 +537,39 @@ const create = async (req, res, next) => {
 
         IF @laBatThuong = 1
         BEGIN
-          INSERT INTO CanhBao
-            (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID)
-          VALUES
-            (@nctId, N'ChiSoBatThuong', @noiDungCanhBao, @mucDoCanhBao, N'ChiSoSucKhoe', @chiSoId);
-          SET @canhBaoId = SCOPE_IDENTITY();
+          DECLARE @existingAlertId INT = NULL;
+          DECLARE @existingMucDo NVARCHAR(20) = NULL;
+
+          SELECT TOP 1
+            @existingAlertId = cb.CanhBaoID,
+            @existingMucDo = cb.MucDo
+          FROM CanhBao cb WITH (UPDLOCK, HOLDLOCK)
+          JOIN ChiSoSucKhoe prev ON prev.ChiSoID = cb.NguonID
+          WHERE cb.NguoiCaoTuoiID = @nctId
+            AND cb.LoaiCanhBao = N'ChiSoBatThuong'
+            AND cb.NguonBang = N'ChiSoSucKhoe'
+            AND prev.LoaiChiSoID = @loaiId
+            AND cb.TrangThai = N'ChuaXuLy'
+            AND cb.NgayTao >= DATEADD(MINUTE, -10, DATEADD(HOUR, 7, SYSUTCDATETIME()))
+          ORDER BY cb.CanhBaoID DESC;
+
+          IF @existingAlertId IS NOT NULL
+             AND @mucDoCanhBao <> N'KhanCap'
+             AND NOT (@mucDoCanhBao = N'Cao' AND @existingMucDo = N'TrungBinh')
+          BEGIN
+            SET @canhBaoId = NULL;
+          END
+          ELSE
+          BEGIN
+            INSERT INTO CanhBao
+              (NguoiCaoTuoiID, LoaiCanhBao, NoiDung, MucDo, NguonBang, NguonID)
+            VALUES
+              (@nctId, N'ChiSoBatThuong', @noiDungCanhBao, @mucDoCanhBao, N'ChiSoSucKhoe', @chiSoId);
+            SET @canhBaoId = SCOPE_IDENTITY();
+          END;
         END;
+
+        COMMIT TRANSACTION;
 
         SELECT c.ChiSoID AS id, @canhBaoId AS alertId,
           ${vietnamTimestampSql('c.ThoiGianDo')} AS thoiGianDoUtc,

@@ -21,5 +21,7 @@ router.get('/me/elderly/:id',relative,checkPermission('QLHOSONCT','xem'),ctrl.re
 for(const [path,section,feature] of [
   ['health-metrics','health','QLCHISOSK'],['medication-schedules','medications','QLLICHUONGTHUOC'],
   ['appointments','appointments','QLLICHKHAM'],['alerts','alerts','QLCANHBAO'],['sos','sos','QLCANHBAO'],
+  ['care-notes','careNotes','QLNHATKY'],
 ]) router.get(`/me/elderly/:id/${path}`,relative,checkPermission(feature,'xem'),ctrl.read(section));
+router.post('/me/elderly/:id/health-metrics',relative,checkPermission('QLCHISOSK','them'),ctrl.createHealthMetric);
 module.exports=router;

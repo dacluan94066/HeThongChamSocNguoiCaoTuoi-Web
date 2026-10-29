@@ -9,7 +9,34 @@ export const ElderlyPersonalFields = ({ showStatus = false, showCccd = true, pre
   <FormSection title="Thông tin cá nhân" description="Thông tin nhận diện cơ bản của người cao tuổi">
     <Row gutter={18}>
       <Col xs={24} md={12}><Form.Item name="hoTen" label="Họ tên hồ sơ NCT" rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập họ và tên' }, { max: 100, message: 'Họ tên tối đa 100 ký tự' }]}><Input maxLength={100} placeholder="VD: Nguyễn Văn An" /></Form.Item></Col>
-      <Col xs={24} md={12}><Form.Item name="ngaySinh" preserve={preserve} label="Ngày sinh" rules={[{ required: true, message: 'Vui lòng chọn ngày sinh' }]}><DatePicker disabledDate={(date) => date && date.isAfter(dayjs(), 'day')} format="DD/MM/YYYY" placeholder="Chọn ngày sinh" style={{ width: '100%' }} /></Form.Item></Col>
+      <Col xs={24} md={12}>
+        <Form.Item
+          name="ngaySinh"
+          preserve={preserve}
+          label="Ngày sinh"
+          rules={[
+            { required: true, message: 'Vui lòng chọn ngày sinh' },
+            {
+              validator: (_, value) => {
+                if (!value) return Promise.resolve();
+                if (!value.isValid()) return Promise.reject(new Error('Ngày sinh không hợp lệ'));
+                const formatted = value.format('YYYY-MM-DD');
+                if (formatted < '1900-01-01') return Promise.reject(new Error('Năm sinh không được trước năm 1900'));
+                const maxDate = dayjs().subtract(60, 'year');
+                if (value.isAfter(maxDate, 'day')) return Promise.reject(new Error('Người cao tuổi phải đủ từ 60 tuổi trở lên'));
+                return Promise.resolve();
+              },
+            },
+          ]}
+        >
+          <DatePicker
+            disabledDate={(date) => !date || date.isBefore(dayjs('1900-01-01'), 'day') || date.isAfter(dayjs().subtract(60, 'year'), 'day')}
+            format="DD/MM/YYYY"
+            placeholder="Chọn ngày sinh"
+            style={{ width: '100%' }}
+          />
+        </Form.Item>
+      </Col>
       <Col xs={24} md={12}><Form.Item name="gioiTinh" preserve={preserve} label="Giới tính" rules={[{ required: true, message: 'Vui lòng chọn giới tính' }]}><Select placeholder="Chọn giới tính" options={[{ value: 'Nam' }, { value: 'Nữ' }, { value: 'Khác' }]} /></Form.Item></Col>
       {showCccd && <Col xs={24} md={12}><Form.Item name="cccd" preserve={preserve} label="CCCD" rules={[{ pattern: /^\d{12}$/, message: 'CCCD phải gồm đúng 12 chữ số' }]}><Input maxLength={12} placeholder="VD: 079123456789" /></Form.Item></Col>}
       <Col xs={24} md={12}><Form.Item name="soDienThoai" label="Số điện thoại liên hệ" rules={[{ pattern: /^0\d{9}$/, message: 'Số điện thoại phải có 10 số và bắt đầu bằng 0' }]}><Input maxLength={10} placeholder="VD: 0901234567" /></Form.Item></Col>

@@ -2,19 +2,21 @@ import { metricAssessment } from '../../utils/metricAssessment';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Avatar, Button, Empty, Select, Skeleton, Space, Spin, Table, Tabs, Tag } from 'antd';
-import { LockOutlined, ReloadOutlined } from '@ant-design/icons';
+import { LockOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import useRelativePortal from '../../hooks/useRelativePortal';
 import useRelativeSos from '../../hooks/useRelativeSos';
 import RelativeSosPanel from '../../components/RelativeSosPanel';
 import AccountMenuModals from '../../components/AccountMenuModals';
 import RelativePortalHeader from './RelativePortalHeader';
+import RelativeHealthMetricModal from '../../components/RelativeHealthMetricModal';
+import RelativeMedicationsView from '../../components/RelativeMedicationsView';
 import StatusTag, { getAlertLevelStatus, getAlertStatusMap, getAppointmentStatusMap, getElderStatusMap, getMedStatusMap } from '../../components/StatusTag';
 import { PORTAL_FEATURES, formatPortalTime, metricGroups, sevenDayTrend, relativeLocalDate } from '../../utils/relativePortalData';
 import { getNameInitials } from '../../utils/displayUtils';
 import './RelativePortal.css';
 
-const SECTIONS = { profile: 'Tổng quan', health: 'Chỉ số sức khỏe', medications: 'Lịch thuốc', appointments: 'Lịch khám', alerts: 'Cảnh báo & SOS' };
+const SECTIONS = { profile: 'Tổng quan', health: 'Chỉ số sức khỏe', medications: 'Lịch thuốc', appointments: 'Lịch khám', careNotes: 'Nhật ký chăm sóc', alerts: 'Cảnh báo & SOS' };
 const MetricValue = ({ row }) => <><strong>{row.giaTri ?? 'Chưa có dữ liệu'}{row.giaTriPhu != null ? `/${row.giaTriPhu}` : ''}</strong><span>{row.donVi}</span></>;
 const MetricStatus = ({ row }) => { const status = metricAssessment(row); return <Tag color={status.color}>{status.label}</Tag>; };
 const ScopeField = ({ allowed, value }) => <span>{allowed ? value || 'Chưa có dữ liệu' : 'Chưa được đồng ý chia sẻ'}</span>;
@@ -71,21 +73,32 @@ const HealthHistory = ({ rows }) => <section className="relative-portal-card"><h
   { title: 'Chỉ số', dataIndex: 'tenChiSo' }, { title: 'Số đo', key: 'value', render: (_, row) => <span className="relative-portal-inline-value"><MetricValue row={row} /></span> },
   { title: 'Đánh giá từ hệ thống', dataIndex: 'laBatThuong', render: (_, row) => <MetricStatus row={row} /> },
 ]} /></section>;
-const Medications = ({ rows }) => <div className="relative-portal-records">{rows.map(row => <article key={row.id} className="relative-portal-card">
-  <div className="relative-portal-section-heading"><h3>{row.tenThuoc || 'Chưa có tên thuốc'}</h3><StatusTag {...getMedStatusMap(row.trangThai, row.thoiGianDuKien)} /></div>
-  <dl><div><dt>Dự kiến uống</dt><dd>{formatPortalTime(row.thoiGianDuKien)}</dd></div><div><dt>Liều dùng</dt><dd>{row.lieuDung || 'Chưa có dữ liệu'}{row.donViTinh ? ` · ${row.donViTinh}` : ''}</dd></div>
-    {row.cachDung && <div><dt>Hướng dẫn</dt><dd>{row.cachDung}</dd></div>}{row.thoiGianThucTe && <div><dt>Ghi nhận thực tế</dt><dd>{formatPortalTime(row.thoiGianThucTe)}</dd></div>}</dl>
-</article>)}</div>;
+const Medications = ({ rows }) => <RelativeMedicationsView rows={rows} />;
 const Appointments = ({ rows, profile }) => <div className="relative-portal-records">{rows.map(row => <article key={row.id} className="relative-portal-card">
   <div className="relative-portal-section-heading"><h3>{row.tenBenhVien || 'Lịch khám'}</h3><StatusTag {...getAppointmentStatusMap(row.trangThai)} /></div>
   <dl><div><dt>Thời gian</dt><dd>{formatPortalTime(row.thoiGianKham)}</dd></div><div><dt>Chuyên khoa</dt><dd>{row.chuyenKhoa || 'Chưa có dữ liệu'}</dd></div>
     {row.bacSiPhuTrach && <div><dt>Bác sĩ phụ trách</dt><dd>{row.bacSiPhuTrach}</dd></div>}
     <div><dt>Kết quả khám</dt><dd><ScopeField allowed={profile.xemKetQuaKham} value={row.ketQuaKham} /></dd></div></dl>
 </article>)}</div>;
+const careNoteTypeLabel = type => ({
+  CHAM_SOC_HANG_NGAY: 'Chăm sóc hàng ngày',
+  SUC_KHOE: 'Theo dõi sức khỏe',
+  DINH_DUONG: 'Dinh dưỡng / Ăn uống',
+  VAN_DONG: 'Vận động / Phục hồi',
+  TAM_LY: 'Tâm lý / Tinh thần',
+}[type] || type || 'Nhật ký chăm sóc');
+const CareNotes = ({ rows }) => <div className="relative-portal-records">{rows.map(row => <article key={row.id} className="relative-portal-card">
+  <div className="relative-portal-section-heading"><h3>{row.hoatDong || 'Nhật ký chăm sóc'}</h3><Space wrap>
+    <Tag color="cyan">{careNoteTypeLabel(row.loaiNhatKy)}</Tag>
+    <StatusTag status={row.trangThai === 'HOAN_THANH' ? 'success' : 'warning'} label={row.trangThai === 'HOAN_THANH' ? 'Đã ghi nhận' : 'Đang thực hiện'} /></Space></div>
+  <p>{row.moTaChiTiet || 'Chưa có mô tả chi tiết'}</p>
+  <dl><div><dt>Thời gian</dt><dd>{formatPortalTime(row.ngayGhi)}</dd></div>
+    {row.nguoiChamSocTen && <div><dt>Người ghi</dt><dd>{row.nguoiChamSocTen}</dd></div>}</dl>
+</article>)}</div>;
 const sosStatus = value => ({ DangGui: { status: 'danger', label: 'Chưa tiếp nhận' }, DaTiepNhan: { status: 'warning', label: 'Đã tiếp nhận' }, DaXuLy: { status: 'success', label: 'Đã xử lý' } }[value]
   || { status: 'default', label: 'Chưa rõ trạng thái' });
 const Alerts = ({ rows, sos = false }) => <div className="relative-portal-records">{rows.map(row => <article key={row.id} className={`relative-portal-card ${sos ? 'relative-portal-sos-card' : ''}`}>
-  <div className="relative-portal-section-heading"><h3>{sos ? 'SOS đã ghi nhận' : 'Cảnh báo'}</h3><Space wrap>
+  <div className="relative-portal-section-heading"><h3>{sos ? 'SOS đã ghi nhận' : ({ ChiSoBatThuong: 'Chỉ số sức khỏe', NhacUongThuoc: 'Nhắc uống thuốc', NhacLichKham: 'Nhắc lịch khám', KhanCap: 'SOS khẩn cấp' }[row.loaiCanhBao] || 'Cảnh báo')}</h3><Space wrap>
     {!sos && <StatusTag {...getAlertLevelStatus(row.mucDo)} />}<StatusTag {...(sos ? sosStatus(row.trangThai) : getAlertStatusMap(row.trangThai))} /></Space></div>
   <p>{row.noiDung || 'Chưa có nội dung được chia sẻ'}</p><p className="relative-portal-muted">{formatPortalTime(sos ? row.ngayGui : row.ngayTao)}</p>
   {sos && row.ngayXuLy && <p>Thời gian xử lý: {formatPortalTime(row.ngayXuLy)}</p>}
@@ -104,6 +117,7 @@ export default function RelativePortalPage() {
     }
   });
   const [tab, setTab] = useState('profile'), [accountModal, setAccountModal] = useState(null);
+  const [metricModalOpen, setMetricModalOpen] = useState(false);
   const allowedTabs = Object.keys(SECTIONS).filter(key => key === 'profile' || hasPermission(PORTAL_FEATURES[key], 'xem'));
   const activeTab = allowedTabs.includes(tab) ? tab : 'profile';
   const matching = !requestedId || Number(requestedId) === state.selectedId;
@@ -138,19 +152,64 @@ export default function RelativePortalPage() {
                 {state.notice && <Alert type="warning" showIcon title={state.notice} />}
                 {state.profileLoading || !matching && state.selectedId != null ? <div role="status"><p>Đang kiểm tra quyền của hồ sơ được chọn...</p><Skeleton active /></div>
                   : !profile ? <Empty description="Chọn NCT trong danh sách được cấp quyền để xem thông tin" /> : <>
-                    <div className="relative-portal-selected"><span>Đang xem hồ sơ</span><h2>{profile.hoTen}</h2><p>{profile.moiQuanHe} · Dữ liệu chỉ xem</p></div>
+                    <div className="relative-portal-selected"><span>Đang xem hồ sơ</span><h2>{profile.hoTen}</h2><p>{profile.moiQuanHe} · {hasPermission('QLCHISOSK', 'them') ? 'Được phép ghi nhận chỉ số' : 'Dữ liệu chỉ xem'}</p></div>
                     <Tabs activeKey={activeTab} onChange={setTab} items={allowedTabs.map(key => ({ key, label: SECTIONS[key] }))} />
                     <div className="relative-portal-tab" role="region" aria-label={`${SECTIONS[activeTab]} của ${profile.hoTen}`}>
                       {activeTab === 'profile' && <><ProfileCard profile={profile} />{hasPermission('QLCHISOSK', 'xem') && <section className="relative-portal-card"><h2>Chỉ số gần nhất đã tải</h2>
                         <p className="relative-portal-muted">Theo những lần đo đã tải. Mở Chỉ số sức khỏe để xem lịch sử và tải thêm.</p>{read('health', rows => <HealthSummary rows={rows} />)}</section>}</>}
-                      {activeTab === 'health' && read('health', rows => <><section className="relative-portal-card"><h2>Số đo gần nhất trong dữ liệu đã tải</h2><HealthSummary rows={rows} /></section><HealthTrend rows={rows} /><HealthHistory rows={rows} /></>)}
+                      {activeTab === 'health' && read('health', rows => <>
+                        {hasPermission('QLCHISOSK', 'them') && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 8, padding: '12px 16px' }}>
+                            <div>
+                              <strong style={{ color: '#135200', display: 'block', marginBottom: 2 }}>Ghi nhận chỉ số sức khỏe</strong>
+                              <span style={{ color: '#389e0d', fontSize: 13 }}>Gia đình có thể trực tiếp nhập số đo huyết áp, nhịp tim, đường huyết... cho {profile.hoTen}.</span>
+                            </div>
+                            <Button
+                              type="primary"
+                              icon={<PlusOutlined />}
+                              style={{ background: '#167763', borderColor: '#167763' }}
+                              onClick={() => setMetricModalOpen(true)}
+                            >
+                              + Ghi nhận chỉ số
+                            </Button>
+                          </div>
+                        )}
+                        <section className="relative-portal-card">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <h2 style={{ margin: 0 }}>Số đo gần nhất trong dữ liệu đã tải</h2>
+                            {hasPermission('QLCHISOSK', 'them') && (
+                              <Button
+                                type="link"
+                                icon={<PlusOutlined />}
+                                onClick={() => setMetricModalOpen(true)}
+                              >
+                                + Ghi nhận chỉ số mới
+                              </Button>
+                            )}
+                          </div>
+                          <HealthSummary rows={rows} />
+                        </section>
+                        <HealthTrend rows={rows} />
+                        <HealthHistory rows={rows} />
+                      </>)}
                       {activeTab === 'medications' && read('medications', rows => <Medications rows={rows} />)}
                       {activeTab === 'appointments' && read('appointments', rows => <Appointments rows={rows} profile={profile} />)}
+                      {activeTab === 'careNotes' && read('careNotes', rows => <CareNotes rows={rows} />)}
                       {activeTab === 'alerts' && <><Alert showIcon type="info" title="Theo dõi cảnh báo ở chế độ chỉ xem" description="Bạn có thể xem trạng thái đã được hệ thống ghi nhận. Nhấn Tải lại dữ liệu để kiểm tra thông tin mới." />
                         <section><h2>Cảnh báo</h2>{read('alerts', rows => <Alerts rows={rows} />)}</section><section><h2>SOS đã ghi nhận</h2>{read('sos', rows => <Alerts rows={rows} sos />)}</section></>}
                     </div></>}
               </section></div>}
     </main><footer className="relative-portal-footer">CareSenior · Đồng hành cùng gia đình, tôn trọng quyền riêng tư</footer>
     <AccountMenuModals activeModal={accountModal} onClose={() => setAccountModal(null)} user={user} />
+    {profile && (
+      <RelativeHealthMetricModal
+        open={metricModalOpen}
+        elderly={profile}
+        onClose={() => setMetricModalOpen(false)}
+        onSuccess={() => {
+          void store.loadSection('health');
+        }}
+      />
+    )}
   </div>;
 }

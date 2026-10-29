@@ -53,17 +53,26 @@ function createRelativeReadRepository(pool, sql) {
     alerts: {feature:'QLCANHBAO',sql:`SELECT c.CanhBaoID AS id,c.NguoiCaoTuoiID AS nguoiCaoTuoiId,
       c.LoaiCanhBao AS loaiCanhBao,c.MucDo AS mucDo,c.TrangThai AS trangThai,
       ${alertTimestampSql('c.NgayTao')} AS ngayTao,
-      CASE c.LoaiCanhBao WHEN N'KhanCap' THEN N'Người cao tuổi đã gửi SOS.'
+      COALESCE(NULLIF(c.NoiDung, N''), CASE c.LoaiCanhBao WHEN N'KhanCap' THEN N'Người cao tuổi đã gửi SOS.'
         WHEN N'ChiSoBatThuong' THEN N'Có chỉ số sức khỏe ngoài ngưỡng theo dõi.'
         WHEN N'NhacUongThuoc' THEN N'Có cảnh báo về lịch uống thuốc.'
-        WHEN N'NhacLichKham' THEN N'Có nhắc lịch khám.' ELSE N'Có cảnh báo cần theo dõi.' END AS noiDung
+        WHEN N'NhacLichKham' THEN N'Có nhắc lịch khám.' ELSE N'Có cảnh báo cần theo dõi.' END) AS noiDung
       ${from} JOIN dbo.CanhBao c ON c.NguoiCaoTuoiID=lk.NguoiCaoTuoiID
       WHERE ${scoped} ${DATE_FILTER('c.NgayTao')} ORDER BY c.NgayTao DESC,c.CanhBaoID DESC ${PAGE}`},
     sos: {feature:'QLCANHBAO',sql:`SELECT s.CanhBaoKhanCapID AS id,s.NguoiCaoTuoiID AS nguoiCaoTuoiId,
       s.TrangThai AS trangThai,${alertTimestampSql('s.NgayGui')} AS ngayGui,
-      ${alertTimestampSql('s.NgayXuLy')} AS ngayXuLy,N'Người cao tuổi đã gửi SOS.' AS noiDung
+      ${alertTimestampSql('s.NgayXuLy')} AS ngayXuLy,COALESCE(NULLIF(s.NoiDung, N''), N'Người cao tuổi đã gửi SOS.') AS noiDung
       ${from} JOIN dbo.CanhBaoKhanCap s ON s.NguoiCaoTuoiID=lk.NguoiCaoTuoiID
       WHERE ${scoped} ${DATE_FILTER('s.NgayGui')} ORDER BY s.NgayGui DESC,s.CanhBaoKhanCapID DESC ${PAGE}`},
+    careNotes: {feature:'QLNHATKY',sql:`SELECT n.NhatKyID AS id,n.NguoiCaoTuoiID AS nguoiCaoTuoiId,
+      COALESCE(author.HoTen,ncs.HoTen) AS nguoiChamSocTen,n.LoaiNhatKy AS loaiNhatKy,
+      n.HoatDong AS hoatDong,n.MoTaChiTiet AS moTaChiTiet,
+      CONVERT(VARCHAR(19),n.NgayGhi,126) AS ngayGhi,n.TrangThai AS trangThai
+      ${from} JOIN dbo.NhatKyChamSoc n ON n.NguoiCaoTuoiID=lk.NguoiCaoTuoiID
+      LEFT JOIN dbo.NguoiChamSoc ncs ON ncs.NguoiChamSocID=n.NguoiChamSocID
+      LEFT JOIN dbo.NguoiDung author ON author.UserID=ncs.UserID
+      WHERE ${scoped} AND n.TrangThai<>N'HUY' ${DATE_FILTER('n.NgayGhi')}
+      ORDER BY n.NgayGhi DESC,n.NhatKyID DESC ${PAGE}`},
   };
   return {
     async elderly(userId,query={}) {

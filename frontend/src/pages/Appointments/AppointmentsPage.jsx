@@ -261,11 +261,15 @@ const AppointmentsPage = () => {
       await load();
     } catch (error) {
       // The interceptor shows the conflict once. Never replay a stale edit.
-      if (error.response?.status === 409 && error.response?.data?.errorCode === 'APPOINTMENT_CHANGED') {
-        setModalOpen(false);
-        setEditing(null);
-        form.resetFields();
-        await load();
+      if (error.response?.status === 409) {
+        if (error.response?.data?.errorCode === 'APPOINTMENT_CHANGED') {
+          setModalOpen(false);
+          setEditing(null);
+          form.resetFields();
+          await load();
+        } else if (error.response?.data?.errorCode === 'APPOINTMENT_CONFLICT') {
+          form.setFields([{ name: 'gioKham', errors: [error.response.data.message || 'Lịch khám bị trùng thời điểm'] }]);
+        }
       }
     } finally {
       setSaving(false);

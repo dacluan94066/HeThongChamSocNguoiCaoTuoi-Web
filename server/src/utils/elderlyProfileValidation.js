@@ -5,12 +5,38 @@ const MAX_LENGTH = Object.freeze({
   nhomMau: 5, benhNen: 500, diUng: 300,
 });
 
-const isValidDate = (value) => {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
-    && value <= todayVietnam();
+const calculateExactAge = (birthDateString, todayString = todayVietnam()) => {
+  const [bYear, bMonth, bDay] = birthDateString.split('-').map(Number);
+  const [tYear, tMonth, tDay] = todayString.split('-').map(Number);
+  let age = tYear - bYear;
+  const passedBirthday = (tMonth > bMonth) || (tMonth === bMonth && tDay >= bDay);
+  if (!passedBirthday) age -= 1;
+  return age;
 };
+
+const validateElderlyBirthDate = (value, today = todayVietnam()) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return 'Ngày sinh phải đúng định dạng YYYY-MM-DD';
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    return 'Ngày sinh không hợp lệ';
+  }
+  if (value > today) {
+    return 'Ngày sinh không được ở tương lai';
+  }
+  const [year] = value.split('-').map(Number);
+  if (year < 1900) {
+    return 'Ngày sinh không được trước năm 1900';
+  }
+  const age = calculateExactAge(value, today);
+  if (age < 60) {
+    return 'Người cao tuổi phải từ đủ 60 tuổi trở lên';
+  }
+  return null;
+};
+
+const isValidDate = (value) => validateElderlyBirthDate(value) === null;
 
 const validateElderlyProfile = (body, { partial = false } = {}) => {
   const value = {};
@@ -37,8 +63,9 @@ const validateElderlyProfile = (body, { partial = false } = {}) => {
     return { error: { field: 'hoTen', message: 'Họ tên là bắt buộc' } };
   }
   if (!partial || body?.ngaySinh !== undefined) {
-    if (!isValidDate(body?.ngaySinh)) {
-      return { error: { field: 'ngaySinh', message: 'Ngày sinh phải đúng YYYY-MM-DD và không ở tương lai' } };
+    const birthError = validateElderlyBirthDate(body?.ngaySinh);
+    if (birthError) {
+      return { error: { field: 'ngaySinh', message: birthError } };
     }
     value.ngaySinh = body.ngaySinh;
   }
@@ -57,4 +84,4 @@ const validateElderlyProfile = (body, { partial = false } = {}) => {
   return { value };
 };
 
-module.exports = { validateElderlyProfile, MAX_LENGTH };
+module.exports = { validateElderlyProfile, validateElderlyBirthDate, calculateExactAge, MAX_LENGTH };

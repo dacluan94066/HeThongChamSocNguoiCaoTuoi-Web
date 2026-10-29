@@ -1,8 +1,8 @@
 // A second presentation allowlist: the server remains the authorization boundary.
 export const PORTAL_SECTIONS = Object.freeze({ health: 'health-metrics', medications: 'medication-schedules',
-  appointments: 'appointments', alerts: 'alerts', sos: 'sos' });
+  appointments: 'appointments', alerts: 'alerts', sos: 'sos', careNotes: 'care-notes' });
 export const PORTAL_FEATURES = Object.freeze({ health: 'QLCHISOSK', medications: 'QLLICHUONGTHUOC',
-  appointments: 'QLLICHKHAM', alerts: 'QLCANHBAO', sos: 'QLCANHBAO' });
+  appointments: 'QLLICHKHAM', alerts: 'QLCANHBAO', sos: 'QLCANHBAO', careNotes: 'QLNHATKY' });
 export const portalId = value => {
   if (!['number', 'string'].includes(typeof value) || !/^[1-9]\d*$/.test(String(value)) || Number(value) > 2147483647)
     throw new Error('Mã NCT không hợp lệ.');
@@ -26,6 +26,7 @@ const FIELDS = {
   appointments: ['id', 'tenBenhVien', 'bacSiPhuTrach', 'chuyenKhoa', 'thoiGianKham', 'trangThai'],
   alerts: ['id', 'loaiCanhBao', 'mucDo', 'trangThai', 'ngayTao', 'noiDung'],
   sos: ['id', 'trangThai', 'ngayGui', 'ngayXuLy', 'noiDung'],
+  careNotes: ['id', 'nguoiChamSocTen', 'loaiNhatKy', 'hoatDong', 'moTaChiTiet', 'ngayGhi', 'trangThai'],
 };
 export const projectRelativeRows = (section, rows, profile) => {
   if (!FIELDS[section] || !Array.isArray(rows)) throw new Error('Phản hồi dữ liệu không hợp lệ.');
