@@ -1,0 +1,59 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: caresenior-db
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=CareSenior@2026!
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+      - ./QLSucKhoeNguoiCaoTuoi_FINAL.sql:/scripts/01_schema.sql:ro
+      - ./DU_LIEU_MAU_DAY_DU.sql:/scripts/03_data.sql:ro
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: caresenior-backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      - PORT=5000
+      - DB_SERVER=db
+      - DB_DATABASE=QLSucKhoeNguoiCaoTuoi
+      - DB_USER=sa
+      - DB_PASSWORD=CareSenior@2026!
+      - DB_PORT=1433
+      - DB_ENCRYPT=false
+      - DB_TRUST_SERVER_CERTIFICATE=true
+      - JWT_SECRET=caresenior_jwt_secret_key_prod_2026_x!9
+      - JWT_EXPIRES_IN=7d
+      - NODE_ENV=production
+      - CORS_ORIGINS=https://caresenior.site,http://caresenior.site,https://www.caresenior.site,http://www.caresenior.site,http://103.211.207.179
+      - SEED_PASSWORD=CareSenior@2026!
+      - MEDICATION_MISSED_AFTER_MINUTES=60
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: caresenior-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+
+volumes:
+  mssql_data:
