@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, DatePicker, Empty, Select, Skeleton, Tag } from 'antd';
+import { Alert, Button, DatePicker, Empty, Select, Skeleton, Tag, Tooltip as AntTooltip } from 'antd';
 import {
-  AlertOutlined, BarChartOutlined, CheckCircleOutlined, HeartOutlined,
-  MedicineBoxOutlined, PrinterOutlined, TeamOutlined, WarningOutlined,
+  AlertOutlined, BarChartOutlined, CalendarOutlined, CheckCircleOutlined, ClockCircleOutlined,
+  FilterOutlined, HeartOutlined, InfoCircleOutlined, MedicineBoxOutlined, PlusCircleOutlined,
+  PrinterOutlined, ReloadOutlined, TeamOutlined, UserOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { Bar, Line } from 'react-chartjs-2';
 import {
@@ -16,6 +17,7 @@ import TableAvatar from '../../components/TableAvatar';
 import { getHealthReport } from '../../services/reportService';
 import { calculateAge, formatEntityCode } from '../../utils/displayUtils';
 import MedicalSummaryModal from '../../components/MedicalSummaryModal';
+import './ReportsPage.css';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, LineElement, PointElement,
@@ -89,9 +91,11 @@ const formatDateTime = (value) => {
 
 const ReportKpi = ({ className = '', icon, label, value, suffix, note }) => (
   <article className={`report-kpi-card ${className}`}>
-    <span className="report-kpi-icon">{icon}</span>
+    <div className="report-kpi-top">
+      <span className="report-kpi-icon">{icon}</span>
+      <span className="report-kpi-label">{label}</span>
+    </div>
     <div>
-      <small>{label}</small>
       <strong>{value}<em>{suffix}</em></strong>
       <p>{note}</p>
     </div>
@@ -368,6 +372,17 @@ const ReportsPage = () => {
     setter(value);
   };
 
+  const resetAllFilters = () => {
+    setLoading(true);
+    setError('');
+    setSelectedElder('all');
+    setAgeGroup('all');
+    setGender('all');
+    setCareStatus('all');
+  };
+
+  const hasActiveFilter = selectedElder !== 'all' || ageGroup !== 'all' || gender !== 'all' || careStatus !== 'all';
+
   const currentFilteredElder = useMemo(() => {
     if (selectedElder === 'all') return null;
     return (report?.doiTuong || []).find((item) => item.id === selectedElder)
@@ -385,6 +400,7 @@ const ReportsPage = () => {
           <Button
             icon={<PrinterOutlined />}
             onClick={() => window.print()}
+            style={{ fontWeight: 600 }}
           >
             In trang báo cáo
           </Button>
@@ -392,80 +408,109 @@ const ReportsPage = () => {
       />
 
       <section className="report-filter-panel">
-        <div className="report-quick-ranges">
-          {QUICK_RANGES.map((item) => (
-            <Button
-              key={item.key}
-              type={quickRange === item.key ? 'primary' : 'text'}
-              onClick={() => chooseQuickRange(item)}
-            >
-              {item.label}
-            </Button>
-          ))}
+        {/* Hàng 1: Thời gian & Tìm kiếm người cao tuổi */}
+        <div className="report-filter-row">
+          <div className="report-filter-group">
+            <span className="report-filter-label"><CalendarOutlined style={{ color: '#0f766e' }} /> Khoảng thời gian:</span>
+            <div className="report-quick-ranges">
+              {QUICK_RANGES.map((item) => (
+                <Button
+                  key={item.key}
+                  type={quickRange === item.key ? 'primary' : 'text'}
+                  onClick={() => chooseQuickRange(item)}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+            <RangePicker
+              value={range}
+              format="DD/MM/YYYY"
+              allowClear={false}
+              onChange={(value) => {
+                if (value?.[0] && value?.[1]) {
+                  setLoading(true);
+                  setError('');
+                  setQuickRange('');
+                  setRange(value);
+                }
+              }}
+            />
+          </div>
+
+          <div className="report-filter-group">
+            <Select
+              className="report-subject-select"
+              value={selectedElder}
+              onChange={(value) => {
+                setLoading(true);
+                setError('');
+                setSelectedElder(value);
+              }}
+              showSearch
+              optionFilterProp="label"
+              placeholder="Tất cả người cao tuổi"
+              options={[
+                { value: 'all', label: 'Tất cả người cao tuổi' },
+                ...(report?.doiTuong || []).map((item) => ({
+                  value: item.id,
+                  label: `${item.hoTen} · ${formatEntityCode('NCT', item.id)}`,
+                })),
+              ]}
+            />
+            {currentFilteredElder && (
+              <Button
+                type="primary"
+                icon={<PrinterOutlined />}
+                onClick={() => handlePrintSummary(currentFilteredElder)}
+                style={{ background: '#0f766e', borderColor: '#0f766e', fontWeight: 600 }}
+              >
+                In tóm tắt bệnh án ({currentFilteredElder.hoTen || formatEntityCode('NCT', currentFilteredElder.id)})
+              </Button>
+            )}
+          </div>
         </div>
-        <RangePicker
-          value={range}
-          format="DD/MM/YYYY"
-          allowClear={false}
-          onChange={(value) => {
-            if (value?.[0] && value?.[1]) {
-              setLoading(true);
-              setError('');
-              setQuickRange('');
-              setRange(value);
-            }
-          }}
-        />
-        <Select
-          className="report-subject-select"
-          value={selectedElder}
-          onChange={(value) => {
-            setLoading(true);
-            setError('');
-            setSelectedElder(value);
-          }}
-          showSearch
-          optionFilterProp="label"
-          placeholder="Tất cả người cao tuổi"
-          options={[
-            { value: 'all', label: 'Tất cả người cao tuổi' },
-            ...(report?.doiTuong || []).map((item) => ({
-              value: item.id,
-              label: `${item.hoTen} · ${formatEntityCode('NCT', item.id)}`,
-            })),
-          ]}
-        />
-        <Select
-          className="report-demographic-select"
-          aria-label="Lọc theo độ tuổi"
-          value={ageGroup}
-          onChange={(value) => changeProfileFilter(setAgeGroup, value)}
-          options={AGE_OPTIONS}
-        />
-        <Select
-          className="report-demographic-select"
-          aria-label="Lọc theo giới tính"
-          value={gender}
-          onChange={(value) => changeProfileFilter(setGender, value)}
-          options={GENDER_OPTIONS}
-        />
-        <Select
-          className="report-demographic-select"
-          aria-label="Lọc theo tình trạng chăm sóc"
-          value={careStatus}
-          onChange={(value) => changeProfileFilter(setCareStatus, value)}
-          options={CARE_STATUS_OPTIONS}
-        />
-        {currentFilteredElder && (
-          <Button
-            type="primary"
-            icon={<PrinterOutlined />}
-            onClick={() => handlePrintSummary(currentFilteredElder)}
-            style={{ background: '#0f766e', borderColor: '#0f766e', fontWeight: 600 }}
-          >
-            In tóm tắt bệnh án ({currentFilteredElder.hoTen || formatEntityCode('NCT', currentFilteredElder.id)})
-          </Button>
-        )}
+
+        <div className="report-filter-divider" />
+
+        {/* Hàng 2: Bộ lọc nhân khẩu học & Trạng thái */}
+        <div className="report-filter-row">
+          <div className="report-filter-group">
+            <span className="report-filter-label"><FilterOutlined style={{ color: '#0f766e' }} /> Phân loại nhân khẩu:</span>
+            <Select
+              className="report-demographic-select"
+              aria-label="Lọc theo độ tuổi"
+              value={ageGroup}
+              onChange={(value) => changeProfileFilter(setAgeGroup, value)}
+              options={AGE_OPTIONS}
+            />
+            <Select
+              className="report-demographic-select"
+              aria-label="Lọc theo giới tính"
+              value={gender}
+              onChange={(value) => changeProfileFilter(setGender, value)}
+              options={GENDER_OPTIONS}
+            />
+            <Select
+              className="report-demographic-select"
+              aria-label="Lọc theo tình trạng chăm sóc"
+              value={careStatus}
+              onChange={(value) => changeProfileFilter(setCareStatus, value)}
+              options={CARE_STATUS_OPTIONS}
+            />
+            {hasActiveFilter && (
+              <Button
+                icon={<ReloadOutlined />}
+                size="small"
+                type="text"
+                onClick={resetAllFilters}
+                style={{ color: '#0f766e', fontWeight: 600 }}
+              >
+                Đặt lại bộ lọc
+              </Button>
+            )}
+          </div>
+        </div>
       </section>
 
       {error && (
@@ -517,17 +562,49 @@ const ReportsPage = () => {
             />
           </section>
 
-          <article className="report-panel" style={{ marginBottom: 20 }}>
-            <h3>Thời điểm uống và ghi nhận</h3>
-            <p>So sánh thời gian uống đang lưu với giờ dự kiến. Ghi nhận bổ sung dùng giờ thực tế người dùng nhập; xác nhận thông thường dùng thời điểm bấm xác nhận như trước.</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-              <Tag color="green">Không sau giờ dự kiến: {report.ghiNhanUongThuoc?.khongSauGioDuKien ?? 0}</Tag>
-              <Tag color="orange">Sau giờ dự kiến: {report.ghiNhanUongThuoc?.sauGioDuKien ?? 0}</Tag>
-              <Tag>Chưa rõ giờ uống: {report.ghiNhanUongThuoc?.chuaRoGioUong ?? 0}</Tag>
-              <Tag color="blue">Ghi nhận bổ sung: {report.ghiNhanUongThuoc?.ghiNhanBoSung ?? 0}</Tag>
+          <section className="report-panel report-timeliness-panel">
+            <div className="report-panel-heading">
+              <div>
+                <h3><ClockCircleOutlined style={{ color: '#0f766e', marginRight: 8 }} />Phân tích mức độ đúng giờ khi uống thuốc</h3>
+                <p>So sánh thời gian thực tế người cao tuổi uống thuốc với giờ chỉ định trong đơn.</p>
+              </div>
+              <Tag color="cyan">Số liệu trong kỳ</Tag>
             </div>
-            <p>Ghi nhận bổ sung có thể thuộc bất kỳ nhóm thời điểm uống nào ở trên; không cộng thêm vào tổng liều. Đây không phải đánh giá y khoa về uống đúng giờ.</p>
-          </article>
+            <div className="report-timeliness-grid">
+              <div className="report-timeliness-item on-time">
+                <div className="timeliness-icon"><CheckCircleOutlined /></div>
+                <div>
+                  <small>Đúng giờ / Trước giờ</small>
+                  <strong>{report.ghiNhanUongThuoc?.khongSauGioDuKien ?? 0}</strong>
+                  <span>lần xác nhận đúng kế hoạch</span>
+                </div>
+              </div>
+              <div className="report-timeliness-item late">
+                <div className="timeliness-icon"><ClockCircleOutlined /></div>
+                <div>
+                  <small>Sau giờ dự kiến (Trễ)</small>
+                  <strong>{report.ghiNhanUongThuoc?.sauGioDuKien ?? 0}</strong>
+                  <span>lần uống trễ giờ chỉ định</span>
+                </div>
+              </div>
+              <div className="report-timeliness-item unknown">
+                <div className="timeliness-icon"><InfoCircleOutlined /></div>
+                <div>
+                  <small>Chưa rõ giờ cụ thể</small>
+                  <strong>{report.ghiNhanUongThuoc?.chuaRoGioUong ?? 0}</strong>
+                  <span>lần ghi nhận không có mốc giờ</span>
+                </div>
+              </div>
+              <div className="report-timeliness-item supplement">
+                <div className="timeliness-icon"><PlusCircleOutlined /></div>
+                <div>
+                  <small>Ghi nhận uống bổ sung</small>
+                  <strong>{report.ghiNhanUongThuoc?.ghiNhanBoSung ?? 0}</strong>
+                  <span>lần bù liều đã bỏ lỡ trước đó</span>
+                </div>
+              </div>
+            </div>
+          </section>
 
           <section className="report-chart-grid">
             <article className="report-panel">
@@ -581,9 +658,10 @@ const ReportsPage = () => {
             </div>
             {currentMetric?.duLieu?.length ? (
               <>
-                <div className="report-threshold-copy">
-                  Ngưỡng chính: {currentMetric.giaTriMin ?? '—'}–{currentMetric.giaTriMax ?? '—'} {currentMetric.donVi}
-                  {currentMetric.giaTriMin2 != null && ` · Ngưỡng phụ: ${currentMetric.giaTriMin2}–${currentMetric.giaTriMax2} ${currentMetric.donVi}`}
+                <div className="report-threshold-badge">
+                  <CheckCircleOutlined />
+                  <span>Dải ngưỡng bình thường: <strong>{currentMetric.giaTriMin ?? '—'}–{currentMetric.giaTriMax ?? '—'} {currentMetric.donVi}</strong></span>
+                  {currentMetric.giaTriMin2 != null && <span> · Ngưỡng phụ: <strong>{currentMetric.giaTriMin2}–{currentMetric.giaTriMax2} {currentMetric.donVi}</strong></span>}
                 </div>
                 <div className="report-chart is-wide"><Line data={metricChart} options={chartOptions} /></div>
               </>
