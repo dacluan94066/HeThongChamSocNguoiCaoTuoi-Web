@@ -23,8 +23,9 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx-http.conf /etc/nginx/conf.d/nginx-http.conf
 COPY nginx-ssl.conf /etc/nginx/conf.d/nginx-ssl.conf
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 80 443
 
 ENTRYPOINT ["/entrypoint.sh"]
+
