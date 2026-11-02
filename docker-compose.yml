@@ -22,6 +22,9 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+    env_file:
+      - path: .env
+        required: false
     environment:
       - PORT=5000
       - DB_SERVER=db
