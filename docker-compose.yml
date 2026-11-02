@@ -37,6 +37,8 @@ services:
       - CORS_ORIGINS=https://caresenior.site,http://caresenior.site,https://www.caresenior.site,http://www.caresenior.site,http://103.211.207.179
       - SEED_PASSWORD=CareSenior@2026!
       - MEDICATION_MISSED_AFTER_MINUTES=60
+      - GOOGLE_WEB_CLIENT_ID=881044109614-b49669mcl3qhuu8mcpbsqk2jtpslqmk1.apps.googleusercontent.com
+      - GOOGLE_WEB_ORIGINS=https://caresenior.site,https://www.caresenior.site
     ports:
       - "5000:5000"
 
@@ -57,3 +59,4 @@ services:
 
 volumes:
   mssql_data:
+
