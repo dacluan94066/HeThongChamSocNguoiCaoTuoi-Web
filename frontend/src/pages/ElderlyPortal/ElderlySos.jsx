@@ -1,12 +1,26 @@
-import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { Alert, Button, Checkbox, Modal, Tag } from 'antd';
-import { EnvironmentOutlined, SafetyOutlined } from '@ant-design/icons';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { Alert, Button, Checkbox, Modal, Table, Tag } from 'antd';
+import { ClockCircleOutlined, EnvironmentOutlined, EyeOutlined, SafetyOutlined } from '@ant-design/icons';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useElderlyResource } from '../../hooks/useElderlyResource';
 import { formatAlertTime } from '../../utils/alertTime';
 import { statusLabel } from '../../utils/elderlySafety';
 import { CareSection, PageIntro, Refresh, ResourceState } from './ElderlyCareUi';
+
+function renderSosStatusTag(status) {
+  const label = statusLabel(status);
+  if (['CHUA_XU_LY', 'ChuaXuLy', 'DangGui'].includes(status)) {
+    return <Tag color="error">{label}</Tag>;
+  }
+  if (['DaTiepNhan', 'DA_XEM', 'DaXem'].includes(status)) {
+    return <Tag color="warning">{label}</Tag>;
+  }
+  if (['DA_XU_LY', 'DaXuLy'].includes(status)) {
+    return <Tag color="success">{label}</Tag>;
+  }
+  return <Tag>{label}</Tag>;
+}
 
 export function ElderlySosPage() {
   const { profile, safetyApi, sosController: controller } = useOutletContext(), { hasPermission } = useAuth();
@@ -34,6 +48,90 @@ export function ElderlySosPage() {
   const blocked = !canSend || !['idle', 'holding'].includes(state.phase);
   const reset = () => { if (controller.reset()) setAcknowledged(false); };
   const count = state.result?.soNguoiChamSocDaThongBao ?? state.result?.soNguoiChamSocNhan;
+
+  const totalCount = history.data?.length || 0;
+  const pendingCount = history.data?.filter(row => ['CHUA_XU_LY', 'ChuaXuLy', 'DangGui'].includes(row.trangThai)).length || 0;
+  const processingCount = history.data?.filter(row => ['DaTiepNhan', 'DA_XEM', 'DaXem'].includes(row.trangThai)).length || 0;
+  const resolvedCount = history.data?.filter(row => ['DA_XU_LY', 'DaXuLy'].includes(row.trangThai)).length || 0;
+
+  const columns = useMemo(() => [
+    {
+      title: 'Mã SOS',
+      dataIndex: 'id',
+      key: 'id',
+      width: 100,
+      render: id => (
+        <Tag color="#B4233F" style={{ fontWeight: 700, borderRadius: 6, margin: 0 }}>
+          #{id}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Thời gian gửi',
+      key: 'thoiGian',
+      width: 170,
+      render: (_, row) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--cs-ink)' }}>
+          <ClockCircleOutlined style={{ color: 'var(--cs-muted)' }} />
+          {formatAlertTime(row.ngayGui || row.thoiGianPhatHien)}
+        </span>
+      ),
+    },
+    {
+      title: 'Nội dung',
+      key: 'noiDung',
+      render: (_, row) => (
+        <span style={{ fontWeight: 500, color: 'var(--cs-ink)' }}>
+          {row.noiDung || row.moTa || 'Cảnh báo SOS khẩn cấp'}
+        </span>
+      ),
+    },
+    {
+      title: 'Vị trí GPS',
+      key: 'viTri',
+      width: 170,
+      render: (_, row) => {
+        if (row.viDo != null && row.kinhDo != null) {
+          return (
+            <a
+              href={`https://www.google.com/maps?q=${row.viDo},${row.kinhDo}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="elderly-sos-location-link"
+              title="Mở tọa độ trên Google Maps"
+            >
+              <EnvironmentOutlined /> {Number(row.viDo).toFixed(4)}, {Number(row.kinhDo).toFixed(4)}
+            </a>
+          );
+        }
+        return <span className="elderly-sos-no-location">Không kèm vị trí</span>;
+      },
+    },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'trangThai',
+      key: 'trangThai',
+      width: 130,
+      render: renderSosStatusTag,
+    },
+    {
+      title: 'Thao tác',
+      key: 'thaoTac',
+      width: 110,
+      align: 'center',
+      render: (_, row) => (
+        <Button
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => setDetailId(row.id)}
+          style={{ borderRadius: 6 }}
+        >
+          Chi tiết
+        </Button>
+      ),
+    },
+  ], []);
+
   return <>
     <PageIntro title="Hỗ trợ khẩn cấp SOS" icon={<SafetyOutlined />} eyebrow="KHI BẠN CẦN ĐƯỢC TRỢ GIÚP" description="Gửi yêu cầu hỗ trợ đến hệ thống CareSenior. Không tự gọi điện." className="elderly-sos-intro" />
     <div className="elderly-sos-workspace">
@@ -91,15 +189,82 @@ export function ElderlySosPage() {
     </div>
     <CareSection title="Lịch sử SOS của tôi" action={<Refresh onClick={history.refresh} loading={history.loading} />}>
       {!canRead ? <Alert type="warning" title="Tài khoản chưa có quyền xem lịch sử SOS." /> : <ResourceState resource={history} empty="Chưa có SOS nào được ghi nhận">
-        <div className="elderly-care-list">{history.data?.map(row => <article className="elderly-care-row elderly-sos-history" key={row.id}>
-          <div className="elderly-care-title"><h3>SOS #{row.id}</h3><Tag color="red">{statusLabel(row.trangThai)}</Tag></div>
-          <time>{formatAlertTime(row.ngayGui || row.thoiGianPhatHien)}</time><p>{row.noiDung || row.moTa || 'Yêu cầu hỗ trợ khẩn cấp'}</p>
-          <Button onClick={() => setDetailId(row.id)}>Xem chi tiết SOS</Button>
-        </article>)}</div>
+        {totalCount > 0 && <>
+          <div className="elderly-sos-stats-bar">
+            <div className="elderly-sos-stat-pill">
+              <span className="elderly-sos-stat-label">Tổng số SOS</span>
+              <strong className="elderly-sos-stat-val">{totalCount}</strong>
+            </div>
+            <div className="elderly-sos-stat-pill is-pending">
+              <span className="elderly-sos-stat-label">Chưa xử lý</span>
+              <strong className="elderly-sos-stat-val">{pendingCount}</strong>
+            </div>
+            <div className="elderly-sos-stat-pill is-processing">
+              <span className="elderly-sos-stat-label">Đang tiếp nhận</span>
+              <strong className="elderly-sos-stat-val">{processingCount}</strong>
+            </div>
+            <div className="elderly-sos-stat-pill is-resolved">
+              <span className="elderly-sos-stat-label">Đã xử lý xong</span>
+              <strong className="elderly-sos-stat-val">{resolvedCount}</strong>
+            </div>
+          </div>
+          <div className="elderly-sos-table-wrapper">
+            <Table
+              rowKey="id"
+              dataSource={history.data}
+              columns={columns}
+              size="middle"
+              scroll={{ x: 750 }}
+              pagination={{
+                pageSize: 5,
+                showSizeChanger: true,
+                pageSizeOptions: ['5', '10', '20'],
+                size: 'small',
+                showTotal: (total, range) => `${range[0]}-${range[1]} của ${total} SOS`,
+              }}
+            />
+          </div>
+        </>}
       </ResourceState>}
     </CareSection>
-    <Modal className="elderly-care-modal" title="Chi tiết SOS của tôi" open={Boolean(detail)} onCancel={() => setDetailId(null)} footer={<Button onClick={() => setDetailId(null)}>Đóng</Button>}>
-      {detail && <dl className="elderly-care-details">{[['Mã SOS', detail.id], ['Thời gian gửi', formatAlertTime(detail.ngayGui || detail.thoiGianPhatHien)], ['Trạng thái', statusLabel(detail.trangThai)], ['Thời gian cập nhật xử lý', formatAlertTime(detail.ngayXuLy)], ['Nội dung', detail.noiDung || detail.moTa], ['Vị trí đã gửi', detail.viDo != null && detail.kinhDo != null ? `${detail.viDo}, ${detail.kinhDo}` : 'Không kèm vị trí']].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Chưa có dữ liệu'}</dd></div>)}</dl>}
+    <Modal
+      className="elderly-care-modal"
+      title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><SafetyOutlined style={{ color: 'var(--cs-danger)' }} /> Chi tiết yêu cầu SOS</span>}
+      open={Boolean(detail)}
+      onCancel={() => setDetailId(null)}
+      footer={[
+        detail?.viDo != null && detail?.kinhDo != null && (
+          <Button
+            key="maps"
+            type="primary"
+            icon={<EnvironmentOutlined />}
+            href={`https://www.google.com/maps?q=${detail.viDo},${detail.kinhDo}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Mở trên Google Maps
+          </Button>
+        ),
+        <Button key="close" onClick={() => setDetailId(null)}>Đóng</Button>,
+      ]}
+    >
+      {detail && <dl className="elderly-care-details">{[
+        ['Mã SOS', <Tag color="#B4233F" style={{ fontWeight: 700, margin: 0 }}>#{detail.id}</Tag>],
+        ['Thời gian gửi', formatAlertTime(detail.ngayGui || detail.thoiGianPhatHien)],
+        ['Trạng thái', renderSosStatusTag(detail.trangThai)],
+        ['Thời gian cập nhật xử lý', formatAlertTime(detail.ngayXuLy) || 'Chưa cập nhật'],
+        ['Nội dung', detail.noiDung || detail.moTa || 'Yêu cầu hỗ trợ khẩn cấp'],
+        ['Vị trí đã gửi', detail.viDo != null && detail.kinhDo != null ? (
+          <a
+            href={`https://www.google.com/maps?q=${detail.viDo},${detail.kinhDo}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="elderly-sos-location-link"
+          >
+            <EnvironmentOutlined /> {detail.viDo}, {detail.kinhDo}
+          </a>
+        ) : 'Không kèm vị trí'],
+      ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Chưa có dữ liệu'}</dd></div>)}</dl>}
     </Modal>
   </>;
 }

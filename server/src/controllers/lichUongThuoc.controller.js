@@ -25,6 +25,7 @@ const mapSchedule = (row) => {
     nguoiCaoTuoiId:   row.nguoiCaoTuoiId,
     nguoiCaoTuoiTen:  row.nguoiCaoTuoiTen,
     thuocId:          row.thuocId,
+    prescriptionId:   row.prescriptionId,
     tenThuoc:         row.tenThuoc,
     lieuDung:         row.lieuDung,
     gioBuoiSang:      hour != null && hour < 11 ? time : null,
@@ -257,7 +258,7 @@ const getAll = async (req, res, next) => {
     let query = `
       SELECT l.LichUongThuocID AS id, l.NguoiCaoTuoiID AS nguoiCaoTuoiId,
         nct.HoTen AS nguoiCaoTuoiTen, dt.ThuocID AS thuocId, dm.TenThuoc AS tenThuoc,
-        dt.LieuDung AS lieuDung,
+        dt.LieuDung AS lieuDung, dt.DonThuocID AS prescriptionId,
         CONVERT(VARCHAR(19), l.ThoiGianDuKien, 126) AS thoiGianDuKien,
         CONVERT(VARCHAR(19), l.ThoiGianThucTe, 126) AS thoiGianThucTe,
         confirmer.HoTen AS nguoiXacNhanTen,

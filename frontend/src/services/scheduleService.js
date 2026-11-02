@@ -28,3 +28,8 @@ export const getPrescriptions = async (elderlyId) => {
   const res = await axiosClient.get(`/elderly/${elderlyId}/prescriptions`);
   return res.data?.data ?? [];
 };
+
+export const stopPrescription = async (elderlyId, prescriptionId, data = {}) => {
+  const res = await axiosClient.put(`/elderly/${elderlyId}/prescriptions/${prescriptionId}/stop`, data);
+  return res.data?.data ?? res.data;
+};

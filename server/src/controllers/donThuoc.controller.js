@@ -130,7 +130,7 @@ const create = async (req, res, next) => {
       "elderlyId",
       sql.Int,
       elderlyId,
-    ).query(`SELECT NguoiCaoTuoiID, UserID
+    ).query(`SELECT NguoiCaoTuoiID, UserID, DiUng, BenhNen
               FROM HoSoNguoiCaoTuoi
               WHERE NguoiCaoTuoiID=@elderlyId
                 AND TrangThai IN (N'DangTheoDoi', N'CanChamSocDacBiet')`);
@@ -168,7 +168,7 @@ const create = async (req, res, next) => {
         "medicineId",
         sql.Int,
         Number(item.thuocId),
-      ).query(`SELECT ThuocID AS id, TenThuoc AS tenThuoc
+      ).query(`SELECT ThuocID AS id, TenThuoc AS tenThuoc, HoatChat AS hoatChat
                 FROM DanhMucThuoc
                 WHERE ThuocID=@medicineId AND TrangThai=1`);
       if (!medicine.recordset.length) {
@@ -178,6 +178,21 @@ const create = async (req, res, next) => {
         error.statusCode = 400;
         error.errorCode = "MEDICATION_NOT_FOUND";
         throw error;
+      }
+
+      const rawAllergy = elderly.recordset[0].DiUng || '';
+      if (rawAllergy.trim() && req.body.xacNhanDiUng !== true) {
+        const normalize = (str) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const allergyTokens = rawAllergy.split(/[,;\n]+/).map(normalize).filter((t) => t.length > 1);
+        const drugName = normalize(medicine.recordset[0].tenThuoc);
+        const activeIng = normalize(medicine.recordset[0].hoatChat);
+        const matched = allergyTokens.find((token) => drugName.includes(token) || (activeIng && activeIng.includes(token)) || token.includes(drugName));
+        if (matched) {
+          const error = new Error(`Cảnh báo dị ứng: Thuốc "${medicine.recordset[0].tenThuoc}" có nguy cơ dị ứng với tiền sử "${rawAllergy}". Vui lòng xác nhận để tiếp tục.`);
+          error.statusCode = 422;
+          error.errorCode = 'ALLERGY_WARNING';
+          throw error;
+        }
       }
 
       const normalizedTimes = [...item.gioUong].sort();
@@ -393,4 +408,95 @@ const getByElderly = async (req, res, next) => {
   }
 };
 
-module.exports = { create, getByElderly };
+// PUT /api/elderly/:id/prescriptions/:prescriptionId/stop
+const stop = async (req, res, next) => {
+  const elderlyId = Number(req.params.id);
+  const prescriptionId = Number(req.params.prescriptionId);
+  if (!Number.isInteger(elderlyId) || elderlyId < 1 || !Number.isInteger(prescriptionId) || prescriptionId < 1) {
+    return fail(res, "ID khong hop le", "INVALID_ID", 400);
+  }
+
+  const lyDo = typeof req.body?.lyDo === 'string' ? req.body.lyDo.trim() : '';
+  if (lyDo.length > 300) {
+    return fail(res, "Ly do dung don thuoc khong duoc vuot qua 300 ky tu", "INVALID_REASON", 400);
+  }
+
+  let transaction;
+  try {
+    const pool = await poolPromise;
+    transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    const prescriptionCheck = await new sql.Request(transaction)
+      .input("prescriptionId", sql.Int, prescriptionId)
+      .input("elderlyId", sql.Int, elderlyId)
+      .query(`
+        SELECT d.DonThuocID, d.NgayBatDau, d.NgayKetThuc, d.GhiChu, hs.UserID
+        FROM DonThuoc d
+        JOIN HoSoNguoiCaoTuoi hs ON hs.NguoiCaoTuoiID=d.NguoiCaoTuoiID
+        WHERE d.DonThuocID=@prescriptionId AND d.NguoiCaoTuoiID=@elderlyId
+      `);
+
+    if (!prescriptionCheck.recordset.length) {
+      await transaction.rollback();
+      transaction = null;
+      return fail(res, "Khong tim thay don thuoc cua nguoi cao tuoi", "PRESCRIPTION_NOT_FOUND", 404);
+    }
+
+    const currentPrescription = prescriptionCheck.recordset[0];
+    const today = todayVietnam();
+    const reasonText = lyDo ? ` [Đã dừng ngày ${today}: ${lyDo}]` : ` [Đã dừng ngày ${today}]`;
+    const newNote = ((currentPrescription.GhiChu || '') + reasonText).slice(0, 500);
+
+    await new sql.Request(transaction)
+      .input("prescriptionId", sql.Int, prescriptionId)
+      .input("today", sql.Date, today)
+      .input("newNote", sql.NVarChar(500), newNote)
+      .query(`
+        UPDATE DonThuoc
+        SET NgayKetThuc = CASE WHEN NgayKetThuc IS NULL OR NgayKetThuc > @today THEN @today ELSE NgayKetThuc END,
+            GhiChu = @newNote
+        WHERE DonThuocID = @prescriptionId
+      `);
+
+    const deleteFutureDoses = await new sql.Request(transaction)
+      .input("prescriptionId", sql.Int, prescriptionId)
+      .query(`
+        DELETE l
+        FROM LichUongThuoc l
+        JOIN DonThuocChiTiet ct ON ct.DonThuocChiTietID = l.DonThuocChiTietID
+        WHERE ct.DonThuocID = @prescriptionId
+          AND l.TrangThai = N'ChuaDenGio'
+          AND l.ThoiGianDuKien > DATEADD(HOUR, 7, SYSUTCDATETIME());
+
+        SELECT @@ROWCOUNT AS deletedCount;
+      `);
+
+    const deletedCount = Number(deleteFutureDoses.recordset[0]?.deletedCount || 0);
+
+    await transaction.commit();
+    transaction = null;
+
+    const eventData = { id: prescriptionId, nguoiCaoTuoiId: elderlyId, action: 'stopped', deletedCount };
+    emitToAdmin('donthuoc:updated', eventData);
+    if (currentPrescription.UserID) {
+      emitToUser(currentPrescription.UserID, 'donthuoc:updated', eventData);
+    }
+
+    return ok(res, {
+      id: prescriptionId,
+      nguoiCaoTuoiId: elderlyId,
+      daDung: true,
+      soLieuDaHuy: deletedCount,
+    }, "Đã dừng đơn thuốc thành công và hủy các cữ thuốc tương lai.");
+  } catch (error) {
+    if (transaction) {
+      try {
+        await transaction.rollback();
+      } catch (_) {}
+    }
+    next(error);
+  }
+};
+
+module.exports = { create, getByElderly, stop };

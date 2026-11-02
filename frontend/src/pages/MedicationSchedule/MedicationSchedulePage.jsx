@@ -183,6 +183,39 @@ const MedicationSchedulePage = () => {
   const [detailRecord, setDetailRecord] = useState(null);
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
   const [prescriptionForm] = Form.useForm();
+  const watchedElderId = Form.useWatch('nguoiCaoTuoiId', prescriptionForm);
+  const watchedDrugList = Form.useWatch('danhSachThuoc', prescriptionForm);
+
+  const selectedElderInForm = useMemo(() => {
+    return elders.find((e) => Number(e.id) === Number(watchedElderId));
+  }, [elders, watchedElderId]);
+
+  const allergyConflicts = useMemo(() => {
+    if (!selectedElderInForm || !Array.isArray(selectedElderInForm.diUng) || selectedElderInForm.diUng.length === 0) return [];
+    const conflicts = [];
+    const normalize = (str) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const allergies = selectedElderInForm.diUng.map((a) => ({ raw: a, norm: normalize(a) })).filter((a) => a.norm.length > 1);
+
+    for (const item of watchedDrugList || []) {
+      if (!item?.thuocId) continue;
+      const med = medications.find((m) => Number(m.id) === Number(item.thuocId));
+      if (!med) continue;
+      const medName = normalize(med.tenThuoc);
+      const activeIng = normalize(med.hoatChat);
+      for (const al of allergies) {
+        if (medName.includes(al.norm) || (activeIng && activeIng.includes(al.norm)) || al.norm.includes(medName)) {
+          conflicts.push({
+            thuocId: item.thuocId,
+            tenThuoc: med.tenThuoc,
+            hoatChat: med.hoatChat,
+            diUng: al.raw,
+          });
+        }
+      }
+    }
+    return conflicts;
+  }, [selectedElderInForm, watchedDrugList, medications]);
+
   const [displayNow, setDisplayNow] = useState(() => new Date());
   const [supplementDose, setSupplementDose] = useState(null);
   const [supplementSaving, setSupplementSaving] = useState(false);
@@ -321,6 +354,11 @@ const MedicationSchedulePage = () => {
       return;
     }
 
+    if (allergyConflicts.length > 0 && !values.xacNhanDiUng) {
+      message.error(`Cảnh báo dị ứng: ${allergyConflicts[0].tenThuoc} có nguy cơ dị ứng với tiền sử "${allergyConflicts[0].diUng}". Vui lòng đánh dấu xác nhận nếu bác sĩ đã chỉ định.`);
+      return;
+    }
+
     setSaving(true);
     try {
       const result = await createPrescription(values.nguoiCaoTuoiId, {
@@ -328,6 +366,7 @@ const MedicationSchedulePage = () => {
         ngayBatDau: values.ngayBatDau.format('YYYY-MM-DD'),
         ngayKetThuc: values.ngayKetThuc?.format('YYYY-MM-DD') || null,
         ghiChu: values.ghiChu?.trim() || null,
+        xacNhanDiUng: Boolean(values.xacNhanDiUng),
         danhSachThuoc: values.danhSachThuoc.map((item) => ({
           thuocId: item.thuocId,
           lieuDung: item.lieuDung.trim(),
@@ -678,6 +717,31 @@ const MedicationSchedulePage = () => {
         width={980}
         form={prescriptionForm}
       >
+        {allergyConflicts.length > 0 && (
+          <Alert
+            type="error"
+            showIcon
+            message="CẢNH BÁO DỊ ỨNG THUỐC NGUY HIỂM"
+            description={
+              <div>
+                {allergyConflicts.map((c, idx) => (
+                  <div key={idx} style={{ marginBottom: 4 }}>
+                    • Thuốc <strong>{c.tenThuoc}</strong> {c.hoatChat ? `(${c.hoatChat})` : ''} có nguy cơ gây dị ứng với tiền sử <strong>"{c.diUng}"</strong> của người cao tuổi!
+                  </div>
+                ))}
+                <div style={{ marginTop: 10, padding: '8px 12px', background: '#fff1f0', borderRadius: 6, border: '1px solid #ffa39e' }}>
+                  <Form.Item name="xacNhanDiUng" valuePropName="checked" noStyle>
+                    <Checkbox>
+                      <strong>Tôi xác nhận bác sĩ điều trị đã chỉ định và chấp thuận kê thuốc này dù có nguy cơ dị ứng.</strong>
+                    </Checkbox>
+                  </Form.Item>
+                </div>
+              </div>
+            }
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
         <FormSection title="Thông tin đơn thuốc" description="Chọn người cao tuổi và khoảng thời gian áp dụng">
           <Row gutter={16}>
             <Col xs={24} md={12}>
@@ -689,6 +753,18 @@ const MedicationSchedulePage = () => {
                   options={elders.map((elder) => ({ value: elder.id, label: elder.hoTen }))}
                 />
               </Form.Item>
+              {selectedElderInForm && (
+                <div style={{ marginTop: -8, marginBottom: 12 }}>
+                  {selectedElderInForm.diUng?.length > 0 ? (
+                    <Tag color="error">⚠️ Dị ứng: {selectedElderInForm.diUng.join(', ')}</Tag>
+                  ) : (
+                    <Tag color="success">✓ Chưa ghi nhận dị ứng</Tag>
+                  )}
+                  {selectedElderInForm.benhNen?.length > 0 && (
+                    <Tag color="blue">Bệnh nền: {selectedElderInForm.benhNen.join(', ')}</Tag>
+                  )}
+                </div>
+              )}
             </Col>
             <Col xs={24} md={12}>
               <Form.Item name="bacSiKeDon" label="Bác sĩ kê đơn" rules={[{ max: 100, message: 'Tên bác sĩ tối đa 100 ký tự' }]}>

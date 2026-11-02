@@ -530,11 +530,33 @@ const AlertsPage = () => {
           { label: 'Thời gian', key: 'thoiGianPhatHien', render: (value) => formatAlertTime(value) },
           { label: 'Nội dung', key: 'moTa', span: 2 },
           { label: 'Người chăm sóc', key: 'nguoiChamSocTen' },
-          { label: 'SĐT người chăm sóc', key: 'nguoiChamSocSoDienThoai' },
+          {
+            label: 'SĐT người chăm sóc', key: 'nguoiChamSocSoDienThoai',
+            render: (value) => value
+              ? <a href={`tel:${value}`} style={{ fontWeight: 600 }}><PhoneOutlined /> {value} (Bấm gọi)</a>
+              : 'Chưa cập nhật',
+          },
           {
             label: 'Vị trí', key: 'viDo', span: 2,
             render: (value, record) => value !== null && value !== undefined && record.kinhDo !== null && record.kinhDo !== undefined
-              ? <a href={`https://www.google.com/maps?q=${value},${record.kinhDo}`} target="_blank" rel="noreferrer">{value}, {record.kinhDo} · Mở Google Maps</a>
+              ? <a href={`https://www.google.com/maps?q=${value},${record.kinhDo}`} target="_blank" rel="noreferrer"><EnvironmentOutlined /> {value}, {record.kinhDo} · Mở Google Maps</a>
+              : null,
+          },
+          {
+            label: 'Hành động khẩn cấp', key: 'sourceType', span: 2,
+            render: (_, record) => record.sourceType === 'sos'
+              ? (
+                <Space>
+                  <Button type="primary" danger icon={<PhoneOutlined />} href="tel:115">
+                    Gọi cấp cứu 115
+                  </Button>
+                  {record.nguoiChamSocSoDienThoai && (
+                    <Button icon={<PhoneOutlined />} href={`tel:${record.nguoiChamSocSoDienThoai}`}>
+                      Gọi người chăm sóc
+                    </Button>
+                  )}
+                </Space>
+              )
               : null,
           },
           { label: 'Người xử lý', key: 'nguoiXuLy' },

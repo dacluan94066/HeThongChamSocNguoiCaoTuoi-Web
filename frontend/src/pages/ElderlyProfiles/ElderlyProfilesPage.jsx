@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined, EditOutlined, EyeOutlined, HeartOutlined, IdcardOutlined,
-  KeyOutlined, MedicineBoxOutlined, PhoneOutlined, PlusOutlined, SearchOutlined, StopOutlined,
+  KeyOutlined, MedicineBoxOutlined, PhoneOutlined, PlusOutlined, PrinterOutlined, SearchOutlined, StopOutlined,
   UserAddOutlined, UsergroupAddOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -26,6 +26,7 @@ import { mobilePasswordRules } from '../../utils/accountFormRules';
 import { ElderlyPersonalFields, ElderlyHealthFields } from '../../components/ElderlyProfileFields';
 import RelativeLinksPanel from '../../components/RelativeLinksPanel';
 import { canViewRelativeAdmin } from '../../utils/relativeAdmin';
+import MedicalSummaryModal from '../../components/MedicalSummaryModal';
 
 const ElderlyProfilesPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -56,6 +57,8 @@ const ElderlyProfilesPage = () => {
   const [form] = Form.useForm();
   const [assignForm] = Form.useForm();
   const [relativeSectionOpen, setRelativeSectionOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryElder, setSummaryElder] = useState(null);
 
   const loadElders = async () => {
     setLoading(true);
@@ -324,12 +327,21 @@ const ElderlyProfilesPage = () => {
       title: 'Thao tác',
       key: 'action',
       fixed: 'right',
-      width: 132,
+      width: 156,
       align: 'center',
       render: (_, record) => (
         <Space size={6} onClick={(event) => event.stopPropagation()}>
           <TableActionButton type="view" tooltip="Xem chi tiết" icon={<EyeOutlined />} onClick={() => handleView(record)} />
           {canEdit && <TableActionButton type="edit" tooltip="Chỉnh sửa" icon={<EditOutlined />} onClick={() => handleEdit(record)} />}
+          <TableActionButton
+            type="print"
+            tooltip="In tóm tắt bệnh án"
+            icon={<PrinterOutlined />}
+            onClick={() => {
+              setSummaryElder(record);
+              setSummaryOpen(true);
+            }}
+          />
         </Space>
       ),
     },
@@ -415,6 +427,18 @@ const ElderlyProfilesPage = () => {
         footer={(
           <div className="elderly-detail-footer">
             <Button onClick={() => setDetailOpen(false)}>Đóng</Button>
+            {selected && (
+              <Button
+                icon={<PrinterOutlined />}
+                disabled={detailLoading}
+                onClick={() => {
+                  setSummaryElder(selected);
+                  setSummaryOpen(true);
+                }}
+              >
+                In tóm tắt bệnh án
+              </Button>
+            )}
             {canResetPassword && selected?.userId && (
               <Button icon={<KeyOutlined />} disabled={detailLoading} onClick={() => openResetPassword(selected)}>
                 Đặt lại mật khẩu Mobile
@@ -623,6 +647,15 @@ const ElderlyProfilesPage = () => {
           </Form.Item>
         </FormSection>
       </ModalForm>
+
+      <MedicalSummaryModal
+        open={summaryOpen}
+        elderly={summaryElder}
+        onClose={() => {
+          setSummaryOpen(false);
+          setSummaryElder(null);
+        }}
+      />
     </div>
   );
 };

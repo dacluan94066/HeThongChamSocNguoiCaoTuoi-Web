@@ -10,7 +10,7 @@ import { formatAlertTime } from '../../utils/alertTime';
 import { DoseProgress, MutationNotice, PageIntro, Refresh, ResourceState } from './ElderlyCareUi';
 
 const doseLabels = { ChuaDenGio: 'Chưa xác nhận uống', DaUong: 'Đã uống', BoLo: 'Bỏ lỡ', TuChoi: 'Từ chối' };
-const visitLabels = { ChuaDen: 'Chưa đến', DaKham: 'Đã khám', DaHuy: 'Đã hủy', KhongDen: 'Không đến' };
+const visitLabels = { ChuaDen: 'Chưa đến', DaKham: 'Đã khám', DaHuy: 'Đã hủy', KhongDen: 'Không đến', QuaHan: 'Quá hạn — Chờ kết quả' };
 export function ElderlySchedulePage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'kham' ? 'kham' : 'thuoc';
@@ -88,14 +88,43 @@ function AppointmentPage() {
     </div>
     {invalidRange && <Alert type="warning" title="Ngày bắt đầu không được sau ngày kết thúc" />}
     <ResourceState resource={visits} isEmpty={!rows.length} empty="Không có lịch khám phù hợp">
-      <div className="elderly-care-list">{rows.map(row => <article className="elderly-care-row elderly-appointment-row" key={row.id}>
-        <div className="elderly-care-title"><span className="elderly-ui-icon" aria-hidden="true"><CalendarOutlined /></span><h3>{row.tenBenhVien || 'Lịch khám'}</h3><Tag>{visitLabels[row.trangThai] || row.trangThai}</Tag></div>
-        <time>{formatAlertTime(row.thoiGianKham)}</time><span>{[row.chuyenKhoa, row.bacSiPhuTrach].filter(Boolean).join(' · ')}</span>
-        <Button onClick={() => setDetailId(row.id)}>Xem chi tiết lịch khám</Button>
-      </article>)}</div>
+      <div className="elderly-care-list">{rows.map(row => {
+        const isOverdue = row.trangThai === 'ChuaDen' && instant(row.thoiGianKham) < now;
+        return (
+          <article className="elderly-care-row elderly-appointment-row" key={row.id}>
+            <div className="elderly-care-title">
+              <span className="elderly-ui-icon" aria-hidden="true"><CalendarOutlined /></span>
+              <h3>{row.tenBenhVien || 'Lịch khám'}</h3>
+              <Tag color={isOverdue ? 'orange' : row.trangThai === 'DaKham' ? 'green' : undefined}>
+                {isOverdue ? 'Quá hạn — Chờ kết quả' : (visitLabels[row.trangThai] || row.trangThai)}
+              </Tag>
+            </div>
+            <time>{formatAlertTime(row.thoiGianKham)}</time>
+            <span>{[row.chuyenKhoa, row.bacSiPhuTrach].filter(Boolean).join(' · ')}</span>
+            <Button onClick={() => setDetailId(row.id)}>Xem chi tiết lịch khám</Button>
+          </article>
+        );
+      })}</div>
     </ResourceState>
     <Modal className="elderly-care-modal" title="Chi tiết lịch khám" open={Boolean(detail)} onCancel={() => setDetailId(null)} footer={<Button onClick={() => setDetailId(null)}>Đóng</Button>}>
-      {detail && <dl className="elderly-care-details">{[['Nơi khám', detail.tenBenhVien], ['Thời gian', formatAlertTime(detail.thoiGianKham)], ['Bác sĩ', detail.bacSiPhuTrach], ['Chuyên khoa', detail.chuyenKhoa], ['Trạng thái', visitLabels[detail.trangThai] || detail.trangThai], ['Lý do khám', detail.lyDoKham], ['Kết quả khám', detail.ketQuaKham]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Chưa có dữ liệu'}</dd></div>)}</dl>}
+      {detail && (() => {
+        const isDetailOverdue = detail.trangThai === 'ChuaDen' && instant(detail.thoiGianKham) < now;
+        return (
+          <dl className="elderly-care-details">
+            {[
+              ['Nơi khám', detail.tenBenhVien],
+              ['Thời gian', formatAlertTime(detail.thoiGianKham)],
+              ['Bác sĩ', detail.bacSiPhuTrach],
+              ['Chuyên khoa', detail.chuyenKhoa],
+              ['Trạng thái', isDetailOverdue ? <Tag color="orange">Quá hạn — Chờ kết quả</Tag> : (visitLabels[detail.trangThai] || detail.trangThai)],
+              ['Lý do khám', detail.lyDoKham],
+              ['Kết quả khám', detail.ketQuaKham],
+            ].map(([label, value]) => (
+              <div key={label}><dt>{label}</dt><dd>{value || 'Chưa có dữ liệu'}</dd></div>
+            ))}
+          </dl>
+        );
+      })()}
     </Modal>
   </>;
 }

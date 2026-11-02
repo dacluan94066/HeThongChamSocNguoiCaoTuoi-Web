@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/mobile_realtime_service.dart';
@@ -247,6 +248,23 @@ class _RelativeMainScreenState extends State<RelativeMainScreen> {
       return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     }
     return parts.first[0].toUpperCase();
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final clean = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+    if (clean.isEmpty) return;
+    final uri = Uri.parse('tel:$clean');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Future<void> _openMapCoordinates(dynamic lat, dynamic lng) async {
+    if (lat == null || lng == null) return;
+    final uri = Uri.parse('https://www.google.com/maps?q=$lat,$lng');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override
@@ -580,6 +598,28 @@ class _RelativeMainScreenState extends State<RelativeMainScreen> {
                               color: CareSeniorColors.primary,
                             ),
                           ),
+                          if (_elderlyProfile['soDienThoai'] != null && _elderlyProfile['soDienThoai'].toString().isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            InkWell(
+                              onTap: () => _makePhoneCall(_elderlyProfile['soDienThoai'].toString()),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.phone, size: 14, color: CareSeniorColors.deepGreen),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _elderlyProfile['soDienThoai'].toString(),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: CareSeniorColors.deepGreen,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1137,6 +1177,45 @@ class _RelativeMainScreenState extends State<RelativeMainScreen> {
                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: CareSeniorColors.text),
                     ),
                   ],
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (_elderlyProfile['soDienThoai'] != null && _elderlyProfile['soDienThoai'].toString().isNotEmpty)
+                        ElevatedButton.icon(
+                          onPressed: () => _makePhoneCall(_elderlyProfile['soDienThoai'].toString()),
+                          icon: const Icon(Icons.phone, size: 16),
+                          label: Text('Gọi ${_elderlyProfile['hoTen'] ?? 'NCT'}'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CareSeniorColors.deepGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                        ),
+                      ElevatedButton.icon(
+                        onPressed: () => _makePhoneCall('115'),
+                        icon: const Icon(Icons.emergency, size: 16),
+                        label: const Text('Gọi cấp cứu 115'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: CareSeniorColors.danger,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                      for (final sos in _sosList)
+                        if (sos['viDo'] != null && sos['kinhDo'] != null)
+                          OutlinedButton.icon(
+                            onPressed: () => _openMapCoordinates(sos['viDo'], sos['kinhDo']),
+                            icon: const Icon(Icons.location_on, size: 16),
+                            label: const Text('Xem vị trí GPS'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: CareSeniorColors.deepGreen,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                    ],
+                  ),
                 ],
               ),
             ),

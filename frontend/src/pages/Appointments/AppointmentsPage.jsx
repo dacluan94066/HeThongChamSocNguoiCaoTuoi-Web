@@ -31,11 +31,15 @@ const appointmentDateTime = (appointment) => {
 
 const AppointmentCard = ({ appointment, canEdit, canDelete, onDetail, onEdit, onResult, onCancel }) => {
   const appointmentTime = appointmentDateTime(appointment);
-  const status = getAppointmentStatusMap(appointment.trangThai);
+  const isOverdue = (appointment.trangThai === 'CHUA_DEN' || appointment.trangThai === 'ChuaDen')
+    && appointmentTime && appointmentTime.isBefore(dayjs());
+  const status = isOverdue
+    ? { status: 'warning', label: 'Quá hạn — Chờ kết quả' }
+    : getAppointmentStatusMap(appointment.trangThai);
 
   return (
     <article
-      className={`appointment-card status-${String(appointment.trangThai || '').toLowerCase()}`}
+      className={`appointment-card status-${isOverdue ? 'quahan' : String(appointment.trangThai || '').toLowerCase()}`}
       onClick={() => onDetail(appointment)}
     >
       <header className="appointment-card-header">
@@ -177,9 +181,20 @@ const AppointmentsPage = () => {
       const matchesDate = !dateRange?.[0] || !dateRange?.[1] || (date
         && !date.isBefore(dateRange[0].startOf('day'))
         && !date.isAfter(dateRange[1].endOf('day')));
-      return matchesSearch
-        && matchesDate
-        && (!filterStatus || appointment.trangThai === filterStatus);
+
+      const isOverdue = (appointment.trangThai === 'CHUA_DEN' || appointment.trangThai === 'ChuaDen')
+        && date && date.isBefore(dayjs());
+
+      let matchesStatus = true;
+      if (filterStatus === 'QUA_HAN') {
+        matchesStatus = isOverdue;
+      } else if (filterStatus === 'CHUA_DEN') {
+        matchesStatus = (appointment.trangThai === 'CHUA_DEN' || appointment.trangThai === 'ChuaDen') && !isOverdue;
+      } else if (filterStatus) {
+        matchesStatus = appointment.trangThai === filterStatus;
+      }
+
+      return matchesSearch && matchesDate && matchesStatus;
     });
   }, [appointments, dateRange, filterStatus, search]);
 
@@ -196,10 +211,13 @@ const AppointmentsPage = () => {
         const date = appointmentDateTime(item);
         return date?.isSame(now, 'day');
       }).length,
-      upcoming: appointments.filter((item) => item.trangThai === 'CHUA_DEN').length,
+      upcoming: appointments.filter((item) => {
+        const date = appointmentDateTime(item);
+        return (item.trangThai === 'CHUA_DEN' || item.trangThai === 'ChuaDen') && (!date || !date.isBefore(now));
+      }).length,
       overdue: appointments.filter((item) => {
         const date = appointmentDateTime(item);
-        return item.trangThai === 'CHUA_DEN' && date?.isBefore(now);
+        return (item.trangThai === 'CHUA_DEN' || item.trangThai === 'ChuaDen') && date?.isBefore(now);
       }).length,
     };
   }, [appointments]);
@@ -346,7 +364,8 @@ const AppointmentsPage = () => {
             allowClear
             onChange={(value) => setFilterStatus(value || '')}
             options={[
-              { value: 'CHUA_DEN', label: 'Chưa đến' },
+              { value: 'CHUA_DEN', label: 'Sắp tới (Chưa đến)' },
+              { value: 'QUA_HAN', label: 'Quá hạn — Chờ kết quả' },
               { value: 'DA_KHAM', label: 'Đã khám' },
               { value: 'HUY', label: 'Đã hủy' },
             ]}
@@ -392,7 +411,16 @@ const AppointmentsPage = () => {
           { label: 'Chuyên khoa', key: 'ghiChu', span: 2 },
           { label: 'Lý do khám', key: 'lyDoKham', span: 2 },
           { label: 'Kết quả', key: 'ketQua', span: 2 },
-          { label: 'Trạng thái', key: 'trangThai', span: 2, render: (value) => <StatusTag {...getAppointmentStatusMap(value)} /> },
+          {
+            label: 'Trạng thái',
+            key: 'trangThai',
+            span: 2,
+            render: (value, record) => {
+              const time = appointmentDateTime(record);
+              const isOverdue = (value === 'CHUA_DEN' || value === 'ChuaDen') && time && time.isBefore(dayjs());
+              return <StatusTag {...(isOverdue ? { status: 'warning', label: 'Quá hạn — Chờ kết quả' } : getAppointmentStatusMap(value))} />;
+            },
+          },
         ]}
       />
 

@@ -56,6 +56,7 @@ class MockRelativeAdapter implements HttpClientAdapter {
         'diUng': 'Không có',
       };
     } else if (path.endsWith('/health-metrics')) {
+      final nowIso = DateTime.now().toUtc().toIso8601String();
       data = [
         {
           'id': 101,
@@ -64,11 +65,12 @@ class MockRelativeAdapter implements HttpClientAdapter {
           'donVi': 'mmHg',
           'giaTri': 120,
           'giaTriPhu': 80,
-          'thoiGianDo': '2026-10-30T08:00:00.000Z',
+          'thoiGianDo': nowIso,
           'laBatThuong': false,
         }
       ];
     } else if (path.endsWith('/medication-schedules')) {
+      final nowIso = DateTime.now().toUtc().toIso8601String();
       data = [
         {
           'id': 201,
@@ -76,7 +78,7 @@ class MockRelativeAdapter implements HttpClientAdapter {
           'lieuDung': '1 viên',
           'donViTinh': 'viên',
           'cachDung': 'Uống sau ăn',
-          'thoiGianDuKien': '2026-10-30T08:00:00.000Z',
+          'thoiGianDuKien': nowIso,
           'trangThai': 'DaUong',
         },
         {
@@ -85,7 +87,7 @@ class MockRelativeAdapter implements HttpClientAdapter {
           'lieuDung': '1 viên',
           'donViTinh': 'viên',
           'cachDung': 'Uống sau ăn',
-          'thoiGianDuKien': '2026-10-30T12:00:00.000Z',
+          'thoiGianDuKien': nowIso,
           'trangThai': 'ChuaDenGio',
         },
       ];

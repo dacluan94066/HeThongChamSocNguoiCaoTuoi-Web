@@ -324,6 +324,18 @@
 .elderly-location-icon { display: grid; place-items: center; height: 64px; width: 64px; color: var(--cs-deep); background: var(--cs-mint); border-radius: 20px; font-size: 30px; margin-bottom: 20px; }
 .elderly-sos-workspace .elderly-care-actions { align-items: stretch; }
 .elderly-sos-workspace .elderly-care-actions > .ant-btn { flex: 1 1 190px; }
+.elderly-sos-stats-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.elderly-sos-stat-pill { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--cs-bg); border: 1px solid var(--cs-line); border-radius: 12px; font-size: 14px; }
+.elderly-sos-stat-label { color: var(--cs-muted); }
+.elderly-sos-stat-val { font-size: 16px; font-weight: 700; color: var(--cs-deep); }
+.elderly-sos-stat-pill.is-pending .elderly-sos-stat-val { color: var(--cs-danger); }
+.elderly-sos-stat-pill.is-processing .elderly-sos-stat-val { color: var(--cs-amber); }
+.elderly-sos-stat-pill.is-resolved .elderly-sos-stat-val { color: var(--cs-primary); }
+.elderly-sos-table-wrapper { background: white; border-radius: 14px; border: 1px solid var(--cs-line); overflow: hidden; }
+.elderly-sos-table-wrapper .ant-table-wrapper { padding: 4px; }
+.elderly-sos-location-link { display: inline-flex; align-items: center; gap: 4px; color: #1677ff; font-weight: 500; text-decoration: none; }
+.elderly-sos-location-link:hover { text-decoration: underline; }
+.elderly-sos-no-location { color: var(--cs-muted); font-size: 13px; }
 @media (min-width: 1600px) { .elderly-web-main { padding-inline: 48px; } }
 @media (max-width: 1180px) {
   .elderly-web.is-ready { grid-template-columns: 224px minmax(0, 1fr); }

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, DatePicker, Empty, Select, Skeleton, Tag } from 'antd';
 import {
   AlertOutlined, BarChartOutlined, CheckCircleOutlined, HeartOutlined,
-  MedicineBoxOutlined, TeamOutlined, WarningOutlined,
+  MedicineBoxOutlined, PrinterOutlined, TeamOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { Bar, Line } from 'react-chartjs-2';
 import {
@@ -15,6 +15,7 @@ import DataTable from '../../components/DataTable';
 import TableAvatar from '../../components/TableAvatar';
 import { getHealthReport } from '../../services/reportService';
 import { calculateAge, formatEntityCode } from '../../utils/displayUtils';
+import MedicalSummaryModal from '../../components/MedicalSummaryModal';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, LineElement, PointElement,
@@ -109,6 +110,13 @@ const ReportsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryElder, setSummaryElder] = useState(null);
+
+  const handlePrintSummary = (elder) => {
+    setSummaryElder(elder);
+    setSummaryOpen(true);
+  };
 
   const fromDate = range?.[0]?.format('YYYY-MM-DD');
   const toDate = range?.[1]?.format('YYYY-MM-DD');
@@ -328,6 +336,22 @@ const ReportsPage = () => {
         </div>
       ) : <span className="text-muted">Không ghi nhận trong kỳ</span>,
     },
+    {
+      title: 'Tóm tắt bệnh án',
+      key: 'action',
+      width: 140,
+      align: 'center',
+      render: (_, record) => (
+        <Button
+          type="link"
+          icon={<PrinterOutlined />}
+          style={{ color: '#0f766e', fontWeight: 600 }}
+          onClick={() => handlePrintSummary(record)}
+        >
+          In tóm tắt
+        </Button>
+      ),
+    },
   ];
 
   const chooseQuickRange = (item) => {
@@ -344,12 +368,27 @@ const ReportsPage = () => {
     setter(value);
   };
 
+  const currentFilteredElder = useMemo(() => {
+    if (selectedElder === 'all') return null;
+    return (report?.doiTuong || []).find((item) => item.id === selectedElder)
+      || (report?.tongHopNguoiCaoTuoi || []).find((item) => item.id === selectedElder)
+      || { id: selectedElder };
+  }, [selectedElder, report]);
+
   return (
     <div className="health-report-page">
       <PageHeader
         title="Báo cáo & Thống kê sức khỏe"
         subtitle="Tổng hợp dữ liệu chăm sóc, cảnh báo và chỉ số sức khỏe từ hệ thống"
         icon={<BarChartOutlined />}
+        extra={
+          <Button
+            icon={<PrinterOutlined />}
+            onClick={() => window.print()}
+          >
+            In trang báo cáo
+          </Button>
+        }
       />
 
       <section className="report-filter-panel">
@@ -417,6 +456,16 @@ const ReportsPage = () => {
           onChange={(value) => changeProfileFilter(setCareStatus, value)}
           options={CARE_STATUS_OPTIONS}
         />
+        {currentFilteredElder && (
+          <Button
+            type="primary"
+            icon={<PrinterOutlined />}
+            onClick={() => handlePrintSummary(currentFilteredElder)}
+            style={{ background: '#0f766e', borderColor: '#0f766e', fontWeight: 600 }}
+          >
+            In tóm tắt bệnh án ({currentFilteredElder.hoTen || formatEntityCode('NCT', currentFilteredElder.id)})
+          </Button>
+        )}
       </section>
 
       {error && (
@@ -642,6 +691,15 @@ const ReportsPage = () => {
           </section>
         </>
       ) : null}
+
+      <MedicalSummaryModal
+        open={summaryOpen}
+        elderly={summaryElder}
+        onClose={() => {
+          setSummaryOpen(false);
+          setSummaryElder(null);
+        }}
+      />
     </div>
   );
 };

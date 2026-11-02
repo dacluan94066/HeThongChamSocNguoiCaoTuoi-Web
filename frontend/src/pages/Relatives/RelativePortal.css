@@ -547,6 +547,53 @@
   color: #b83b3b;
 }
 
+.relative-portal-alerts-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.relative-portal-stat-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid #ddeee7;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.relative-portal-stat-label {
+  color: #698278;
+}
+
+.relative-portal-stat-num {
+  font-size: 16px;
+  font-weight: 700;
+  color: #167763;
+}
+
+.relative-portal-stat-badge.is-urgent .relative-portal-stat-num {
+  color: #e05555;
+}
+
+.relative-portal-stat-badge.is-pending .relative-portal-stat-num {
+  color: #d46b08;
+}
+
+.relative-portal-table-wrap {
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid #eef5f2;
+}
+
+.relative-portal-sos-card-wrap {
+  border-left: 4px solid #e05555 !important;
+}
+
 /* ── 17. Loading ────────────────────────────────────────────────────────── */
 .relative-portal-loading {
   padding: 32px 0;

@@ -1,4 +1,4 @@
-const { metricAssessmentSql, metricAssessment } = require('../utils/metricAssessment');
+const { metricAssessmentSql, metricAssessment, evaluateMetric } = require('../utils/metricAssessment');
 // controllers/chiSoSucKhoe.controller.js - Chi so suc khoe - dung schema that
 // Bang ChiSoSucKhoe: ChiSoID, NguoiCaoTuoiID, LoaiChiSoID (FK), GiaTri,
 //   GiaTriPhu, ThoiGianDo, NguoiDoID, LaBatThuong BIT, GhiChu
@@ -19,33 +19,6 @@ const MAP_LOAI = {
   'Nhiệt độ cơ thể':  { ma: 'NHIET_DO',    donVi: '°C' },
   'SpO2':             { ma: 'SPO2',         donVi: '%' },
   'Cân nặng':         { ma: 'CAN_NANG',    donVi: 'kg' },
-};
-
-const evaluateMetric = ({ tenChiSo, giaTri, giaTriPhu, min, max, min2, max2, manuallyAbnormal }) => {
-  const primaryOutOfRange = (min != null && giaTri < Number(min)) || (max != null && giaTri > Number(max));
-  const secondaryOutOfRange = giaTriPhu != null
-    && ((min2 != null && giaTriPhu < Number(min2)) || (max2 != null && giaTriPhu > Number(max2)));
-  const abnormal = manuallyAbnormal || primaryOutOfRange || secondaryOutOfRange;
-
-  if (!abnormal) return { abnormal: false, level: null, description: null };
-
-  const farOutsidePrimary = (min != null && giaTri < Number(min) * 0.8)
-    || (max != null && giaTri > Number(max) * 1.2);
-  const farOutsideSecondary = giaTriPhu != null
-    && ((min2 != null && giaTriPhu < Number(min2) * 0.8)
-      || (max2 != null && giaTriPhu > Number(max2) * 1.2));
-  const level = farOutsidePrimary || farOutsideSecondary ? 'Cao' : 'TrungBinh';
-  const measuredValue = giaTriPhu != null ? `${giaTri}/${giaTriPhu}` : String(giaTri);
-  const primaryRange = min != null || max != null ? `${min ?? '—'}–${max ?? '—'}` : 'chưa cấu hình';
-  const secondaryRange = giaTriPhu != null && (min2 != null || max2 != null)
-    ? `; ngưỡng phụ ${min2 ?? '—'}–${max2 ?? '—'}`
-    : '';
-
-  return {
-    abnormal: true,
-    level,
-    description: `${tenChiSo} ghi nhận ${measuredValue}, ngoài ngưỡng theo dõi ${primaryRange}${secondaryRange}.`,
-  };
 };
 
 const mapMetric = (row) => {
@@ -402,8 +375,8 @@ const createMine = async (req, res, next) => {
         nguoiCaoTuoiId: elderlyId,
         loaiCanhBao: 'ChiSoBatThuong',
         loaiCanhBaoLabel: 'Chỉ số bất thường',
-        mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
-        mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
+        mucDo: assessment.level === 'KhanCap' ? 'KHAN_CAP' : assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
+        mucDoLabel: assessment.level === 'KhanCap' ? 'Khẩn cấp' : assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
         moTa: assessment.description,
         thoiGianPhatHien: row.alertCreatedAt,
         thoiGianDo: row.thoiGianDoUtc,
@@ -597,8 +570,8 @@ const create = async (req, res, next) => {
         nguoiCaoTuoiId,
         loaiCanhBao: 'ChiSoBatThuong',
         loaiCanhBaoLabel: 'Chỉ số bất thường',
-        mucDo: assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
-        mucDoLabel: assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
+        mucDo: assessment.level === 'KhanCap' ? 'KHAN_CAP' : assessment.level === 'Cao' ? 'CAO' : 'TRUNG_BINH',
+        mucDoLabel: assessment.level === 'KhanCap' ? 'Khẩn cấp' : assessment.level === 'Cao' ? 'Cao' : 'Trung bình',
         moTa: assessment.description,
         thoiGianPhatHien: r.recordset[0].alertCreatedAt,
         thoiGianDo: r.recordset[0].thoiGianDoUtc,

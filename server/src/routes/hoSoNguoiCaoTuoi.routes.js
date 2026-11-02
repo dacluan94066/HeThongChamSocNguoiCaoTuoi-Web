@@ -51,6 +51,13 @@ router.post(
   checkPermission('QLLICHUONGTHUOC', 'them'),
   prescriptionController.create
 );
+router.put(
+  '/:id/prescriptions/:prescriptionId/stop',
+  scope.webOnlyWrite,
+  scope.guardResource('HoSoNguoiCaoTuoi', 'NguoiCaoTuoiID'),
+  checkPermission('QLLICHUONGTHUOC', 'sua'),
+  prescriptionController.stop
+);
 
 // GET /api/elderly         - Lay danh sach (can quyen xem)
 router.get(

@@ -4282,6 +4282,12 @@ html, body, #root {
   border-left-color: var(--color-warning);
 }
 
+.appointment-card.status-quahan,
+.appointment-card.status-tre_lich {
+  border-left-color: #fa8c16;
+  background: #fffdfa;
+}
+
 .appointment-card-header {
   display: flex;
   align-items: flex-start;
